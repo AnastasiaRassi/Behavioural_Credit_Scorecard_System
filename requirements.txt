@@ -1,0 +1,42 @@
+# Core data handling
+numpy
+pandas
+polars
+scipy
+
+# ML / modeling
+scikit-learn
+xgboost
+lightgbm
+joblib
+
+# Experiment tracking / model registry
+mlflow
+
+# API serving
+fastapi
+python-multipart
+
+# Serialization / config
+pyyaml
+python-dotenv
+
+# Testing
+pytest
+pytest-cov
+
+# Code quality
+black
+isort
+ruff
+
+# Monitoring / logging
+loguru
+
+# Cloud / deployment helpers
+boto3
+requests
+
+# notebooks / dev
+jupyter
+ipykernel
