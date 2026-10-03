@@ -111,11 +111,13 @@ dominates — not that exactly three features matter.
 ```text
 credit_risk_system/
 ├── notebooks/
-│   ├── 01_data_preparation.ipynb    # Bondora application-scoring prep (prior work)
-│   ├── 02_feature_analysis.ipynb    # Bondora feature analysis (prior work)
-│   └── 03_taiwan_modelling.ipynb    # Behavioural scorecard - current model
+│   └── 03_taiwan_modelling.ipynb    # Behavioural scorecard - model development
 ├── backend/
-│   └── artifacts/                   # Serialized model, calibrator, metadata (gitignored)
+│   ├── app/ml/
+│   │   ├── feature_engineering.py   # Shared by the notebook and the API
+│   │   ├── train.py                 # Regenerates all artifacts
+│   │   └── scorer.py                # Scoring core: probability + risk band
+│   └── artifacts/                   # Serialized model, calibrator, config (gitignored)
 ├── data/
 │   └── raw/                         # Datasets, downloaded not committed (gitignored)
 ├── frontend/
@@ -123,9 +125,23 @@ credit_risk_system/
 └── README.md
 ```
 
-Notebooks 01 and 02 build an application scorecard on the Bondora P2P lending dataset and are
-retained as prior work. That model reached 0.711 test ROC-AUC against Bondora's own published
-probability-of-default at 0.666, using strictly less information than their internal model.
+### Earlier work on dataset selection
+
+Two other datasets were evaluated before settling on this one. Their notebooks have been
+removed from the working tree to keep the repository focused, and remain in git history at
+commit `b20efea`.
+
+**Bondora P2P lending** — an application scorecard, predicting default within 12 months using
+only information available at origination. It reached 0.711 test ROC-AUC against Bondora's own
+published probability of default at 0.666, beating their internal model while using strictly
+less information. A tiered experiment measured what relaxing the information boundary buys:
+0.711 using application data alone, 0.729 adding origination pricing, 0.736 adding Bondora's
+own credit rating. It was set aside because 33 sparse features and a 12-month outcome window
+made iteration slow without improving on the behavioural task.
+
+**Home Credit Model Stability** — designed for monitoring performance and fairness drift over
+time. Not pursued; it answers a different research question and the multi-table data
+engineering was out of proportion to the remaining schedule.
 
 ## Running it
 
