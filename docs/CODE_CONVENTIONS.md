@@ -166,6 +166,7 @@ code path that reaches a model must go through `_prepare()`.
 
 Seeds explicit, never left to default. `SEEDS = (42, 202, 777)` for the ensemble, 42 for
 splits. New random work takes a `seed` argument with a default, so results reproduce.
+Reproducibility beyond seeds is §16.
 
 ## 12. User facing text
 
@@ -210,3 +211,47 @@ Add to `requirements.txt` when adding an import. Currently added beyond the orig
 **`shap` is deliberately not a dependency.** LightGBM computes SHAP values natively with
 `predict(X, pred_contrib=True)`, which for tree models is exact rather than sampled, and
 avoids a large install. `explainability.py` uses that.
+
+## 16. Reproducibility
+
+Every number that reaches the report or a screen must be regenerable from a clean
+`artifacts/` directory by documented commands:
+
+```bash
+cd backend
+python -m app.ml.train
+python -m app.ml.dashboard_artifacts
+```
+
+If a number cannot be produced that way it does not get published.
+
+**Tuned constants carry their provenance.** `HYPERPARAMETERS` in `train.py` is the cached
+output of a search, not a hand-picked set, and the comment above it names the search, the
+number of configurations, the scoring scheme and the result. A tuned constant with no
+recorded origin cannot be defended or re-derived, so the search itself stays in
+version-controlled code with its own seed and grid — currently the tuning section of
+`notebooks/modelling.ipynb`. Hardcoding the winner is acceptable, and keeps training fast;
+hardcoding it without the search being re-runnable is not.
+
+**Code and artifacts must agree.** `train.py`'s `HYPERPARAMETERS` and
+`scoring_config.json`'s `hyperparameters` are the same values written twice, so they are
+checked rather than trusted:
+
+```python
+# A silent divergence here means the published metrics describe a model the code
+# no longer builds.
+assert config["hyperparameters"] == HYPERPARAMETERS
+```
+
+**Artifacts describe what produced them.** `scoring_config.json` records hyperparameters,
+seeds, feature names, split sizes and the training date, so a saved model can be audited
+against the code that claims to build it without rerunning anything.
+
+**Stale artifacts are a reproducibility bug, not clutter.** Anything in `artifacts/` not
+written by the current training run is deleted. `model_lightgbm.joblib` and
+`model_metadata.json` are notebook leftovers describing a different champion model and a
+different threshold, and contradict the served model.
+
+Dependencies are pinned in `requirements.txt` and every import appears there, so an
+examiner installing the project gets the environment the numbers were produced in. See
+also §11 on seeds and §15 on dependencies.

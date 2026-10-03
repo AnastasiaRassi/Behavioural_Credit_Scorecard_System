@@ -1,42 +1,51 @@
 # Core data handling
-numpy
-pandas
-polars
-scipy
+numpy==2.4.6
+pandas==2.3.3
+polars==1.41.2
+scipy==1.17.1
 
 # ML / modeling
-scikit-learn
-xgboost
-lightgbm
-joblib
+scikit-learn==1.9.0
+xgboost==3.2.0
+lightgbm==4.6.0
+joblib==1.5.3
 
 # Experiment tracking / model registry
-mlflow
+mlflow==3.13.0
 
 # API serving
-fastapi
-python-multipart
+fastapi==0.137.1
+python-multipart==0.0.32
+
+# Dashboard. Altair ships with streamlit, so charts add no further dependency.
+streamlit==1.65.0
 
 # Serialization / config
-pyyaml
-python-dotenv
+pyyaml==6.0.3
+python-dotenv==1.2.2
 
 # Testing
-pytest
-pytest-cov
+pytest==9.1.0
+pytest-cov==7.1.0
 
 # Code quality
-black
-isort
-ruff
+black==26.5.1
+isort==8.0.1
+ruff==0.15.17
 
 # Monitoring / logging
-loguru
+loguru==0.7.3
 
 # Cloud / deployment helpers
-boto3
-requests
+boto3==1.43.29
+requests==2.34.2
 
 # notebooks / dev
-jupyter
-ipykernel
+jupyter==1.1.1
+ipykernel==7.3.0
+
+# Reads the source .xls
+xlrd==2.0.2
+
+# Resampling experiment
+imbalanced-learn==0.14.2

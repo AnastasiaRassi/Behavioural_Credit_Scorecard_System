@@ -69,7 +69,12 @@ class CreditScorer:
         self.band_report = self.config.get("band_report", {})
 
     # ---- input handling --------------------------------------------------
-    def _prepare(self, frame: pd.DataFrame) -> pd.DataFrame:
+    def prepare(self, frame: pd.DataFrame) -> pd.DataFrame:
+        """Engineer features and drop protected attributes.
+
+        Public because the Explainer needs the exact frame the model sees. Every
+        path that reaches a model must go through here.
+        """
         missing = [c for c in RAW_COLUMNS if c not in frame.columns]
         if missing:
             raise ValueError(f"Missing required columns: {missing}")
@@ -88,7 +93,7 @@ class CreditScorer:
 
     # ---- scoring ---------------------------------------------------------
     def probabilities(self, frame: pd.DataFrame) -> np.ndarray:
-        features = self._prepare(frame)
+        features = self.prepare(frame)
         raw = np.mean([m.predict_proba(features)[:, 1] for m in self.models], axis=0)
         return np.clip(self.calibrator.predict(raw), 0.0, 1.0)
 
