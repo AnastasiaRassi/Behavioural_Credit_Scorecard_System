@@ -39,10 +39,10 @@ Four large tiles. These are the numbers to lead with.
 
 ```
 ┌─────────────────┬─────────────────┬─────────────────┬─────────────────┐
-│  ROC-AUC     💭 │  Weighted F1 💭 │ Balanced acc 💭 │  Gini        💭 │
-│     0.781       │     0.789       │     0.716       │     0.563       │
-│ ranks risk      │ overall quality │ fair to both    │ industry        │
-│ correctly 78%   │ across classes  │ classes         │ convention      │
+│  ROC-AUC     💭 │  KS statistic💭 │ Balanced acc 💭 │  Gini        💭 │
+│     0.781       │      43.3       │     0.714       │     0.562       │
+│ ranks risk      │ separation at   │ fair to both    │ industry        │
+│ correctly 78%   │ the best cutoff │ classes         │ convention      │
 │ ▲ stable        │ ▲ stable        │ ▲ stable        │ ▲ stable        │
 └─────────────────┴─────────────────┴─────────────────┴─────────────────┘
 ```
@@ -50,9 +50,9 @@ Four large tiles. These are the numbers to lead with.
 | Metric | Value | Caption (always visible) | 💭 Explanation (on click) |
 |---|---|---|---|
 | ROC-AUC | 0.781 | ranks risk correctly 78% of the time | Take one customer who defaulted and one who paid. The model gives the defaulter a higher risk score 78 times out of 100. A coin flip would get 50. This is the main number to judge the model by, and it does not change if the proportion of defaulters changes. |
-| Weighted F1 | 0.789 | overall quality across both classes | Combines how well we identify defaulters and how well we identify good payers, counting each group by its size. This is what most papers mean when they report a single F1 figure. |
-| Balanced accuracy | 0.716 | treats both classes as equally important | The average of two things: the share of defaulters we catch (60%) and the share of good payers we correctly leave alone (84%). Because it averages them, a model that ignored defaulters entirely would score 50, not 78. |
-| Gini | 0.563 | banking convention for the same thing | Exactly the same information as AUC, rescaled: Gini = 2 × AUC − 1. Credit teams quote this out of habit. 0 is random, 1 is perfect. |
+| KS statistic | 43.3 | 58% of defaults caught, 15% of payers touched | The widest gap between the score distributions of defaulters and payers, quoted in percentage points the way credit teams write it. At the score where the two groups separate most, the model has captured 58% of the customers who went on to default while picking up only 15% of those who paid. The gap between those two figures is the KS. Above 40 is strong for a behavioural scorecard, and above 60 usually means the target has leaked into the features. |
+| Balanced accuracy | 0.714 | treats both classes as equally important | The average of two things: the share of defaulters we catch (62%) and the share of good payers we correctly leave alone (81%). Because it averages them, a model that ignored defaulters entirely would score 50, not 78. |
+| Gini | 0.562 | banking convention for the same thing | Exactly the same information as AUC, rescaled: Gini = 2 × AUC − 1. Credit teams quote this out of habit. 0 is random, 1 is perfect. |
 
 ### Secondary metrics
 
@@ -60,13 +60,21 @@ Smaller tiles, collapsible section titled "More metrics".
 
 | Metric | Value | Caption | 💭 Explanation |
 |---|---|---|---|
-| Macro F1 | 0.703 | both classes counted equally | Like weighted F1, but small and large groups count the same. Lower than weighted F1 because the minority class is harder. |
-| F1, default class | 0.549 | performance on defaulters alone | The hardest single number we report, and the one we do not hide. It looks low, but on this dataset a coin flip scores 0.31 and a naive "was he late last month" rule scores 0.50. Only 22% of customers default, which caps how high this can go. |
-| PR-AUC | 0.542 | precision vs recall on defaulters | Similar to AUC but focused entirely on the defaulters. The no skill baseline is 0.221, the default rate, not 0.5. |
-| KS statistic | 0.431 | biggest separation between the groups | The widest gap between the score distributions of defaulters and payers. Credit scorecards are often judged on this. Above 0.40 is considered strong. |
+| Weighted F1 | 0.776 | overall quality across both classes | Combines how well we identify defaulters and how well we identify good payers, counting each group by its size. Read it with care: 78% of customers never default, so the easy class carries most of the weight and the figure flatters the model. It is here because papers quote it, not because it is the number to judge us on. |
+| Macro F1 | 0.692 | both classes counted equally | Like weighted F1, but small and large groups count the same. Lower than weighted F1 because the minority class is harder. |
+| F1, default class | 0.540 | performance on defaulters alone | The hardest single number we report, and the one we do not hide. It looks low, but on this dataset a coin flip scores 0.31 and a naive "was he late last month" rule scores 0.50. Only 22% of customers default, which caps how high this can go. |
+| PR-AUC | 0.540 | precision vs recall on defaulters | Similar to AUC but focused entirely on the defaulters. The no skill baseline is 0.221, the default rate, not 0.5. |
 | Brier score | 0.135 | are the probabilities honest | Checks whether the numbers mean what they say. If the model says 30%, do about 30% actually default? Lower is better, 0 is perfect. Ours halved after calibration. |
-| MCC | 0.409 | correlation with reality | Treats the prediction as one variable and the truth as another and measures correlation. 0 is random, 1 is perfect. Hard to fool with imbalanced data. |
-| Cohen kappa | 0.407 | agreement beyond luck | How much better than guessing, after subtracting the agreement you would get by chance. |
+| MCC | 0.393 | correlation with reality | Treats the prediction as one variable and the truth as another and measures correlation. 0 is random, 1 is perfect. Hard to fool with imbalanced data. |
+| Cohen kappa | 0.387 | agreement beyond luck | How much better than guessing, after subtracting the agreement you would get by chance. |
+
+Accuracy is deliberately absent. Flagging nobody at all scores 77.9% on this test split,
+because that is the share of customers who never default, so the figure says more about the
+class balance than about the model and invites exactly the wrong comparison.
+
+KS, Gini, Brier and the F1 variants belong on this screen, whose audience is whoever owns the
+model. The loan officer's screen shows the risk band and the reasons behind it: a separation
+statistic does not inform any decision they make, and an unlabelled "43.3" invites misreading.
 
 ### Confusion matrix
 
@@ -251,11 +259,11 @@ have moved from it.
 
 | Threshold | Flagged | Precision | Recall | F1 |
 |---|---|---|---|---|
-| 0.20 | 30% | 0.457 | 0.623 | 0.527 |
-| **0.28 (live)** | **26%** | **0.507** | **0.597** | **0.549** |
-| 0.35 | 23% | 0.541 | 0.565 | 0.553 |
-| 0.50 | 12% | 0.664 | 0.361 | 0.468 |
-| 0.60 | 6% | 0.742 | 0.191 | 0.304 |
+| 0.20 | 33% | 0.437 | 0.651 | 0.523 |
+| **0.27 (live)** | **29%** | **0.477** | **0.622** | **0.540** |
+| 0.35 | 20% | 0.566 | 0.523 | 0.544 |
+| 0.50 | 11% | 0.677 | 0.340 | 0.453 |
+| 0.60 | 9% | 0.703 | 0.276 | 0.397 |
 
 💭 *The threshold is the cut off where a score becomes a decision. Raising it flags fewer
 customers, so the ones flagged are more likely to really default (higher precision) but
@@ -289,7 +297,7 @@ Table of model versions, newest first.
 
 | Version | Trained | AUC | F1 | Fairness | Status |
 |---|---|---|---|---|---|
-| lightgbm_ensemble_v1 | 2026-10-03 | 0.781 | 0.549 | ✅ 4/4 | 🟢 Live |
+| lightgbm_ensemble_v1 | 2026-10-03 | 0.781 | 0.540 | ✅ 4/4 | 🟢 Live |
 | *(previous versions as they accumulate)* | | | | | |
 
 Actions: view full metrics, promote to live, archive. **A version cannot be promoted
