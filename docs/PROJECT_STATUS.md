@@ -6,7 +6,7 @@ Author: Anastasia Al Rassi · Supervisor: Dr. Maya Dawoud
 **What this document is.** The definition of the finished product, what is already
 built, and what remains. Update the status table as sections complete.
 
-Last updated: 2026-10-03
+Last updated: 2026-10-04
 
 ---
 
@@ -50,20 +50,23 @@ The project is finished when:
 Measured once on a held out test set of 4,500 customers the model never saw. 22.1%
 of them defaulted.
 
-| Metric | Value |
-|---|---|
-| Weighted F1 | 0.776 |
-| ROC-AUC | 0.781 |
-| Balanced accuracy | 0.714 |
-| Macro F1 | 0.692 |
-| Gini | 0.562 |
-| KS | 0.433 |
-| F1, default class | 0.540 |
-| PR-AUC | 0.540 (baseline 0.221) |
-| Brier | 0.135 |
-| MCC | 0.393 |
-| Recall | 0.623 |
-| Specificity | 0.806 |
+Reported in four groups. The first four rows are what the notebook and the presentation
+lead with; the rest are computed and stored for the paper.
+
+| Metric | Value | Role |
+|---|---|---|
+| ROC-AUC | 0.781 | ranking quality, the selection metric |
+| Gini | 0.562 | same information, banking convention |
+| KS | 43.3 | separation, 58% of defaults against 15% of payers |
+| F1, default class | 0.540 | operating point, with precision 0.477 and recall 0.623 |
+| Brier | 0.135 | are the probabilities honest |
+| PR-AUC | 0.540 | minority class view, baseline 0.221 |
+| Balanced accuracy | 0.714 | both classes weighted equally |
+| Specificity | 0.806 | good payers correctly left alone |
+| Weighted F1 | 0.776 | quoted in papers, inflated by the majority class |
+| Macro F1 | 0.692 | both classes counted equally |
+| MCC | 0.393 | correlation with the truth |
+| Cohen kappa | 0.387 | agreement beyond chance |
 
 Confusion matrix at threshold 0.2747: tn 2825, fp 679, fn 376, tp 620.
 
@@ -167,8 +170,22 @@ be applied to a calibrated output. The model that is evaluated is the model that
 kept only for auditing. Excluding them costs 0.0007 AUC, so there is no accuracy argument
 for keeping them.
 
-**Headline metric: weighted F1 and ROC-AUC, never accuracy.** Predicting that nobody
-defaults scores 77.9% accuracy on this data, so accuracy is meaningless here.
+**Headline metrics: ROC-AUC and Gini, then KS, then the operating point. Never accuracy.**
+Predicting that nobody defaults scores 77.9% accuracy on this data, so accuracy says more
+about the class balance than about the model. Weighted F1 is no longer a headline figure for
+the same reason: 78% of customers never default, so the easy class carries it.
+
+**Metric reporting is split between the notebook and the paper.** The notebook shows only the
+headline set, so the story stays readable: ROC-AUC and Gini for ranking, KS for separation,
+precision, recall and F1 at the deployed threshold for the operating point, and Brier with the
+decile table for calibration. The full thirteen metrics are still computed and written to
+`scoring_config.json` on every run, and the FYP paper carries all of them with their
+interpretations. Nothing needs recomputing to write that section, it is already in the
+artifact.
+
+**KS is quoted out of 100, not as a decimal.** 43.3 rather than 0.433, since that is how credit
+teams write it. Above 40 is strong for a behavioural scorecard and above 60 would suggest the
+target has leaked into the features.
 
 **No resampling.** Five strategies were tested. None improved AUC, all degraded
 calibration, and SMOTE was the worst. Threshold tuning is the correct lever and is already

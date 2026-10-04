@@ -297,7 +297,7 @@ Table of model versions, newest first.
 
 | Version | Trained | AUC | F1 | Fairness | Status |
 |---|---|---|---|---|---|
-| lightgbm_ensemble_v1 | 2026-10-03 | 0.781 | 0.540 | ✅ 4/4 | 🟢 Live |
+| lightgbm_ensemble_v1 | 2026-10-04 | 0.781 | 0.540 | ✅ 4/4 | 🟢 Live |
 | *(previous versions as they accumulate)* | | | | | |
 
 Actions: view full metrics, promote to live, archive. **A version cannot be promoted
