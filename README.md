@@ -8,6 +8,36 @@ Final Year Project (TM471), Arab Open University Lebanon.
 
 ---
 
+## Scope
+
+Three objectives, plus fairness. Everything in this repository serves one of them.
+
+1. **Train accurate credit-risk models.**
+2. **Explain decisions globally and per applicant** — SHAP, LIME, and counterfactuals
+   (what would need to change for this customer to be approved).
+3. **Measure and mitigate bias**, across sex, age, education and marital status.
+
+Supporting these: customer segmentation by behavioural archetype, used to test whether
+explanations stay consistent for similar customers.
+
+**Research angle:** compare explanation methods for consistency. Tree SHAP is exact and
+deterministic; LIME samples randomly and can return a different explanation for the same
+customer on repeated runs. That difference is measurable, and it matters for any system
+claiming to support a right to explanation.
+
+### Deliberately out of scope
+
+One semester, one person. These were each considered and dropped, with reasons:
+
+| Excluded | Why |
+|---|---|
+| Performance decay and drift monitoring over time | The dataset is a single six-month snapshot with no time axis, so it cannot be measured |
+| Weekly replay and retraining policies | Same reason; depends on the monitoring above |
+| Federated learning | Needs multiple data holders. One bank's data would have to be split into institutions that never existed, making the result an artefact of the simulation |
+| User study on explanation clarity | Needs ethics approval and participant recruitment. Within-segment explanation coherence tests consistency without human subjects |
+
+Anything not serving an objective above does not get built, however interesting.
+
 ## What the model predicts
 
 The current model is a **behavioural scorecard**: given a credit-card customer's last six

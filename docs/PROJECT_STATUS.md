@@ -12,6 +12,35 @@ Last updated: 2026-10-04
 
 ## 1. What the finished product is
 
+### Scope: three objectives plus fairness
+
+Taken from proposal #15, *Explainable and Fair Credit Decision System* (one semester,
+difficulty 3). Everything built serves one of these:
+
+1. **Train accurate credit-risk models.**
+2. **Explain decisions globally and per applicant** — SHAP, LIME, and counterfactuals
+   (what would need to change for this customer to be approved).
+3. **Measure and mitigate bias**, across sex, age, education and marital status.
+
+Supporting these: customer segmentation by behavioural archetype, used to test whether
+explanations stay consistent for similar customers.
+
+**Research angle:** compare explanation methods for consistency.
+
+**Out of scope**, each considered and dropped: drift and performance decay over time, and
+the weekly replay and retraining policies that depend on it (the dataset is a single
+snapshot with no time axis); federated learning (needs multiple data holders, so one
+bank's data would have to be split into institutions that never existed); the user study
+on explanation clarity (ethics approval and recruitment; within-segment coherence tests
+consistency without human subjects).
+
+Note the one scope change against the proposal: the user study is listed there under
+evaluation metrics, not deliverables, so both stated deliverables remain intact. The
+research angle narrows from "consistency and user trust" to **consistency**, because
+trust cannot be measured without participants.
+
+### The system
+
 An offline prototype credit risk platform with three roles. It scores credit card
 customers for risk of missing their next payment, explains each score in plain language,
 and audits itself for fairness.
@@ -110,22 +139,51 @@ difference smaller than about 0.02 is noise.
 | Scoring core | ✅ Done |
 | ML engineer view design spec | ✅ Done |
 | Code conventions | ✅ Done |
-| **Section 2: SHAP explanations** | ✅ Done, native LightGBM, no `shap` needed |
-| **Section 3: FastAPI service** | ⬜ Not started |
-| **Section 4: Loan officer screen** | ⬜ Not started |
-| **Section 5: ML engineer dashboard** | ⬜ Not started |
-| **Section 6: Model registry** | ⬜ Not started, trimmable |
-| **Section 7: Applicant role** | ⬜ Not started, demo level only |
-| **Section 8: Report chapters 4.4 and 7** | ⬜ Not started |
+| **SHAP explanations** (objective 2) | ✅ Done, native LightGBM, no `shap` needed |
+| **Clustering into behavioural segments** (supports 2) | 🔶 In progress |
+| **LIME** (objective 2) | ⬜ Not started |
+| **Counterfactuals** (objective 2) | ⬜ Not started |
+| **Explanation stability comparison** (research angle) | ⬜ Not started |
+| **Bias mitigation** (objective 3) | ⬜ Not started, only measurement exists |
+| **FastAPI service** | ⬜ Not started |
+| **Loan officer screen** | ⬜ Not started |
+| **ML engineer dashboard** | ⬜ Not started |
+| **Model registry** | ⬜ Not started, trimmable |
+| **Applicant role** | ⬜ Not started, demo level only |
+| **Report chapters 4.4 and 7** | ⬜ Not started |
 
-Roughly a third complete, and it is the hardest third. Everything remaining is plumbing
-rather than research. No open question blocks any of it.
+Objective 1 is complete. Objective 2 is a third done. Objective 3 has measurement but no
+mitigation. Everything remaining is plumbing or a known technique, not research. No open
+question blocks any of it.
 
 ---
 
 ## 4. What remains, in build order
 
-**Section 3. FastAPI service.** Wrap the scoring core and the explainer. Endpoints for one
+Objectives first, system second. A dashboard with nothing to show is worth less than the
+analysis it displays.
+
+**Clustering into behavioural segments.** K-means or a Gaussian mixture over the 46
+features, k chosen by silhouette. Expect the archetypes card issuers actually use:
+transactors who clear the balance, revolvers who pay the minimum, distressed and dormant
+accounts. Profile each by size, default rate and fairness. One to two sittings.
+
+**LIME and counterfactuals.** Two more explanation methods, so there is something to
+compare SHAP against. Counterfactuals matter most for the product: *pay 15,000 more next
+month and you move to Medium risk* is the explanation a declined customer can act on. Two
+sittings.
+
+**Explanation stability comparison.** The research angle. Run-to-run variance per method,
+agreement across the three ensemble seeds, stability under small input perturbation, and
+coherence within a behavioural segment. Tree SHAP is exact so it should be perfectly
+stable; LIME samples and should not be. Two sittings.
+
+**Bias mitigation.** Objective 3 says measure *and mitigate*. Only measurement exists.
+Options in increasing cost: threshold adjustment per group, reweighting during training,
+or a constrained model. Start with the cheapest and report what it costs in AUC. One to
+two sittings.
+
+**FastAPI service.** Wrap the scoring core and the explainer. Endpoints for one
 customer, a CSV batch, and the metric report the dashboard reads. Logic stays in `ml/`,
 routes only translate HTTP. One to two sittings.
 
