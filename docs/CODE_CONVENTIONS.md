@@ -9,18 +9,37 @@ in `backend/app/ml/`, which is the only part currently implemented.
 
 ```
 backend/app/
-├── ml/                          # implemented
+├── ml/
 │   ├── feature_engineering.py   # column constants, loading, cleaning, engineer(), splits
 │   ├── train.py                 # fits the model, writes every artifact
 │   ├── scorer.py                # CreditScorer: probability + risk band
 │   ├── explainability.py        # Explainer: per customer reasons
-│   ├── fairness_audit.py        # empty
-│   ├── preprocessing.py         # empty, probably redundant now
-│   └── drift.py                 # empty
-├── api/                         # all empty
-├── core/, db/, schemas/         # all empty
+│   ├── artifacts.py             # cached readers for what train.py wrote
+│   ├── drift.py                 # population stability index
+│   ├── fairness_audit.py        # empty; the audit is computed in train.py
+│   └── preprocessing.py         # empty, redundant now
+├── api/
+│   ├── dependencies.py          # scorer, explainer, session, live model version
+│   ├── predictions.py           # score one, score a CSV, read a stored score
+│   ├── decisions.py             # record and list officer interventions
+│   ├── fairness.py              # the audit, read from artifacts
+│   ├── admin.py                 # metrics, sweeps, importance, versions
+│   └── monitoring.py            # drift and production performance
+├── db/
+│   ├── models.py                # user_account, model_version, prediction,
+│   │                            #   decision, observed_outcome
+│   ├── database.py              # engine, session_scope(), create_all()
+│   └── seed.py                  # demo staff and the live model version
+├── schemas/                     # pydantic request and response shapes
+├── core/config.py               # DATABASE_URL, read once from .env
+├── main.py                      # the FastAPI app and /health
 └── artifacts/                   # generated, gitignored
 ```
+
+There is no `auth.py` and no `security.py`. The system has roles but no
+authentication: the officer email on a request says who acted, not that they are who
+they claim. A real deployment puts an identity provider in front of the API, and
+saying so is more honest than a login form that checks nothing.
 
 **Rule: `ml/` holds logic, `api/` holds only routing.** An endpoint should import from
 `ml/` and translate between HTTP and Python. No scoring maths in a route handler.

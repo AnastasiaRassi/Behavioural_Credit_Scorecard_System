@@ -15,10 +15,12 @@ mlflow==3.13.0
 
 # API serving
 fastapi==0.137.1
+uvicorn==0.40.0
 python-multipart==0.0.32
 
-# Dashboard. Altair ships with streamlit, so charts add no further dependency.
+# Dashboard. Altair ships with streamlit; plotly draws the interactive charts.
 streamlit==1.65.0
+plotly==7.1.0
 
 # Serialization / config
 pyyaml==6.0.3
@@ -27,6 +29,8 @@ python-dotenv==1.2.2
 # Testing
 pytest==9.1.0
 pytest-cov==7.1.0
+# TestClient drives the API in tests through httpx.
+httpx==0.28.1
 
 # Code quality
 black==26.5.1
@@ -49,3 +53,7 @@ xlrd==2.0.2
 
 # Resampling experiment
 imbalanced-learn==0.14.2
+
+# Persistence. psycopg 3 is the driver the DATABASE_URL names.
+sqlalchemy==2.0.51
+psycopg[binary]==3.3.6
