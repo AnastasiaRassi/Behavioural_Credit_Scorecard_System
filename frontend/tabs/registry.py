@@ -7,10 +7,22 @@ a control.
 import pandas as pd
 import streamlit as st
 
-import loaders
+import api
 from components import thought
 
 STATUS_ICONS = {"live": "🟢 Live", "archived": "⚪ Archived", "candidate": "🔵 Candidate"}
+
+
+def _number(value: float | None) -> str:
+    """Registered versions predate the artifact registry, so metrics can be absent."""
+    return f"{value:.3f}" if value is not None else "not recorded"
+
+
+def _fairness(row: dict) -> str:
+    passed, total = row.get("fairness_passed"), row.get("fairness_total")
+    if passed is None or total is None:
+        return "not recorded"
+    return f"{'✅' if passed == total else '❌'} {passed}/{total}"
 
 
 def render() -> None:
@@ -19,8 +31,8 @@ def render() -> None:
     with icon:
         thought("registry")
 
-    rows = loaders.registry()
-    settings = loaders.config()
+    rows = api.registry()
+    settings = api.config()
 
     st.dataframe(
         pd.DataFrame(
@@ -28,13 +40,9 @@ def render() -> None:
                 {
                     "Version": row["version"],
                     "Trained": row["trained"],
-                    "AUC": f"{row['roc_auc']:.3f}",
-                    "F1": f"{row['f1']:.3f}",
-                    "Fairness": (
-                        f"✅ {row['fairness_passed']}/{row['fairness_total']}"
-                        if row["fairness_passed"] == row["fairness_total"]
-                        else f"❌ {row['fairness_passed']}/{row['fairness_total']}"
-                    ),
+                    "AUC": _number(row["roc_auc"]),
+                    "F1": _number(row["f1"]),
+                    "Fairness": _fairness(row),
                     "Status": STATUS_ICONS.get(row["status"], row["status"]),
                 }
                 for row in rows
@@ -86,7 +94,10 @@ def _actions(rows: list[dict]) -> None:
 
     choice = st.selectbox("Candidate", [row["version"] for row in candidates])
     selected = next(row for row in candidates if row["version"] == choice)
-    eligible = selected["fairness_passed"] == selected["fairness_total"]
+    eligible = (
+        selected.get("fairness_passed") is not None
+        and selected["fairness_passed"] == selected["fairness_total"]
+    )
 
     if not eligible:
         st.error(

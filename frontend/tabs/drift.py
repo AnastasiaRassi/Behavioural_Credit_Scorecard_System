@@ -1,12 +1,14 @@
-"""Tab 6 · Drift. A design placeholder, by the spec's own instruction.
+"""Tab 6 · Monitoring. Has the population moved, and is the model still right.
 
-PSI needs repeated scoring over time. The dataset is a single October 2005 snapshot,
-so there is no second period to compare against. Showing an invented heatmap here
-would be the one dishonest panel in the dashboard, so the tab states the gap instead.
+No longer a placeholder: both panels come from the API, which reports what the
+stored data can actually support and refuses to invent a number when there are
+too few rows. Every prediction an officer runs adds to what this can measure.
 """
+import altair as alt
+import pandas as pd
 import streamlit as st
 
-import loaders
+import api
 from components import thought
 
 WATCH = 0.10
@@ -14,44 +16,80 @@ SIGNIFICANT = 0.25
 
 
 def render() -> None:
+    try:
+        drift = api.drift()
+        performance = api.performance()
+    except api.ServiceUnavailable as exception:
+        api.guard(exception)
+        return
+
+    _population(drift)
+    st.divider()
+    _performance(performance)
+
+
+def _population(drift: dict) -> None:
     header, icon = st.columns([6, 1])
     header.subheader("Population stability")
     with icon:
         thought("drift")
 
-    st.info(
-        "**Design placeholder — no data source exists.**\n\n"
-        "PSI compares the customers arriving now against the customers the model was "
-        "trained on. That needs at least two time periods of scored customers. The "
-        "dataset is a single snapshot of one month (October 2005), so there is no "
-        "second period to compare against and every number on this tab would be "
-        "fabricated."
+    if not drift.get("sufficient"):
+        st.info(
+            f"**Not enough scored customers yet.** {drift.get('reason', '')}\n\n"
+            "PSI compares the customers arriving now against those the model was "
+            "trained on, so it needs scored customers to accumulate. Every "
+            "prediction an officer runs adds one."
+        )
+        return
+
+    frame = pd.DataFrame(drift["features"])
+    chart = (
+        alt.Chart(frame)
+        .mark_bar()
+        .encode(
+            x=alt.X("psi:Q", title="population stability index"),
+            y=alt.Y("feature:N", sort="-x", title=None),
+            color=alt.condition(
+                alt.datum.psi >= SIGNIFICANT,
+                alt.value("#cc3b2f"),
+                alt.condition(
+                    alt.datum.psi >= WATCH, alt.value("#d9a017"), alt.value("#2e9e5b")
+                ),
+            ),
+            tooltip=["feature:N", alt.Tooltip("psi:Q", format=".3f")],
+        )
+        .properties(height=min(26 * len(frame) + 40, 640))
     )
-
-    st.markdown(
-        f"""
-**What this tab will show once the system scores customers over time**
-
-A heatmap of features by week, with each cell holding that feature's PSI against the
-training distribution. Thresholds at **{WATCH:.2f}** (watch) and **{SIGNIFICANT:.2f}**
-(significant), which are the conventional bands.
-
-**What it needs first**
-
-- A scoring log: every customer scored, with their features and the date
-- At least two complete periods, ideally weekly, to form a comparison
-- A stored reference distribution per feature, taken from the training split
-
-The reference half of that already exists — the training split is deterministic
-(`build_splits(seed=42)`), so the baseline distribution is reproducible today. Only
-the incoming side is missing.
-"""
-    )
-
-    settings = loaders.config()
+    st.altair_chart(chart, width="stretch")
     st.caption(
-        f"For reference, the model was trained on {settings['training_rows']:,} "
-        f"customers across {settings['n_features']} features, which is the "
-        f"distribution any future "
-        "PSI would be measured against."
+        f"Green below {WATCH:.2f}, amber from {WATCH:.2f} (watch), "
+        f"red from {SIGNIFICANT:.2f} (significant)."
     )
+
+
+def _performance(performance: dict) -> None:
+    st.subheader("Production performance")
+
+    if not performance.get("sufficient"):
+        st.info(
+            f"**Not measurable yet.** {performance.get('reason', '')}\n\n"
+            "Performance needs the real outcome, which arrives a month after the "
+            "score. Until those labels exist, any figure here would be noise."
+        )
+        st.caption(
+            "This is the honest limit of a single-snapshot dataset: it has no "
+            "second month in which outcomes could be observed."
+        )
+        return
+
+    for column, (label, key, fmt) in zip(
+        st.columns(4),
+        [
+            ("Labelled predictions", "labelled_predictions", "{:,}"),
+            ("ROC-AUC", "roc_auc", "{:.3f}"),
+            ("F1, default class", "f1_default_class", "{:.3f}"),
+            ("Brier", "brier", "{:.3f}"),
+        ],
+    ):
+        column.metric(label, fmt.format(performance[key]))

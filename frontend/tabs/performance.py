@@ -3,7 +3,7 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
-import loaders
+import api
 from components import BAND_COLOURS, BAND_ICONS, explained_metric, thought
 from explanations import TRUST_STABLE
 
@@ -25,7 +25,7 @@ def _substitutions(metrics: dict, default_rate: float) -> dict:
 
 
 def render() -> None:
-    settings = loaders.config()
+    settings = api.config()
     metrics = settings["test_metrics"]
     default_rate = settings["test_default_rate"]
     substitutions = _substitutions(metrics, default_rate)

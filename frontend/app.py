@@ -1,57 +1,109 @@
-"""Credit Risk · Model Operations dashboard.
+"""Credit Risk · an explainable, fair credit decision system.
 
-Run from the repo root:
+Run the API first, then this, both from the repo root:
 
+    cd backend && uvicorn app.main:app --port 8012
     streamlit run frontend/app.py
 
-Every number on screen is loaded from backend/artifacts. The dashboard never
-retrains or re-evaluates, so the screen always agrees with what was actually
-evaluated. Regenerate the artifacts from backend/ with:
+The frontend reads nothing from disk. Every screen is served by the API, which
+decides what each role is sent rather than trusting the page not to draw it.
 
-    python -m app.ml.train
-    python -m app.ml.dashboard_artifacts
+Picking a role is not authentication. It chooses which screens open; it does not
+prove anything, and the API says the same. A real deployment would put an
+identity provider in front of both.
 """
 import sys
 from pathlib import Path
 
 import streamlit as st
 
-# Allow `import loaders` and `import tabs.*` when Streamlit runs this by path.
+# Allow `import api` and `import views.*` when Streamlit runs this by path.
 HERE = Path(__file__).resolve().parent
 if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
-import loaders  # noqa: E402
+import api  # noqa: E402
 from tabs import drift, explain, fairness, performance, registry, threshold  # noqa: E402
-
-VIEWS = ["ML Engineer", "Loan Officer"]
+from views import cardholder, officer  # noqa: E402
 
 st.set_page_config(
-    page_title="Credit Risk · Model Operations",
+    page_title="Credit Risk · Explainable Scoring",
     page_icon="📊",
     layout="wide",
 )
 
 
 def main() -> None:
-    title, picker = st.columns([5, 1])
-    title.title("Credit Risk · Model Operations")
-    view = picker.selectbox("View", VIEWS, label_visibility="collapsed")
-
-    if view != "ML Engineer":
-        st.info(
-            "The loan officer view is not built yet. It has no specification in "
-            "`docs/`, unlike this one. Switch back to **ML Engineer** above."
-        )
+    try:
+        roles = api.roles()
+    except api.ServiceUnavailable as exception:
+        st.title("Credit Risk")
+        api.guard(exception)
         return
 
-    _header()
-    _tabs()
+    role = _role_picker(roles)
+
+    if role == "officer":
+        _officer()
+    elif role == "engineer":
+        _engineer()
+    else:
+        _cardholder()
 
 
-def _header() -> None:
-    settings = loaders.config()
-    colour, label, reason = loaders.health()
+def _role_picker(roles: list[dict]) -> str:
+    """Rendered from the API's own vocabulary, so a role cannot appear here that
+    the schema would reject."""
+    title, picker = st.columns([5, 2])
+    title.title("Credit Risk")
+
+    labels = {entry["label"]: entry for entry in roles}
+    chosen = picker.selectbox("Signed in as", list(labels))
+    entry = labels[chosen]
+    picker.caption(entry["description"])
+    return entry["role"]
+
+
+def _who(role: str, label: str) -> str | None:
+    """Which member of staff is acting, since decisions record who took them."""
+    try:
+        staff = api.users(role=role)
+    except api.ServiceUnavailable as exception:
+        api.guard(exception)
+        return None
+
+    if not staff:
+        st.warning(
+            f"No {label} accounts exist. Seed them with: "
+            "`cd backend && python -m app.db.seed`"
+        )
+        return None
+
+    by_name = {user["display_name"]: user["email"] for user in staff}
+    chosen = st.sidebar.selectbox(label, list(by_name))
+    st.sidebar.caption(by_name[chosen])
+    return by_name[chosen]
+
+
+def _officer() -> None:
+    email = _who("officer", "Officer")
+    if email is None:
+        return
+    officer.render(email)
+
+
+def _cardholder() -> None:
+    st.subheader("Your account")
+    cardholder.render()
+
+
+def _engineer() -> None:
+    try:
+        settings = api.config()
+        colour, label, reason = api.health()
+    except api.ServiceUnavailable as exception:
+        api.guard(exception)
+        return
 
     left, right = st.columns([3, 1])
     left.markdown(
@@ -69,17 +121,14 @@ def _header() -> None:
     )
     st.divider()
 
-
-def _tabs() -> None:
     names = [
         "Performance", "Fairness", "Explainability",
-        "Threshold", "Registry", "Drift",
+        "Threshold", "Registry", "Monitoring",
     ]
     renderers = [
         performance.render, fairness.render, explain.render,
         threshold.render, registry.render, drift.render,
     ]
-
     for tab, render in zip(st.tabs(names), renderers):
         with tab:
             render()

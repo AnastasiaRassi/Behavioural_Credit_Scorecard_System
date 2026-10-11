@@ -7,7 +7,7 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
-import loaders
+import api
 from components import thought
 
 REFERENCE_THRESHOLDS = [0.20, 0.35, 0.50, 0.60]
@@ -15,9 +15,9 @@ DEFAULT_COST_RATIO = 5
 
 
 def render() -> None:
-    settings = loaders.config()
+    settings = api.config()
     production = settings["threshold_f1_optimal"]
-    sweep = loaders.sweep()
+    sweep = api.sweep()
 
     header, icon = st.columns([6, 1])
     header.subheader("Decision threshold")
@@ -32,7 +32,7 @@ def render() -> None:
         help="The cut-off where a score becomes a decision.",
         label_visibility="collapsed",
     )
-    row = loaders.nearest_sweep_row(live)
+    row = api.nearest_sweep_row(live)
     moved = live - production
 
     st.caption(
@@ -129,7 +129,7 @@ def _tradeoff(sweep: list[dict], live: float, production: float) -> None:
 def _reference_table(live_row: dict, production: float) -> None:
     st.subheader("Reference points")
 
-    rows = [(loaders.nearest_sweep_row(target), False) for target in REFERENCE_THRESHOLDS]
+    rows = [(api.nearest_sweep_row(target), False) for target in REFERENCE_THRESHOLDS]
     rows.append((live_row, True))
     rows.sort(key=lambda item: item[0]["threshold"])
 
@@ -160,7 +160,7 @@ def _cost_curve(production: float) -> None:
     with icon:
         thought("cost_curve")
 
-    curves = loaders.cost_curves()
+    curves = api.cost_curves()
     ratio = st.slider(
         "Cost of a missed default relative to a wrongly refused customer",
         min_value=min(int(key) for key in curves),

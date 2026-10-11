@@ -8,7 +8,7 @@ import altair as alt
 import pandas as pd
 import streamlit as st
 
-import loaders
+import api
 from components import thought
 from explanations import DEEP, TRUST_STABLE, TRUST_UNSTABLE
 
@@ -17,7 +17,7 @@ EXCLUSION_AUC_COST = 0.0007
 
 
 def render() -> None:
-    audit = loaders.fairness()
+    audit = api.fairness()
     _verdict(audit)
     st.divider()
     _disparate_impact(audit)
@@ -41,7 +41,7 @@ def _verdict(audit: dict) -> None:
         failing = [name for name, v in audit.items() if not v["passes_four_fifths"]]
         st.error(
             f"**{total - passed} OF {total} ATTRIBUTES FAIL THE FOUR-FIFTHS RULE**\n\n"
-            f"Below {loaders.FOUR_FIFTHS:.2f}: {', '.join(failing)}."
+            f"Below {api.FOUR_FIFTHS:.2f}: {', '.join(failing)}."
         )
     thought("fairness_verdict")
 
@@ -83,12 +83,12 @@ def _disparate_impact(audit: dict) -> None:
         )
     )
     line = (
-        alt.Chart(pd.DataFrame({"threshold": [loaders.FOUR_FIFTHS]}))
+        alt.Chart(pd.DataFrame({"threshold": [api.FOUR_FIFTHS]}))
         .mark_rule(strokeDash=[6, 4], color="#cc3b2f")
         .encode(x="threshold:Q")
     )
     st.altair_chart((bars + line).properties(height=240), width="stretch")
-    st.caption(f"The dashed line is the {loaders.FOUR_FIFTHS:.2f} four-fifths threshold.")
+    st.caption(f"The dashed line is the {api.FOUR_FIFTHS:.2f} four-fifths threshold.")
 
     st.dataframe(
         pd.DataFrame(
