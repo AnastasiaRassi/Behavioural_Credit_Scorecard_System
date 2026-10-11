@@ -2,7 +2,7 @@
 
 Run the API first, then this, both from the repo root:
 
-    cd backend && uvicorn app.main:app --port 8013
+    cd backend && uvicorn app.main:app --port 8014
     streamlit run frontend/app.py
 
 The frontend reads nothing from disk. Every screen is served by the API, which

@@ -44,27 +44,25 @@ class ArtifactsMissing(RuntimeError):
 def _load():
     path = project_root() / "backend" / "artifacts"
     model_path = path / "model_ensemble.joblib"
-    calibrator_path = path / "calibrator_isotonic.joblib"
     config_path = path / "scoring_config.json"
 
-    missing = [p.name for p in (model_path, calibrator_path, config_path) if not p.exists()]
+    missing = [p.name for p in (model_path, config_path) if not p.exists()]
     if missing:
         raise ArtifactsMissing(
             f"Missing artifacts {missing} in {path}. Run: python -m app.ml.train"
         )
 
     models = joblib.load(model_path)
-    calibrator = joblib.load(calibrator_path)
     with open(config_path, encoding="utf-8") as fh:
         config = json.load(fh)
-    return models, calibrator, config
+    return models, config
 
 
 class CreditScorer:
     """Scores customers. Cheap to construct; artifacts are loaded once and cached."""
 
     def __init__(self):
-        self.models, self.calibrator, self.config = _load()
+        self.models, self.config = _load()
         self.feature_names = self.config["feature_names"]
         self.threshold = self.config["threshold_f1_optimal"]
         self.band_edges = self.config["band_edges"]
@@ -101,7 +99,7 @@ class CreditScorer:
     def probabilities(self, frame: pd.DataFrame) -> np.ndarray:
         features = self.prepare(frame)
         raw = np.mean([m.predict_proba(features)[:, 1] for m in self.models], axis=0)
-        return calibrate(self.calibrator, raw)
+        return calibrate(raw)
 
     def band(self, probability: float) -> str:
         if probability < self.band_edges["low_max"]:

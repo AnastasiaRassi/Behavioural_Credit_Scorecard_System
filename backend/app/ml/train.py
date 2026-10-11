@@ -18,7 +18,6 @@ import numpy as np
 import pandas as pd
 from lightgbm import LGBMClassifier
 from sklearn.inspection import permutation_importance
-from sklearn.isotonic import IsotonicRegression
 from sklearn.metrics import (
     average_precision_score,
     balanced_accuracy_score,
@@ -68,7 +67,6 @@ MODEL_VERSION = "lightgbm_ensemble_v1"
 # Everything a training run writes. Anything else in artifacts/ is stale (§16).
 WRITES = (
     "model_ensemble.joblib",
-    "calibrator_isotonic.joblib",
     "scoring_config.json",
     "threshold_sweep.json",
     "feature_importance.json",
@@ -388,15 +386,15 @@ def officer_queue(models, features: pd.DataFrame, probabilities, threshold: floa
 def main() -> dict:
     frames, y, audits = build_splits(seed=42, blind=True)
 
-    # Calibrator and operating points are fitted on validation, which the model has
-    # not seen. Fitting them on training predictions would make them over-confident.
+    # Operating points are chosen on validation, which the model has not seen.
+    # Choosing them on training predictions would make them over-confident.
+    #
+    # No calibrator is fitted: see app/ml/calibration.py. LightGBM's own
+    # probabilities beat isotonic and Platt on Brier, log loss and calibration
+    # error, so a mapping on top would only degrade them.
     calibration_models = fit_ensemble(frames["train"], y["train"])
     validation_raw = ensemble_predict(calibration_models, frames["validation"])
-
-    calibrator = IsotonicRegression(out_of_bounds="clip").fit(
-        validation_raw, y["validation"]
-    )
-    validation_calibrated = calibrate(calibrator, validation_raw)
+    validation_calibrated = calibrate(validation_raw)
 
     grid = np.unique(np.quantile(validation_calibrated, np.linspace(0.01, 0.99, 197)))
     f1_scores = [
@@ -415,9 +413,7 @@ def main() -> dict:
     y_dev = pd.concat([y["train"], y["validation"]])
     final_models = fit_ensemble(X_dev, y_dev)
 
-    test_calibrated = calibrate(
-        calibrator, ensemble_predict(final_models, frames["test"])
-    )
+    test_calibrated = calibrate(ensemble_predict(final_models, frames["test"]))
     predicted = (test_calibrated >= threshold).astype(int)
     tn, fp, fn, tp = confusion_matrix(y["test"], predicted).ravel()
 
@@ -437,7 +433,7 @@ def main() -> dict:
     fpr, tpr_curve, _ = roc_curve(y["test"], test_calibrated)
     auc = float(roc_auc_score(y["test"], test_calibrated))
     config = {
-        "scale": "calibrated probability of default next month",
+        "scale": "probability of default next month",
         "model_version": MODEL_VERSION,
         "trained": date.today().isoformat(),
         "training_rows": int(len(y["train"]) + len(y["validation"])),
@@ -551,7 +547,6 @@ def main() -> dict:
     out = artifacts_dir()
     remove_stale(out)
     joblib.dump(final_models, out / "model_ensemble.joblib")
-    joblib.dump(calibrator, out / "calibrator_isotonic.joblib")
     with open(out / "scoring_config.json", "w", encoding="utf-8") as fh:
         json.dump(config, fh, indent=2)
     with open(out / "threshold_sweep.json", "w", encoding="utf-8") as fh:

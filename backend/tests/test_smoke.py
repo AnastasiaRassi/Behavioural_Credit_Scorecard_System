@@ -22,10 +22,10 @@ from app.ml.scorer import CreditScorer, example_customer
 from app.ml.train import artifacts_dir
 
 # Known values for the current model. Update deliberately, never to make a test pass.
-EXPECTED_AUC = 0.7811
-EXPECTED_F1 = 0.5403
-EXPECTED_BRIER = 0.1349
-EXPECTED_THRESHOLD = 0.2747
+EXPECTED_AUC = 0.7830
+EXPECTED_F1 = 0.5405
+EXPECTED_BRIER = 0.1342
+EXPECTED_THRESHOLD = 0.2389
 TOLERANCE = 0.0005
 
 EXPECTED_FEATURES = 46
@@ -34,7 +34,6 @@ EXPECTED_TRAINING_ROWS = 25500
 
 ARTIFACT_FILES = [
     "model_ensemble.joblib",
-    "calibrator_isotonic.joblib",
     "scoring_config.json",
     "threshold_sweep.json",
     "feature_importance.json",
@@ -202,8 +201,8 @@ def test_no_customer_is_scored_as_certain():
     assert min(probabilities) >= CERTAINTY_FLOOR
 
 
-def test_the_bound_does_not_move_any_ranking_metric(config: dict):
-    """Clipping is monotone, so the ordering metrics must be untouched."""
+def test_the_published_probability_is_the_models_own(config: dict):
+    """No calibrator is fitted; see app/ml/calibration.py for the measurements."""
     metrics = config["test_metrics"]
     assert abs(metrics["roc_auc"] - EXPECTED_AUC) < TOLERANCE
     assert abs(metrics["gini"] - (2 * metrics["roc_auc"] - 1)) < 1e-9
@@ -218,3 +217,14 @@ def test_serving_applies_the_same_bound_as_evaluation(scorer: CreditScorer):
     } | {f"PAY_AMT{month}": 0 for month in range(1, 7)}
 
     assert scorer.score_one(certain).probability <= CERTAINTY_CEILING
+
+
+def test_probabilities_are_not_collapsed_onto_a_few_steps():
+    """Isotonic put 4,500 customers on 66 values, creating ties that cost AUC."""
+    with open(artifacts_dir() / "officer_queue.json", encoding="utf-8") as fh:
+        queue = json.load(fh)
+
+    distinct = len({row["probability"] for row in queue})
+    assert distinct > len(queue) / 2, (
+        f"only {distinct} distinct probabilities across {len(queue)} customers"
+    )

@@ -68,7 +68,6 @@ is nothing to leak across splits.
 | File | Contents |
 |---|---|
 | `model_ensemble.joblib` | list of 3 LightGBM models, one per seed |
-| `calibrator_isotonic.joblib` | isotonic regression, raw probability to calibrated |
 | `scoring_config.json` | threshold, band edges, 13 metrics, confusion matrix, feature names |
 | `threshold_sweep.json` | 86 threshold points with precision, recall, F1, counts |
 | `feature_importance.json` | permutation importance, all 46 features |

@@ -73,7 +73,8 @@ scorecards are often judged on this. Above 0.40 is considered strong.
 Checks whether the numbers mean what they say. If the model says 30%, do about 30%
 actually default? Lower is better, 0 is perfect.
 
-Ours roughly halved after calibration.
+These are the model's own probabilities. Fitting a calibrator on top was tried
+and measured worse on every count, so nothing is applied to them.
 """,
     "mcc": """
 Treats the prediction as one variable and the truth as another and measures

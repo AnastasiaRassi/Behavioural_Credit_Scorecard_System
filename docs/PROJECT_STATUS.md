@@ -294,7 +294,7 @@ cd backend
 python -m app.ml.train
 ```
 
-That writes `model_ensemble.joblib`, `calibrator_isotonic.joblib`,
+That writes `model_ensemble.joblib`,
 `scoring_config.json`, `threshold_sweep.json` and `feature_importance.json`, which is
 everything the API and dashboard read.
 
