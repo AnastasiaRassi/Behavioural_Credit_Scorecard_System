@@ -8,6 +8,7 @@ import pandas as pd
 import streamlit as st
 
 import api
+import theme
 from components import thought
 
 REFERENCE_THRESHOLDS = [0.20, 0.35, 0.50, 0.60]
@@ -80,7 +81,7 @@ def _markers(live: float, production: float) -> alt.Chart:
             x="threshold:Q",
             color=alt.Color(
                 "marker:N",
-                scale=alt.Scale(domain=["live", "production"], range=["#cc3b2f", "#888"]),
+                scale=alt.Scale(domain=["live", "production"], range=[theme.HIGH, theme.MUTED]),
                 legend=alt.Legend(title=None, orient="top"),
             ),
             strokeDash=alt.StrokeDash(
@@ -109,7 +110,7 @@ def _tradeoff(sweep: list[dict], live: float, production: float) -> None:
                 "metric:N",
                 scale=alt.Scale(
                     domain=["precision", "recall", "f1"],
-                    range=["#3b6fb5", "#d9a017", "#2e9e5b"],
+                    range=[theme.ACCENT, theme.MEDIUM, theme.LOW],
                 ),
                 legend=alt.Legend(title=None, orient="top"),
             ),
@@ -120,10 +121,14 @@ def _tradeoff(sweep: list[dict], live: float, production: float) -> None:
             ],
         )
     )
-    st.altair_chart(
-        (lines + _markers(live, production)).properties(height=320),
-        width="stretch",
+    # Independent colour scales: layered charts share one by default, which made
+    # the marker layer borrow the line colours and put blue against two meanings.
+    chart = (
+        (lines + _markers(live, production))
+        .resolve_scale(color="independent")
+        .properties(height=320)
     )
+    st.altair_chart(chart, width="stretch", theme=None)
 
 
 def _reference_table(live_row: dict, production: float) -> None:
@@ -172,7 +177,7 @@ def _cost_curve(production: float) -> None:
 
     line = (
         alt.Chart(pd.DataFrame(entry["curve"]))
-        .mark_line(color="#3b6fb5")
+        .mark_line(color=theme.ACCENT)
         .encode(
             x=alt.X("threshold:Q", title="threshold"),
             y=alt.Y(
@@ -188,16 +193,16 @@ def _cost_curve(production: float) -> None:
     )
     optimum = (
         alt.Chart(pd.DataFrame({"threshold": [best]}))
-        .mark_rule(color="#2e9e5b")
+        .mark_rule(color=theme.LOW)
         .encode(x="threshold:Q")
     )
     saved = (
         alt.Chart(pd.DataFrame({"threshold": [production]}))
-        .mark_rule(color="#888", strokeDash=[4, 4])
+        .mark_rule(color=theme.MUTED, strokeDash=[4, 4])
         .encode(x="threshold:Q")
     )
     st.altair_chart(
-        (line + optimum + saved).properties(height=320), width="stretch"
+        (line + optimum + saved).properties(height=320), width="stretch", theme=None
     )
     st.caption(
         f"At {ratio}:1 the cost-minimising threshold is **{best:.3f}** (green), "
@@ -214,12 +219,12 @@ def _calibration(settings: dict) -> None:
     frame = pd.DataFrame(settings["calibration"])
     diagonal = (
         alt.Chart(pd.DataFrame({"x": [0, 1], "y": [0, 1]}))
-        .mark_line(strokeDash=[6, 4], color="#888")
+        .mark_line(strokeDash=[6, 4], color=theme.MUTED)
         .encode(x="x:Q", y="y:Q")
     )
     observed = (
         alt.Chart(frame)
-        .mark_line(point=alt.OverlayMarkDef(size=70, color="#3b6fb5"), color="#3b6fb5")
+        .mark_line(point=alt.OverlayMarkDef(size=70, color=theme.ACCENT), color=theme.ACCENT)
         .encode(
             x=alt.X("mean_predicted:Q", title="predicted probability",
                     scale=alt.Scale(domain=[0, 1])),
@@ -232,7 +237,7 @@ def _calibration(settings: dict) -> None:
             ],
         )
     )
-    st.altair_chart((diagonal + observed).properties(height=360), width="stretch")
+    st.altair_chart((diagonal + observed).properties(height=360), width="stretch", theme=None)
     st.caption(
         f"Brier score {settings['test_metrics']['brier']:.3f}. "
         "Lower is better, 0 is perfect. The dashed line is perfect calibration."

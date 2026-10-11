@@ -32,6 +32,7 @@ from sklearn.metrics import (
 )
 
 from app.ml.explainability import MONTHS_OBSERVED, month_label
+from app.ml.calibration import calibrate
 from app.ml.feature_engineering import (
     AGE_BANDS,
     AGE_LABELS,
@@ -395,7 +396,7 @@ def main() -> dict:
     calibrator = IsotonicRegression(out_of_bounds="clip").fit(
         validation_raw, y["validation"]
     )
-    validation_calibrated = calibrator.predict(validation_raw)
+    validation_calibrated = calibrate(calibrator, validation_raw)
 
     grid = np.unique(np.quantile(validation_calibrated, np.linspace(0.01, 0.99, 197)))
     f1_scores = [
@@ -414,7 +415,9 @@ def main() -> dict:
     y_dev = pd.concat([y["train"], y["validation"]])
     final_models = fit_ensemble(X_dev, y_dev)
 
-    test_calibrated = calibrator.predict(ensemble_predict(final_models, frames["test"]))
+    test_calibrated = calibrate(
+        calibrator, ensemble_predict(final_models, frames["test"])
+    )
     predicted = (test_calibrated >= threshold).astype(int)
     tn, fp, fn, tp = confusion_matrix(y["test"], predicted).ravel()
 

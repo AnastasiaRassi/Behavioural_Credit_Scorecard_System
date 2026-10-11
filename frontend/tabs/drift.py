@@ -9,6 +9,7 @@ import pandas as pd
 import streamlit as st
 
 import api
+import theme
 from components import thought
 
 WATCH = 0.10
@@ -52,16 +53,16 @@ def _population(drift: dict) -> None:
             y=alt.Y("feature:N", sort="-x", title=None),
             color=alt.condition(
                 alt.datum.psi >= SIGNIFICANT,
-                alt.value("#cc3b2f"),
+                alt.value(theme.HIGH),
                 alt.condition(
-                    alt.datum.psi >= WATCH, alt.value("#d9a017"), alt.value("#2e9e5b")
+                    alt.datum.psi >= WATCH, alt.value(theme.MEDIUM), alt.value(theme.LOW)
                 ),
             ),
             tooltip=["feature:N", alt.Tooltip("psi:Q", format=".3f")],
         )
         .properties(height=min(26 * len(frame) + 40, 640))
     )
-    st.altair_chart(chart, width="stretch")
+    st.altair_chart(chart, width="stretch", theme=None)
     st.caption(
         f"Green below {WATCH:.2f}, amber from {WATCH:.2f} (watch), "
         f"red from {SIGNIFICANT:.2f} (significant)."

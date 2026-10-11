@@ -15,10 +15,10 @@ import urllib.request
 
 import streamlit as st
 
-BASE_URL = "http://127.0.0.1:8012"
+BASE_URL = "http://127.0.0.1:8013"
 TIMEOUT_SECONDS = 30
 
-START_COMMAND = "cd backend && uvicorn app.main:app --port 8012"
+START_COMMAND = "cd backend && uvicorn app.main:app --port 8013"
 
 # Recorded baseline. The status light goes amber if test AUC drifts from this.
 BASELINE_AUC = 0.781

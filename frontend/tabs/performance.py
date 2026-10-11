@@ -4,6 +4,7 @@ import pandas as pd
 import streamlit as st
 
 import api
+import theme
 from components import BAND_COLOURS, BAND_ICONS, explained_metric, thought
 from explanations import TRUST_STABLE
 
@@ -105,7 +106,7 @@ def _confusion_matrix(counts: dict) -> None:
             ),
         ).transform_calculate(label="format(datum.count, ',') + '\\n' + datum.note")
     ).properties(height=260)
-    st.altair_chart(chart, width="stretch")
+    st.altair_chart(chart, width="stretch", theme=None)
 
 
 def _risk_bands(bands: dict) -> None:
@@ -148,7 +149,7 @@ def _risk_bands(bands: dict) -> None:
         )
         .properties(height=200)
     )
-    st.altair_chart(chart, width="stretch")
+    st.altair_chart(chart, width="stretch", theme=None)
 
     st.dataframe(
         pd.DataFrame(
@@ -199,7 +200,7 @@ def _deciles(deciles: list[dict], default_rate: float) -> None:
     )
     bars = (
         alt.Chart(frame)
-        .mark_bar(color="#3b6fb5")
+        .mark_bar(color=theme.ACCENT)
         .encode(
             x=alt.X("rate:Q", title="actual default rate", axis=alt.Axis(format="%")),
             y=alt.Y("decile:N", sort=alt.EncodingSortField("order"), title=None),
@@ -212,8 +213,8 @@ def _deciles(deciles: list[dict], default_rate: float) -> None:
     )
     average = (
         alt.Chart(pd.DataFrame({"rate": [default_rate]}))
-        .mark_rule(strokeDash=[6, 4], color="#888")
+        .mark_rule(strokeDash=[6, 4], color=theme.MUTED)
         .encode(x="rate:Q")
     )
-    st.altair_chart((bars + average).properties(height=420), width="stretch")
+    st.altair_chart((bars + average).properties(height=420), width="stretch", theme=None)
     st.caption(f"Overall average {default_rate:.1%}.")

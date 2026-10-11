@@ -8,6 +8,7 @@ import pandas as pd
 import streamlit as st
 
 import api
+import theme
 from components import BAND_COLOURS, BAND_ICONS, thought
 from explanations import DEEP
 
@@ -61,7 +62,7 @@ def _global_importance() -> None:
     order = alt.EncodingSortField("auc_drop", order="descending")
     bars = (
         alt.Chart(frame)
-        .mark_bar(color="#3b6fb5")
+        .mark_bar(color=theme.ACCENT)
         .encode(
             x=alt.X("auc_drop:Q", title="AUC drop when shuffled"),
             y=alt.Y("feature:N", sort=order, title=None),
@@ -75,10 +76,10 @@ def _global_importance() -> None:
     )
     errors = (
         alt.Chart(frame)
-        .mark_rule(color="#999")
+        .mark_rule(color=theme.MUTED)
         .encode(x="low:Q", x2="high:Q", y=alt.Y("feature:N", sort=order))
     )
-    st.altair_chart((bars + errors).properties(height=520), width="stretch")
+    st.altair_chart((bars + errors).properties(height=520), width="stretch", theme=None)
 
     st.warning(DEEP["feature_importance_caveat"])
 
@@ -200,7 +201,7 @@ def _result(result: dict) -> None:
     for reason in result["reasons"][:SHOWN_REASONS]:
         raises = reason["raises_risk"]
         arrow = "▲" if raises else "▼"
-        colour = "#cc3b2f" if raises else "#2e9e5b"
+        colour = theme.HIGH if raises else theme.LOW
         st.markdown(
             f"<span style='color:{colour}'>{arrow}</span> {reason['description']} "
             f"&nbsp; <code>{reason['effect']:+.3f}</code>",

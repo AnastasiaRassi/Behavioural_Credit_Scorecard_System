@@ -13,6 +13,7 @@ import joblib
 import numpy as np
 import pandas as pd
 
+from app.ml.calibration import calibrate
 from app.ml.feature_engineering import (
     RAW_COLUMNS,
     SCORED_COLUMNS,
@@ -100,7 +101,7 @@ class CreditScorer:
     def probabilities(self, frame: pd.DataFrame) -> np.ndarray:
         features = self.prepare(frame)
         raw = np.mean([m.predict_proba(features)[:, 1] for m in self.models], axis=0)
-        return np.clip(self.calibrator.predict(raw), 0.0, 1.0)
+        return calibrate(self.calibrator, raw)
 
     def band(self, probability: float) -> str:
         if probability < self.band_edges["low_max"]:

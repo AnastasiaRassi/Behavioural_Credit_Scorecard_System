@@ -13,6 +13,7 @@ import pandas as pd
 import streamlit as st
 
 import api
+import theme
 from components import BAND_ICONS
 
 ACTIONS = {
@@ -27,7 +28,7 @@ PAGE_SIZE = 25
 # No model is certain, so the extremes are shown as bounds.
 CERTAINTY_CAP = 0.99
 
-STATUS_COLOURS = {"arrears": "#cc3b2f", "revolving": "#d9a017", "clear": "#2e9e5b"}
+STATUS_COLOURS = {"arrears": theme.HIGH, "revolving": theme.MEDIUM, "clear": theme.LOW}
 
 
 def render(officer_email: str) -> None:
@@ -200,7 +201,7 @@ def _history(detail: dict) -> None:
         )
         .properties(height=200)
     )
-    st.altair_chart(bars, width="stretch")
+    st.altair_chart(bars, width="stretch", theme=None)
 
     st.dataframe(
         pd.DataFrame(
@@ -284,7 +285,7 @@ def _show_prediction(result: dict, is_fresh: bool) -> None:
     for reason in result["reasons"]:
         raises = reason.get("raises_risk", reason.get("effect", 0) > 0)
         arrow = "▲" if raises else "▼"
-        colour = "#cc3b2f" if raises else "#2e9e5b"
+        colour = theme.HIGH if raises else theme.LOW
         st.markdown(
             f"<span style='color:{colour}'>{arrow}</span> {reason['description']}",
             unsafe_allow_html=True,

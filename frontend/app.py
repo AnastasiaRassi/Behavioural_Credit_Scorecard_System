@@ -2,7 +2,7 @@
 
 Run the API first, then this, both from the repo root:
 
-    cd backend && uvicorn app.main:app --port 8012
+    cd backend && uvicorn app.main:app --port 8013
     streamlit run frontend/app.py
 
 The frontend reads nothing from disk. Every screen is served by the API, which
@@ -23,6 +23,7 @@ if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
 import api  # noqa: E402
+import theme  # noqa: E402
 from tabs import drift, explain, fairness, performance, registry, threshold  # noqa: E402
 from views import cardholder, officer  # noqa: E402
 
@@ -212,4 +213,5 @@ st.set_page_config(
     layout="wide",
 )
 
+theme.apply()
 main()

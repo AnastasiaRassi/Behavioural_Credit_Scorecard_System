@@ -6,6 +6,7 @@ what a Brier score is.
 """
 import streamlit as st
 
+import theme
 from explanations import CAPTIONS, DEEP, TRUST_STABLE
 
 
@@ -60,6 +61,6 @@ def _label(key: str) -> str:
     return LABELS.get(key, key.replace("_", " ").title())
 
 
-# Band styling, shared by the performance tab and the officer view.
-BAND_COLOURS = {"Low": "#2e9e5b", "Medium": "#d9a017", "High": "#cc3b2f"}
-BAND_ICONS = {"Low": "🟢", "Medium": "🟡", "High": "🔴"}
+# Re-exported so the tabs keep one import for widgets and band styling.
+BAND_COLOURS = theme.BAND_COLOURS
+BAND_ICONS = theme.BAND_ICONS

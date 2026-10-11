@@ -16,6 +16,7 @@ import json
 import pandas as pd
 import pytest
 
+from app.ml.calibration import CERTAINTY_CEILING, CERTAINTY_FLOOR
 from app.ml.explainability import Explainer, describe, feature_meaning
 from app.ml.scorer import CreditScorer, example_customer
 from app.ml.train import artifacts_dir
@@ -186,3 +187,34 @@ def test_every_feature_has_a_plain_meaning(config: dict):
     for feature in config["feature_names"]:
         meaning = feature_meaning(feature)
         assert meaning and meaning != feature, f"{feature} has no plain meaning"
+
+
+# --- calibration bounds ---------------------------------------------------
+
+
+def test_no_customer_is_scored_as_certain():
+    """Isotonic saturates at the ends; a credit file must not claim certainty."""
+    with open(artifacts_dir() / "officer_queue.json", encoding="utf-8") as fh:
+        queue = json.load(fh)
+
+    probabilities = [row["probability"] for row in queue]
+    assert max(probabilities) <= CERTAINTY_CEILING
+    assert min(probabilities) >= CERTAINTY_FLOOR
+
+
+def test_the_bound_does_not_move_any_ranking_metric(config: dict):
+    """Clipping is monotone, so the ordering metrics must be untouched."""
+    metrics = config["test_metrics"]
+    assert abs(metrics["roc_auc"] - EXPECTED_AUC) < TOLERANCE
+    assert abs(metrics["gini"] - (2 * metrics["roc_auc"] - 1)) < 1e-9
+    assert abs(metrics["ks"] - 0.4333) < TOLERANCE
+
+
+def test_serving_applies_the_same_bound_as_evaluation(scorer: CreditScorer):
+    """A bound in train.py but not scorer.py would publish metrics for a model
+    the API does not run."""
+    certain = example_customer() | {
+        f"PAY_{month}": 8 for month in range(1, 7)
+    } | {f"PAY_AMT{month}": 0 for month in range(1, 7)}
+
+    assert scorer.score_one(certain).probability <= CERTAINTY_CEILING

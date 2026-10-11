@@ -9,6 +9,7 @@ import pandas as pd
 import streamlit as st
 
 import api
+import theme
 from components import thought
 from explanations import DEEP, TRUST_STABLE, TRUST_UNSTABLE
 
@@ -77,17 +78,17 @@ def _disparate_impact(audit: dict) -> None:
             y=alt.Y("attribute:N", sort="-x", title=None),
             color=alt.Color(
                 "passes:N", legend=None,
-                scale=alt.Scale(domain=[True, False], range=["#2e9e5b", "#cc3b2f"]),
+                scale=alt.Scale(domain=[True, False], range=[theme.LOW, theme.HIGH]),
             ),
             tooltip=[alt.Tooltip("attribute:N"), alt.Tooltip("ratio:Q", format=".3f")],
         )
     )
     line = (
         alt.Chart(pd.DataFrame({"threshold": [api.FOUR_FIFTHS]}))
-        .mark_rule(strokeDash=[6, 4], color="#cc3b2f")
+        .mark_rule(strokeDash=[6, 4], color=theme.HIGH)
         .encode(x="threshold:Q")
     )
-    st.altair_chart((bars + line).properties(height=240), width="stretch")
+    st.altair_chart((bars + line).properties(height=240), width="stretch", theme=None)
     st.caption(f"The dashed line is the {api.FOUR_FIFTHS:.2f} four-fifths threshold.")
 
     st.dataframe(
