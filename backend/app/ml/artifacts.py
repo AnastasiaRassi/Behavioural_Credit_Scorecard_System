@@ -53,3 +53,17 @@ def feature_importance() -> list[dict]:
 
 def registry() -> list[dict]:
     return read("registry.json")
+
+
+def officer_queue() -> list[dict]:
+    """The precomputed worklist: held-out customers, scored and explained."""
+    return read("officer_queue.json")
+
+
+def segments() -> dict:
+    """Behavioural segments: the chosen k, the silhouette scores, each profile.
+
+    Written by `python -m app.ml.segmentation`, which is a separate step from
+    training, so this can be missing while the model is fine.
+    """
+    return read("segments.json")

@@ -19,6 +19,12 @@ BILL_COLS = [f"BILL_AMT{i}" for i in range(1, 7)]
 AMT_COLS = [f"PAY_AMT{i}" for i in range(1, 7)]
 RAW_COLUMNS = ["LIMIT_BAL", *PROTECTED, *PAY_COLS, *BILL_COLS, *AMT_COLS]
 
+# The columns that actually reach the model. Protected attributes are accepted
+# when a caller has them, because the audit needs them, but they are dropped
+# before scoring, so a caller without them can still be scored. The officer
+# queue is built blind and relies on this.
+SCORED_COLUMNS = [column for column in RAW_COLUMNS if column not in PROTECTED]
+
 # Codebook labels. EDUCATION 0/5/6 and MARRIAGE 0 are undocumented in the source and
 # are folded into the existing "other" level rather than dropped.
 SEX_LABELS = {1: "male", 2: "female"}
@@ -63,9 +69,16 @@ def load_taiwan(path: Path | str | None = None) -> pd.DataFrame:
 
 
 def clean(df: pd.DataFrame) -> pd.DataFrame:
+    """Fold the undocumented category codes into their documented neighbours.
+
+    Tolerates a frame without the protected columns: nothing here feeds a
+    feature, so a blind frame is cleaned by doing nothing to it.
+    """
     df = df.copy()
-    df["EDUCATION"] = df["EDUCATION"].replace({0: 4, 5: 4, 6: 4})
-    df["MARRIAGE"] = df["MARRIAGE"].replace({0: 3})
+    if "EDUCATION" in df.columns:
+        df["EDUCATION"] = df["EDUCATION"].replace({0: 4, 5: 4, 6: 4})
+    if "MARRIAGE" in df.columns:
+        df["MARRIAGE"] = df["MARRIAGE"].replace({0: 3})
     return df
 
 

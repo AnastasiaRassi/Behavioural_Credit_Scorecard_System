@@ -3,6 +3,7 @@
 The scorer and explainer are process-wide and cached, since loading the ensemble
 costs far more than a request should. The session is per request.
 """
+import uuid
 from functools import lru_cache
 from typing import Iterator
 
@@ -10,7 +11,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.db.database import _session_factory
-from app.db.models import ModelVersion, User
+from app.db.models import ModelVersion, Prediction, User
 from app.ml.explainability import Explainer
 from app.ml.scorer import ArtifactsMissing, CreditScorer
 
@@ -53,6 +54,30 @@ def live_model_version(session: Session) -> ModelVersion:
             detail="No live model version registered. Run: python -m app.db.seed",
         )
     return version
+
+
+def prediction_or_404(session: Session, prediction_id: str) -> Prediction:
+    """Look up a prediction, distinguishing a malformed id from a missing one.
+
+    The id is parsed before it reaches the driver. Passing a non-UUID string
+    straight to a uuid column raises inside psycopg, which surfaces as a 500 for
+    what is really a bad request (§9).
+    """
+    try:
+        parsed = uuid.UUID(prediction_id)
+    except (ValueError, AttributeError, TypeError):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"{prediction_id!r} is not a valid prediction id",
+        ) from None
+
+    prediction = session.get(Prediction, parsed)
+    if prediction is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No prediction {prediction_id}",
+        )
+    return prediction
 
 
 def user_by_email(session: Session, email: str, expected_role: str) -> User:

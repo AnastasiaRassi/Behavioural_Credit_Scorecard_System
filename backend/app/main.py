@@ -18,7 +18,16 @@ from typing import AsyncIterator
 
 from fastapi import FastAPI
 
-from app.api import admin, decisions, fairness, monitoring, predictions
+from app.api import (
+    admin,
+    cardholders,
+    decisions,
+    fairness,
+    monitoring,
+    officer,
+    predictions,
+    roles,
+)
 from app.db.database import create_all
 from app.ml import artifacts
 
@@ -42,6 +51,9 @@ app = FastAPI(
     version="1.0.0",
 )
 
+app.include_router(roles.router)
+app.include_router(officer.router)
+app.include_router(cardholders.router)
 app.include_router(predictions.router)
 app.include_router(decisions.router)
 app.include_router(fairness.router)

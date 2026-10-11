@@ -31,6 +31,7 @@ from sklearn.metrics import (
     roc_curve,
 )
 
+from app.ml.explainability import MONTHS_OBSERVED, month_label
 from app.ml.feature_engineering import (
     AGE_BANDS,
     AGE_LABELS,
@@ -38,6 +39,7 @@ from app.ml.feature_engineering import (
     MARRIAGE_LABELS,
     SEX_LABELS,
     build_splits,
+    describe_pay_status,
     project_root,
 )
 
@@ -72,6 +74,14 @@ WRITES = (
     "cost_curve.json",
     "fairness_detail.json",
     "registry.json",
+    "officer_queue.json",
+)
+
+# Written by app.ml.segmentation, which is a separate step with its own run.
+# Without this, a retrain would delete a segmentation that is still correct.
+PRESERVES = (
+    "segmenter.joblib",
+    "segments.json",
 )
 
 LOW_QUANTILE = 0.50
@@ -87,6 +97,10 @@ MIN_GROUP_DEFAULTS = 10
 COST_RATIOS = range(1, 11)
 
 DECILES = 10
+
+# Reasons stored per queued customer. Five fills the detail panel without
+# inflating the artifact across thousands of rows.
+QUEUE_REASONS = 5
 CALIBRATION_BINS = 10
 
 
@@ -105,9 +119,12 @@ def remove_stale(path: Path) -> list[str]:
     """
     removed = []
     for existing in path.iterdir():
-        if existing.is_file() and existing.name not in WRITES:
-            existing.unlink()
-            removed.append(existing.name)
+        if not existing.is_file():
+            continue
+        if existing.name in WRITES or existing.name in PRESERVES:
+            continue
+        existing.unlink()
+        removed.append(existing.name)
     return removed
 
 
@@ -255,6 +272,118 @@ def fairness_audit(y, probabilities, audit: pd.DataFrame, threshold: float) -> d
     return summary
 
 
+def month_history(row: pd.Series) -> list[dict]:
+    """The six observed months, most recent first, as a drawable trajectory.
+
+    Written here rather than derived in the UI because train.py is the only
+    writer (§3). Each entry carries the raw status alongside its reading, so a
+    screen can sort or colour on the number without re-parsing the words.
+    """
+    history = []
+    for position in range(1, MONTHS_OBSERVED + 1):
+        bill = float(row[f"BILL_AMT{position}"])
+        limit = float(row["LIMIT_BAL"])
+        status = int(row[f"PAY_{position}"])
+        history.append(
+            {
+                "month": position,
+                "label": month_label(position),
+                "payment_status": status,
+                "payment_status_reading": describe_pay_status(status),
+                "bill_amount": bill,
+                "amount_paid": float(row[f"PAY_AMT{position}"]),
+                # None rather than zero on a zero limit: no utilisation exists to
+                # report, and 0.0 would read as "used nothing".
+                "utilisation": round(bill / limit, 4) if limit else None,
+            }
+        )
+    return history
+
+
+def test_segments(features: pd.DataFrame) -> pd.DataFrame | None:
+    """Behavioural segment per customer, or None if segmentation has not run.
+
+    Segmentation is a separate step with its own artifacts, so the queue is built
+    with or without it rather than training failing because it is absent.
+    """
+    from app.ml.segmentation import ArtifactsMissing, Segmenter
+
+    try:
+        return Segmenter().assign(features)
+    except ArtifactsMissing:
+        print("  segmentation artifacts absent; queue rows will carry no segment")
+        return None
+
+
+def officer_queue(models, features: pd.DataFrame, probabilities, threshold: float,
+                  band_of, reasons_shown: int = QUEUE_REASONS,
+                  segments: pd.DataFrame | None = None) -> list[dict]:
+    """The officer's worklist: every held-out customer, scored and explained.
+
+    Precomputed rather than scored on demand, so the officer screen reads a file
+    like every other screen (§3) and a queue of thousands opens instantly.
+
+    Protected attributes are absent: build_splits(blind=True) has already dropped
+    them, and an officer must not see demographics beside a risk score.
+
+    The realised outcome is deliberately excluded. The officer is deciding, and
+    showing next month's truth would make the queue a reveal rather than a task.
+    """
+    from app.ml.explainability import describe
+
+
+    # One pass over the ensemble; per-row calls would be thousands of predicts.
+    contributions = np.mean(
+        [model.predict_proba(features, pred_contrib=True) for model in models], axis=0
+    )
+    effects = np.asarray(contributions)[:, :-1]
+    columns = list(features.columns)
+    strongest = np.argsort(-np.abs(effects), axis=1)[:, :reasons_shown]
+
+    def segment_of(index) -> dict | None:
+        """The customer's behavioural segment, when segmentation has been run.
+
+        None rather than a placeholder: a screen must be able to tell "not
+        segmented" from "segmented as something", and segmentation is a separate
+        step with its own artifacts.
+        """
+        if segments is None or index not in segments.index:
+            return None
+        assigned = segments.loc[index]
+        return {
+            "label": int(assigned["segment"]),
+            "name": str(assigned["segment_name"]),
+        }
+
+    queue = []
+    for position, (index, row) in enumerate(features.iterrows()):
+        probability = float(probabilities[position])
+        queue.append(
+            {
+                "customer_id": f"C-{int(index):05d}",
+                "probability": probability,
+                "risk_band": band_of(probability),
+                "flagged": bool(probability >= threshold),
+                "credit_limit": float(row["LIMIT_BAL"]),
+                "current_balance": float(row["BILL_AMT1"]),
+                "last_payment": float(row["PAY_AMT1"]),
+                "months_in_arrears": int(row["pay_months_late"]),
+                "segment": segment_of(index),
+                "history": month_history(row),
+                "reasons": [
+                    {
+                        "feature": columns[column],
+                        "effect": float(effects[position, column]),
+                        "description": describe(columns[column], float(row[columns[column]])),
+                    }
+                    for column in strongest[position]
+                ],
+            }
+        )
+    queue.sort(key=lambda customer: -customer["probability"])
+    return queue
+
+
 def main() -> dict:
     frames, y, audits = build_splits(seed=42, blind=True)
 
@@ -384,6 +513,18 @@ def main() -> dict:
         reverse=True,
     )
 
+    def band_of(probability: float) -> str:
+        if probability < band_edges["low_max"]:
+            return "Low"
+        if probability < band_edges["medium_max"]:
+            return "Medium"
+        return "High"
+
+    queue = officer_queue(
+        final_models, frames["test"], test_calibrated, threshold, band_of,
+        segments=test_segments(frames["test"]),
+    )
+
     fairness = fairness_audit(y["test"], test_calibrated, audits["test"], threshold)
     passed = sum(1 for values in fairness.values() if values["passes_four_fifths"])
 
@@ -420,6 +561,8 @@ def main() -> dict:
         json.dump(fairness, fh, indent=2)
     with open(out / "registry.json", "w", encoding="utf-8") as fh:
         json.dump(registry, fh, indent=2)
+    with open(out / "officer_queue.json", "w", encoding="utf-8") as fh:
+        json.dump(queue, fh)
 
     print(f"Artifacts written to {out}")
     print(f"  test AUC   {config['test_metrics']['roc_auc']:.4f}")
@@ -427,6 +570,8 @@ def main() -> dict:
     print(f"  test Brier {config['test_metrics']['brier']:.4f}")
     print(f"  threshold  {threshold:.4f}")
     print(f"  fairness   {passed}/{len(fairness)} attributes pass the four-fifths rule")
+    print(f"  queue      {len(queue):,} customers, "
+          f"{sum(c['flagged'] for c in queue):,} flagged")
     return config
 
 

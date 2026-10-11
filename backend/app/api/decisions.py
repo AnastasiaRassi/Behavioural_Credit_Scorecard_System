@@ -1,22 +1,12 @@
 """Decision endpoints: what an officer did about a score, and why."""
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import get_session, user_by_email
-from app.db.models import Decision, Prediction
+from app.api.dependencies import get_session, prediction_or_404, user_by_email
+from app.db.models import Decision
 from app.schemas.decisions import DecisionCreate, DecisionOut
 
 router = APIRouter(tags=["decisions"])
-
-
-def _prediction_or_404(session: Session, prediction_id: str) -> Prediction:
-    prediction = session.get(Prediction, prediction_id)
-    if prediction is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"No prediction {prediction_id}",
-        )
-    return prediction
 
 
 @router.post(
@@ -35,7 +25,7 @@ def record_decision(
     replaces: an account monitored last week and escalated today keeps both
     entries, which is the point of an audit trail.
     """
-    prediction = _prediction_or_404(session, prediction_id)
+    prediction = prediction_or_404(session, prediction_id)
     officer = user_by_email(session, request.decided_by, "officer")
 
     decision = Decision(
@@ -53,7 +43,7 @@ def record_decision(
 @router.get("/predictions/{prediction_id}/decisions", response_model=list[DecisionOut])
 def list_decisions(prediction_id: str, session: Session = Depends(get_session)):
     """Every decision taken on one score, oldest first."""
-    prediction = _prediction_or_404(session, prediction_id)
+    prediction = prediction_or_404(session, prediction_id)
     return [
         DecisionOut(**decision.to_dict())
         for decision in sorted(prediction.decisions, key=lambda d: d.decided_at)

@@ -10,6 +10,7 @@ from app.api.dependencies import (
     get_scorer,
     get_session,
     live_model_version,
+    prediction_or_404,
     user_by_email,
 )
 from app.db.models import Prediction, User
@@ -104,12 +105,7 @@ def score_customer(
 @router.get("/{prediction_id}", response_model=dict)
 def read_prediction(prediction_id: str, session: Session = Depends(get_session)):
     """A stored score with the reasons as they were shown at the time."""
-    prediction = session.get(Prediction, prediction_id)
-    if prediction is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"No prediction {prediction_id}",
-        )
+    prediction = prediction_or_404(session, prediction_id)
 
     stored = prediction.to_dict()
     stored["model_version"] = prediction.model_version.version

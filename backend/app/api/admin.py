@@ -6,9 +6,10 @@ differs from what the dashboard shows or from what was actually evaluated.
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import get_session
+from app.api.dependencies import get_explainer, get_scorer, get_session
 from app.db.models import ModelVersion
 from app.ml import artifacts
+from app.schemas.scoring import CustomerInput, ReasonOut
 
 router = APIRouter(tags=["model"])
 
@@ -31,6 +32,9 @@ def model_report() -> dict:
         "test_metrics": config["test_metrics"],
         "confusion_matrix": config["confusion_matrix"],
         "band_report": config["band_report"],
+        "split_sizes": config["split_sizes"],
+        "deciles": config["deciles"],
+        "calibration": config["calibration"],
     }
 
 
@@ -50,6 +54,61 @@ def cost_curve() -> dict:
 def feature_importance() -> list[dict]:
     """Permutation importance over the test split, most important first."""
     return artifacts.feature_importance()
+
+
+@router.get("/segments")
+def behavioural_segments() -> dict:
+    """The behavioural segmentation: chosen k, how it was chosen, each profile.
+
+    Separate from the model. Segments describe how customers behave; the model
+    predicts whether they will miss a payment. The segment is never a model
+    input, so this is a lens on the population rather than part of the decision.
+
+    503 when segmentation has not been run, since the model works without it.
+    """
+    try:
+        config = artifacts.segments()
+    except artifacts.ArtifactsMissing as exception:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exception)
+        ) from exception
+
+    return {
+        "k": config["k"],
+        "chosen_by": config["chosen_by"],
+        "silhouette_scores": config["silhouette_scores"],
+        "features": config["features"],
+        "fitted_on": config["fitted_on"],
+        "segments": config["segments"],
+    }
+
+
+@router.post("/explain")
+def explain_without_storing(customer: CustomerInput) -> dict:
+    """Score and explain a hypothetical customer without recording anything.
+
+    The engineer's what-if panel. Separate from POST /predictions because an
+    experiment is not a decision: writing every slider movement into the audit
+    trail would bury the real ones. Returns every reason above the negligible
+    threshold rather than the handful a screen shows.
+    """
+    payload = customer.model_dump()
+    result = get_scorer().score_one(payload)
+    reasons, base_value = get_explainer().reasons(payload)
+
+    return {
+        "stored": False,
+        "probability": result.probability,
+        "risk_band": result.risk_band,
+        "threshold": result.threshold,
+        "flagged": result.flagged,
+        "band_default_rate": result.band_default_rate,
+        "base_value": base_value,
+        "reasons": [
+            ReasonOut(**reason.to_dict(), raises_risk=reason.raises_risk).model_dump()
+            for reason in reasons
+        ],
+    }
 
 
 @router.get("/model-versions")

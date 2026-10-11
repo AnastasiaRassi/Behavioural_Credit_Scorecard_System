@@ -60,6 +60,26 @@ class Reason:
         return asdict(self)
 
 
+# The dataset's monthly columns are positional, not dated: PAY_1 is the most
+# recent observed month and PAY_6 the oldest. Labels live here rather than in the
+# UI (§12), so the queue, the API and any screen name the same month identically.
+MONTH_LABELS = {
+    1: "Last month",
+    2: "2 months ago",
+    3: "3 months ago",
+    4: "4 months ago",
+    5: "5 months ago",
+    6: "6 months ago",
+}
+
+MONTHS_OBSERVED = len(MONTH_LABELS)
+
+
+def month_label(position: int) -> str:
+    """Readable name for a monthly column's position, 1 being the most recent."""
+    return MONTH_LABELS.get(position, f"month {position}")
+
+
 def feature_meaning(feature: str) -> str:
     """Plain-language gloss for a feature name, covering the raw monthly columns."""
     if feature in FEATURE_MEANINGS:

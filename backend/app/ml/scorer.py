@@ -15,6 +15,7 @@ import pandas as pd
 
 from app.ml.feature_engineering import (
     RAW_COLUMNS,
+    SCORED_COLUMNS,
     PROTECTED,
     engineer,
     clean,
@@ -75,11 +76,15 @@ class CreditScorer:
         Public because the Explainer needs the exact frame the model sees. Every
         path that reaches a model must go through here.
         """
-        missing = [c for c in RAW_COLUMNS if c not in frame.columns]
+        missing = [c for c in SCORED_COLUMNS if c not in frame.columns]
         if missing:
             raise ValueError(f"Missing required columns: {missing}")
 
-        features = engineer(clean(frame[RAW_COLUMNS].copy()))
+        # Protected columns are taken when offered and ignored otherwise. They
+        # are dropped below either way, so requiring them would block scoring a
+        # blind frame for no benefit.
+        present = [c for c in RAW_COLUMNS if c in frame.columns]
+        features = engineer(clean(frame[present].copy()))
         # Protected attributes are excluded from the decision by design.
         features = features.drop(columns=PROTECTED, errors="ignore")
 

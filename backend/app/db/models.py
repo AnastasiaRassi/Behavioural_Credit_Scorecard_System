@@ -71,7 +71,15 @@ class User(Base):
         UUID(as_uuid=True), primary_key=True, default=_new_id
     )
     email: Mapped[str | None] = mapped_column(String(255), unique=True)
+
+    # The system's handle for this person. For a cardholder it is the queue's
+    # customer id, which db/queue_predictions.py looks them up by, so it is not
+    # a name and must not be rendered as one.
     display_name: Mapped[str] = mapped_column(String(255))
+
+    # What a human calls them. Nullable because a cardholder created by the API
+    # on first contact has only an id; the seeded demo accounts have both.
+    full_name: Mapped[str | None] = mapped_column(String(255), index=True)
     role: Mapped[str] = mapped_column(String(16), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 

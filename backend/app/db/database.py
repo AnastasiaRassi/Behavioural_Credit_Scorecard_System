@@ -8,7 +8,7 @@ from contextlib import contextmanager
 from functools import lru_cache
 from typing import Iterator
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -42,10 +42,24 @@ def session_scope() -> Iterator[Session]:
         session.close()
 
 
+# Columns added after a database already existed. `create_all` only creates
+# missing tables, never missing columns, so a prototype that gained a column
+# would silently keep the old shape and fail on first use.
+LATE_COLUMNS = (
+    ("user_account", "full_name", "VARCHAR(255)"),
+)
+
+
 def create_all() -> None:
-    """Create any missing tables.
+    """Create any missing tables, then any columns added since they were made.
 
     Enough for a prototype with no schema history. A migration tool would be the
     answer if this schema had to evolve against data worth keeping.
     """
     Base.metadata.create_all(engine())
+
+    with engine().begin() as connection:
+        for table, column, definition in LATE_COLUMNS:
+            connection.execute(
+                text(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {definition}")
+            )
