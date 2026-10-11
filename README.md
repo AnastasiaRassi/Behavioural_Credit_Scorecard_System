@@ -195,8 +195,12 @@ all cells. The notebook writes the fitted model, calibrator and metrics to
   extra trees, HistGradientBoosting, LightGBM, XGBoost, plus seed-averaged and rank-blended
   ensembles.
 - **Selection metric** — ROC-AUC, chosen because it is invariant to class prevalence.
-- **Calibration** — Platt scaling and isotonic regression compared on validation, since the
-  raw ensemble score is a rank, not a probability.
+- **Calibration** — Platt scaling and isotonic regression were both fitted and measured
+  against the model's own probabilities. Both were worse. Isotonic doubled the calibration
+  error it was meant to reduce and, being a step function, returned exactly 1.0 for the
+  riskiest customers. LightGBM is fitted with a log-loss objective, so its output is
+  already a probability, and nothing is applied to it. `app/ml/calibration.py` records the
+  comparison.
 - **Threshold** — reported both at the F1 optimum and across a cost curve sweeping the
   false-negative to false-positive cost ratio from 1:1 to 10:1, because the two errors carry
   very different costs for a lender.

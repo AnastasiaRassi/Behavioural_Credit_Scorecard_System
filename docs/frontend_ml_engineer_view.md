@@ -1,7 +1,12 @@
 # ML Engineer view: frontend specification
 
 Design spec for the Model Operations dashboard. Every number shown here is real, taken
-from the current model, so this doubles as the expected output once wired up.
+from the current model, so this doubles as the expected output.
+
+**Figures refreshed against the model trained 2026-10-11**, the run that dropped the
+isotonic calibrator (see `app/ml/calibration.py`). An earlier revision of this document
+quoted the calibrated model's numbers and claimed Brier halved after calibration, which
+was never true of this model.
 
 **Principle.** Two levels of explanation on every metric. A one line caption always
 visible underneath the number, and a 💭 icon that opens a longer plain language
@@ -19,7 +24,7 @@ everything as equally solid.
 ┌──────────────────────────────────────────────────────────────────────────┐
 │  CREDIT RISK · MODEL OPERATIONS                          [ML Engineer ▾] │
 ├──────────────────────────────────────────────────────────────────────────┤
-│  lightgbm_ensemble_v1   ·   trained 2026-10-03   ·   ● HEALTHY           │
+│  lightgbm_ensemble_v1   ·   trained 2026-10-11   ·   ● HEALTHY           │
 │  25,500 training rows  ·  46 features  ·  seeds 42/202/777               │
 ├──────────────────────────────────────────────────────────────────────────┤
 │  Performance │ Fairness │ Explainability │ Threshold │ Registry │ Drift  │
@@ -49,7 +54,7 @@ Four large tiles. These are the numbers to lead with.
 
 | Metric | Value | Caption (always visible) | 💭 Explanation (on click) |
 |---|---|---|---|
-| ROC-AUC | 0.781 | ranks risk correctly 78% of the time | Take one customer who defaulted and one who paid. The model gives the defaulter a higher risk score 78 times out of 100. A coin flip would get 50. This is the main number to judge the model by, and it does not change if the proportion of defaulters changes. |
+| ROC-AUC | 0.783 | ranks risk correctly 78% of the time | Take one customer who defaulted and one who paid. The model gives the defaulter a higher risk score 78 times out of 100. A coin flip would get 50. This is the main number to judge the model by, and it does not change if the proportion of defaulters changes. |
 | KS statistic | 43.3 | 58% of defaults caught, 15% of payers touched | The widest gap between the score distributions of defaulters and payers, quoted in percentage points the way credit teams write it. At the score where the two groups separate most, the model has captured 58% of the customers who went on to default while picking up only 15% of those who paid. The gap between those two figures is the KS. Above 40 is strong for a behavioural scorecard, and above 60 usually means the target has leaked into the features. |
 | Balanced accuracy | 0.714 | treats both classes as equally important | The average of two things: the share of defaulters we catch (62%) and the share of good payers we correctly leave alone (81%). Because it averages them, a model that ignored defaulters entirely would score 50, not 78. |
 | Gini | 0.562 | banking convention for the same thing | Exactly the same information as AUC, rescaled: Gini = 2 × AUC − 1. Credit teams quote this out of habit. 0 is random, 1 is perfect. |
@@ -64,7 +69,7 @@ Smaller tiles, collapsible section titled "More metrics".
 | Macro F1 | 0.692 | both classes counted equally | Like weighted F1, but small and large groups count the same. Lower than weighted F1 because the minority class is harder. |
 | F1, default class | 0.540 | performance on defaulters alone | The hardest single number we report, and the one we do not hide. It looks low, but on this dataset a coin flip scores 0.31 and a naive "was he late last month" rule scores 0.50. Only 22% of customers default, which caps how high this can go. |
 | PR-AUC | 0.540 | precision vs recall on defaulters | Similar to AUC but focused entirely on the defaulters. The no skill baseline is 0.221, the default rate, not 0.5. |
-| Brier score | 0.135 | are the probabilities honest | Checks whether the numbers mean what they say. If the model says 30%, do about 30% actually default? Lower is better, 0 is perfect. Ours halved after calibration. |
+| Brier score | 0.134 | are the probabilities honest | Checks whether the numbers mean what they say. If the model says 30%, do about 30% actually default? Lower is better, 0 is perfect. These are the model's own probabilities: a calibrator was fitted and measured, and made every figure worse, so none is applied. |
 | MCC | 0.393 | correlation with reality | Treats the prediction as one variable and the truth as another and measures correlation. 0 is random, 1 is perfect. Hard to fool with imbalanced data. |
 | Cohen kappa | 0.387 | agreement beyond luck | How much better than guessing, after subtracting the agreement you would get by chance. |
 
@@ -82,12 +87,12 @@ Rendered as a 2×2 heatmap at the live threshold, with counts and row percentage
 
 ```
                     predicted: pays    predicted: defaults
-actual: pays             2,926                 578          (84% correctly cleared)
-actual: defaults           401                 595          (60% caught)
+actual: pays             2,826                 678          (81% correctly cleared)
+actual: defaults           376                 620          (62% caught)
 ```
 
-💭 *The two mistakes cost different amounts. The 401 in the bottom left are customers who
-defaulted and we did not flag, which costs the outstanding balance. The 578 in the top
+💭 *The two mistakes cost different amounts. The 376 in the bottom left are customers who
+defaulted and we did not flag, which costs the outstanding balance. The 678 in the top
 right are customers we flagged who would have paid, which costs the interest we would
 have earned. A lender usually treats the first as several times more expensive.*
 
@@ -97,9 +102,9 @@ The table a loan officer actually acts on. Bar chart plus table.
 
 | Band | Share of customers | Actual default rate |
 |---|---|---|
-| 🟢 Low | 49.7% | 8.8% |
-| 🟡 Medium | 32.2% | 21.4% |
-| 🔴 High | 18.1% | 59.9% |
+| 🟢 Low | 49.4% | 8.9% |
+| 🟡 Medium | 29.7% | 20.3% |
+| 🔴 High | 20.8% | 56.3% |
 
 💭 *Band edges come from the validation set, never from the test set. The default rates
 shown are what actually happened on held out customers the model had never seen.*
@@ -109,21 +114,22 @@ shown are what actually happened on held out customers the model had never seen.
 Horizontal bar chart, actual default rate per predicted risk decile.
 
 ```
-decile  1 ███                                         5.1%
-decile  2 ███                                         6.2%
-decile  3 █████                                       9.3%
-decile  4 ███████                                    11.7%
-decile  5 ██████████                                 18.3%
-decile  6 ██████████                                 17.6%
-decile  7 █████████████████                          29.6%
-decile  8 ████████████████████████████               47.9%
-decile  9 ██████████████████████████████████████████ 70.8%
+decile  1 ██                                           4.0%
+decile  2 ████                                         7.3%
+decile  3 █████                                        9.1%
+decile  4 ██████                                      10.4%
+decile  5 ████████                                    14.2%
+decile  6 ██████████                                  17.1%
+decile  7 ███████████                                 19.6%
+decile  8 ███████████████                             25.8%
+decile  9 ███████████████████████████                 44.7%
+decile 10 ██████████████████████████████████████████  69.1%
           ┄┄┄┄┄┄┄┄┄┄┄ overall average 22.1%
 ```
 
 💭 *This is the clearest evidence the model works. Customers are sorted by predicted risk
 and split into ten groups. If the model were guessing, every bar would sit at 22%.
-Instead the safest group defaults at 5% and the riskiest at 71%, a 14 times spread.*
+Instead the safest group defaults at 4% and the riskiest at 69%, a 17 times spread.*
 
 ---
 
@@ -149,15 +155,15 @@ One row per attribute, with a gauge showing the 0.80 threshold line.
 
 | Attribute | DIR | Status | Trust |
 |---|---|---|---|
-| SEX | 0.937 | ✅ Pass | ▲ stable |
-| AGE | 0.945 | ✅ Pass | ▲ stable |
-| EDUCATION | 0.888 | ✅ Pass | ▲ stable |
-| MARRIAGE | 0.988 | ✅ Pass | ▲ stable |
+| SEX | 0.938 | ✅ Pass | ▲ stable |
+| AGE | 0.938 | ✅ Pass | ▲ stable |
+| EDUCATION | 0.880 | ✅ Pass | ▲ stable |
+| MARRIAGE | 0.990 | ✅ Pass | ▲ stable |
 
 💭 **Disparate impact ratio.** *Do we approve every group at a similar rate? Take the
 group approved least often and divide by the group approved most often. 1.00 means
 identical treatment. Regulators commonly treat anything below 0.80 as evidence of
-adverse impact, which is where the "four fifths" name comes from. EDUCATION at 0.888 is
+adverse impact, which is where the "four fifths" name comes from. EDUCATION at 0.880 is
 our closest to the line and worth watching.*
 
 ### Equalized odds
@@ -166,12 +172,12 @@ Same table, three more columns, each with its own icon. **These carry a warning 
 
 | Attribute | TPR gap | FPR gap | AUC spread | Trust |
 |---|---|---|---|---|
-| SEX | 0.024 | 0.039 | 0.044 | ⚠ unstable |
-| AGE | 0.080 | 0.022 | 0.028 | ⚠ unstable |
-| EDUCATION | 0.070 | 0.079 | 0.048 | ⚠ unstable |
-| MARRIAGE | 0.019 | 0.025 | 0.000 | ⚠ unstable |
+| SEX | 0.028 | 0.038 | 0.044 | ⚠ unstable |
+| AGE | 0.091 | 0.027 | 0.024 | ⚠ unstable |
+| EDUCATION | 0.063 | 0.087 | 0.050 | ⚠ unstable |
+| MARRIAGE | 0.030 | 0.020 | 0.001 | ⚠ unstable |
 
-💭 **TPR gap.** *Do we catch real defaulters equally well in every group? 0.080 for age
+💭 **TPR gap.** *Do we catch real defaulters equally well in every group? 0.091 for age
 means one age band has its defaulters spotted 8 in 100 more often than another.*
 
 💭 **FPR gap.** *Do we wrongly flag good customers equally rarely in every group? 0.079
@@ -207,10 +213,10 @@ Horizontal bar chart with error bars, top 20 features.
 
 | Feature | AUC drop when shuffled | Plain meaning |
 |---|---|---|
-| `pay_max` | 0.0275 | worst delinquency in the six months |
-| `PAY_1` | 0.0234 | repayment status last month |
-| `remaining_credit` | 0.0117 | limit minus current balance |
-| *43 others combined* | ~0.026 | everything else |
+| `PAY_1` | 0.0289 | repayment status last month |
+| `pay_max` | 0.0138 | worst delinquency in the six months |
+| `remaining_credit` | 0.0066 | limit minus current balance |
+| *43 others combined* | ~0.020 | everything else |
 
 💭 *Each feature is scrambled in turn and we measure how much the model gets worse. The
 bigger the drop, the more the model relied on it. Three features carry almost all the
@@ -227,8 +233,8 @@ Input panel on the left, result on the right. Lets the engineer poke the model.
 
 ```
 ┌─ Test a customer ──────┐  ┌─ Result ───────────────────────────────┐
-│ Credit limit  200,000  │  │         75.2%   🔴 HIGH RISK           │
-│ Last month    2 late   │  │  this band defaults 59.9% of the time  │
+│ Credit limit  200,000  │  │         79.9%   🔴 HIGH RISK           │
+│ Last month    2 late   │  │  this band defaults 56.3% of the time  │
 │ Balance       190,000  │  ├────────────────────────────────────────┤
 │ Payment       0        │  │  Why:                                  │
 │ ...                    │  │  ▲ two months behind      +0.31        │
@@ -249,7 +255,7 @@ explanation is complete rather than a summary.*
 Interactive. The most useful tab for an ML engineer.
 
 ```
-Decision threshold  ├────────●──────────────────┤   0.2824
+Decision threshold  ├──────●────────────────────┤   0.2389
                    0.05                        0.85
 ```
 
