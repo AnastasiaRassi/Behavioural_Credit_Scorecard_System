@@ -57,3 +57,10 @@ imbalanced-learn==0.14.2
 # Persistence. psycopg 3 is the driver the DATABASE_URL names.
 sqlalchemy==2.0.51
 psycopg[binary]==3.3.6
+
+# Local explanation surrogate, compared against native tree SHAP
+lime==0.2.0.1
+
+# Neural network baseline for the model comparison study. CPU build:
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
+torch==2.14.1
