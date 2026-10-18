@@ -79,8 +79,13 @@ class ExplanationMethod:
         return self.scorer.prepare(pd.DataFrame([customer]))
 
     def _probability(self, features: pd.DataFrame) -> float:
-        raw = np.mean([m.predict_proba(features)[:, 1] for m in self.scorer.models], axis=0)
-        return float(np.clip(self.scorer.calibrator.predict(raw), 0, 1)[0])
+        return float(self._probabilities(features)[0])
+
+    def _probabilities(self, features: pd.DataFrame) -> np.ndarray:
+        """Ensemble mean on an already-prepared frame."""
+        return np.mean(
+            [m.predict_proba(features)[:, 1] for m in self.scorer.models], axis=0
+        )
 
     def explain(self, customer: dict, seed: int | None = None) -> Explanation:
         raise NotImplementedError
@@ -124,9 +129,8 @@ class Lime(ExplanationMethod):
 
     def _predict(self, array: np.ndarray) -> np.ndarray:
         frame = pd.DataFrame(array, columns=self.feature_names)
-        raw = np.mean([m.predict_proba(frame)[:, 1] for m in self.scorer.models], axis=0)
-        calibrated = np.clip(self.scorer.calibrator.predict(raw), 0, 1)
-        return np.column_stack([1 - calibrated, calibrated])
+        p = np.mean([m.predict_proba(frame)[:, 1] for m in self.scorer.models], axis=0)
+        return np.column_stack([1 - p, p])
 
     def explain(self, customer: dict, seed: int | None = None) -> Explanation:
         features = self._prepared(customer)
@@ -178,12 +182,15 @@ class Occlusion(ExplanationMethod):
         baseline = self._probability(features)
 
         # One batch rather than 46 calls: each row has a single feature replaced.
-        occluded = pd.concat([features] * len(self.feature_names), ignore_index=True)
+        # float64 throughout: writing a float median into an int64 column silently
+        # coerces it and distorts the measured effect.
+        occluded = pd.concat(
+            [features] * len(self.feature_names), ignore_index=True
+        ).astype("float64")
         for position, name in enumerate(self.feature_names):
-            occluded.loc[position, name] = self.medians[name]
+            occluded.iat[position, occluded.columns.get_loc(name)] = float(self.medians[name])
 
-        raw = np.mean([m.predict_proba(occluded)[:, 1] for m in self.scorer.models], axis=0)
-        shifted = np.clip(self.scorer.calibrator.predict(raw), 0, 1)
+        shifted = self._probabilities(occluded)
 
         return Explanation(
             method=self.name,
