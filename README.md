@@ -200,16 +200,18 @@ dominates, not that exactly three features matter.
 Each of these is a notebook plus a module that writes its results to `backend/artifacts/`, so
 nothing in the report is recomputed by hand.
 
-**Five candidate concepts** (`01_data_preparation.ipynb` §4). Five behavioural concepts
-an analyst would ask for by name — payment-to-bill ratio, utilisation trend, consecutive
-delinquency count, payment volatility, and recent versus historical behaviour — defined as 14
-columns and tested against the target. Individually strong: the longest delinquency run reaches
-0.729 AUC alone, and the run still open at the most recent month separates a 13.7% default rate
-at zero months from 69.8% at six. But almost none of it is *new*: `payment_to_bill_mean` is
-rank-identical to the existing `repay_ratio_mean`, the delinquency run sits at 0.998 with
-`pay_months_late`, and the utilisation slope at 0.96 with `util_trend`. Adding all 14 moves
-validation AUC from 0.7831 to 0.7821, and the best single concept gains +0.0003 against a seed
-spread of 0.0003. They are kept as analysis and **not** promoted into the model's feature set.
+**Added features** (`01_data_preparation.ipynb` §4). Behavioural concepts an analyst would ask
+for by name — consecutive delinquency count, payment volatility, recent versus historical
+behaviour, a six-month utilisation slope, and counts of how often a bill was cleared or barely
+touched — engineered alongside the served set as 12 extra columns and then tested. The
+payment-to-bill ratio is not among them because `repay_ratio_*` already is it, by the same
+formula. Individually strong: the longest delinquency run reaches 0.729 AUC alone, just under
+the served `pay_months_late` at 0.731, and the run still open at the most recent month
+separates a 13.7% default rate at zero months from 69.8% at six. But almost none of it is
+*new*: that run tracks `pay_months_late` at 0.998, the utilisation slope tracks `util_trend` at
+0.96, and only `payment_shift_ratio` sits clear of the served set at 0.30. Adding all 12 moves
+validation AUC from 0.7831 to 0.7823, and the best single group gains +0.0003 against a seed
+spread of 0.0003. They are kept as analysis and **not** promoted into the served feature set.
 
 **Model comparison studies** (`04_model_comparison.ipynb`). Four questions, all scored on
 validation so the test split stays reserved. Class balancing: seven strategies, none beat the
