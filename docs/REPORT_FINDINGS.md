@@ -208,49 +208,51 @@ K-means on an interpretable subset, k = 3 by silhouette (0.284).
 Used to report performance and fairness per archetype rather than only in aggregate, and to
 locate where multiplicity concentrates (section 6).
 
-## 9. The engineered features and the raw sequence carry the same information  [script]
+## 9. The engineered features and the raw sequence carry the same information  [artifact]
 
-Every other model in the project reads flat per-customer statistics. This one reads the monthly
-matrix in order: 6 timesteps by 3 channels (repayment status, utilisation, payment as a share of
-the limit), with the log credit limit as a static input. A GRU, 48 hidden units, three seeds,
-early stopped on validation AUC.
+Every other model in the project reads flat per-customer statistics. These read the monthly
+matrix in order: six timesteps by three channels, with the repayment status embedded rather
+than scaled, since -2 (no balance), -1 (paid in full) and 0 (revolving) are categories.
+Twenty configurations across five architectures, because the booster has seventy tuning
+configurations behind it. Regenerable with `python -m app.ml.sequence_models`.
 
-| Model | Validation AUC |
-|---|---|
-| Deployed booster, 46 engineered features | 0.7832 |
-| GRU, raw sequence only, three-seed ensemble | 0.7752 |
-| Rank-scale blend, weight 0.30 chosen on validation | 0.7839 |
+| Architecture | Best validation AUC | Mean |
+|---|---|---|
+| LSTM | 0.7683 | 0.7649 |
+| 1D-CNN | 0.7661 | 0.7643 |
+| GRU | 0.7657 | 0.7636 |
+| BiLSTM | 0.7641 | 0.7632 |
+| Attention (Transformer encoder) | 0.7581 | 0.7542 |
+| **Deployed booster** | **0.7832** | — |
 
-Rank correlation between the GRU's scores and the booster's: **0.917**.
+The winning LSTM over three seeds reaches 0.7679 validation and 0.7636 test, and ranks
+customers at **0.897 rank correlation** with the booster. Blending the two is worth nothing:
+the best weight on validation is 0.05, a gain of +0.0000, and that weight on test gives
+−0.0002.
 
-**For the report:** this is the clearest evidence that the dataset is the binding constraint. A network given
-no feature engineering at all — only the raw months and the limit — lands 0.008 behind a tuned
-booster on 46 engineered features, and ranks customers almost identically to it. The conclusion
-is not that the engineered features are bad but that the information in those eighteen numbers
-is already extracted, and two very different model classes converge on the same ordering. It
-also corroborates Gunnarsson et al. (2021) on deep learning for credit scoring, and Grinsztajn
-et al. (2022) on tree models still leading on tabular data.
+**For the report, three claims this supports:**
 
-**The blend does not survive an honest test.** On validation it gained +0.0008 across a plateau
-(weights 0.20 to 0.35 all giving 0.7839) rather than a single spike, which looked like a small
-real effect. With the weight then fixed at 0.30 and applied to the test split, both arms fitted
-on train only:
+1. **Architecture was not the limitation.** An LSTM beats a GRU by 0.003, which is noise, and
+   attention is the worst of the five — six timesteps and about 4,600 positive cases is not
+   where self-attention earns anything. The input encoding was not the limitation either:
+   embedding the status codes rather than scaling them did not close the gap.
+2. **The information is already extracted.** A network given no feature engineering at all,
+   only the raw months and the credit limit, lands 0.015 behind a tuned booster on 46
+   engineered features and ranks customers almost identically to it. Two very different model
+   classes converge on the same ordering.
+3. **It corroborates the literature** — Gunnarsson et al. (2021) on deep learning for credit
+   scoring, and Grinsztajn et al. (2022) on tree models still leading on tabular data.
 
-| Arm | Test AUC |
-|---|---|
-| Booster alone | 0.7824 |
-| GRU alone | 0.7685 |
-| Blend at 0.30 | 0.7810 (−0.0014) |
+**A selection-bias lesson worth its own paragraph.** An earlier version of this experiment,
+with scaled inputs and a hand-set GRU, found +0.0008 on validation at weight 0.30, across a
+plateau of weights rather than a single spike, which looked like a small real effect. With the
+weight then fixed and applied to test it came out at **−0.0014**. Choosing the best of fourteen
+weights on the split you then report inflates whatever you measure there, and a plateau does
+not protect against it. Every tuning decision in the project is exposed to this, which is why
+the test split is read once and operating points are chosen on validation.
 
-**For the report:** this is a clean demonstration of selection bias worth a paragraph of its
-own. Choosing the best of fourteen blend weights on validation produced a gain that reversed
-sign on data that had not chosen it, and the plateau — which I had read as evidence against
-noise — did not save it. Every tuning decision in the project is exposed to this, which is why
-the test split is evaluated once and why operating points are chosen on validation.
-
-**Caveats to state rather than hide:** one split, one architecture, no hyperparameter search for
-the network, and an input encoding chosen by hand. The measured claim is about this GRU, not
-about sequence models in general.
+**Caveats:** one split, a 40-epoch budget with batch 512, and no search over the optimiser or
+the embedding width. The measured claim is about these twenty configurations.
 
 ## Open items
 
