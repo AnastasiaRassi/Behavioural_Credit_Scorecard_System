@@ -177,7 +177,7 @@ dominates, not that exactly three features matter.
 Each of these is a notebook plus a module that writes its results to `backend/artifacts/`, so
 nothing in the report is recomputed by hand.
 
-**Additional candidate features** (`01_data_preparation.ipynb` §4). Five behavioural concepts
+**Five candidate concepts** (`01_data_preparation.ipynb` §4). Five behavioural concepts
 an analyst would ask for by name — payment-to-bill ratio, utilisation trend, consecutive
 delinquency count, payment volatility, and recent versus historical behaviour — defined as 14
 columns and tested against the target. Individually strong: the longest delinquency run reaches
