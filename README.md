@@ -201,17 +201,24 @@ Each of these is a notebook plus a module that writes its results to `backend/ar
 nothing in the report is recomputed by hand.
 
 **Added features** (`01_data_preparation.ipynb` §4). Behavioural concepts an analyst would ask
-for by name — consecutive delinquency count, payment volatility, recent versus historical
-behaviour, a six-month utilisation slope, and counts of how often a bill was cleared or barely
-touched — engineered alongside the served set as 12 extra columns and then tested. The
-payment-to-bill ratio is not among them because `repay_ratio_*` already is it, by the same
-formula. Individually strong: the longest delinquency run reaches 0.729 AUC alone, just under
-the served `pay_months_late` at 0.731, and the run still open at the most recent month
-separates a 13.7% default rate at zero months from 69.8% at six. But almost none of it is
-*new*: that run tracks `pay_months_late` at 0.998, the utilisation slope tracks `util_trend` at
-0.96, and only `payment_shift_ratio` sits clear of the served set at 0.30. Adding all 12 moves
-validation AUC from 0.7831 to 0.7823, and the best single group gains +0.0003 against a seed
-spread of 0.0003. They are kept as analysis and **not** promoted into the served feature set.
+for by name — the run of arrears still open, payment volatility, recent versus historical
+behaviour, a relative utilisation slope, and counts of how often a bill was cleared or barely
+touched — engineered alongside the served set as nine extra columns and then tested. Variants
+that merely restated a served feature were dropped before testing rather than carried: a
+longest-arrears run at 0.998 rank correlation with `pay_months_late`, an absolute utilisation
+slope at 0.96 with `util_trend`, a utilisation shift at 0.91, and the payment-to-bill ratio,
+which `repay_ratio_*` already computes by the same formula. What remains is distinct, the
+closest being `months_cleared_bill` at 0.85, with `payment_shift_ratio` properly independent
+at 0.30.
+
+Several are strong alone: `delinquency_run_current` reaches 0.70 AUC by itself against 0.73 for
+the served `pay_months_late`, and separates a 13.7% default rate at zero open months from 69.8%
+at six. None of it pays. Together they move validation AUC from 0.7831 to 0.7822, the best
+single group gains +0.0003 against a seed spread of 0.0003, and a five-split repeat through the
+full deployed pipeline reaches the same conclusion on AUC, F1 and recall at a 20% alert rate.
+They are kept as analysis and **not** promoted into the served feature set. Distinctness proved
+necessary but not sufficient: a feature can be unlike anything present and still carry no
+information the model lacks.
 
 **Model comparison studies** (`04_model_comparison.ipynb`). Four questions, all scored on
 validation so the test split stays reserved. Class balancing: seven strategies, none beat the
