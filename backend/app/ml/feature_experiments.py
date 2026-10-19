@@ -250,22 +250,7 @@ def paired_study(X: pd.DataFrame, y: pd.Series, arms: dict, reference: str) -> d
             print(f"    seed {split_seed} {arm:<34} "
                   f"auc {measured[arm][-1]['test_auc']:.4f}", flush=True)
 
-    metrics = ["test_auc", "test_f1", "recall_at_alert_rate"]
-    summary = {}
-    for arm, runs in measured.items():
-        row = {metric: float(np.mean([run[metric] for run in runs])) for metric in metrics}
-        row["features"] = runs[0]["features"]
-        for metric in metrics:
-            difference = np.array([run[metric] for run in runs]) - np.array(
-                [run[metric] for run in measured[reference]])
-            row[f"delta_{metric}"] = float(difference.mean())
-            # The spread of the paired difference, not of the metric: it is what decides
-            # whether an effect survives changing the split.
-            row[f"delta_{metric}_spread"] = float(difference.std())
-            if metric == "test_auc":
-                row["better_on_splits"] = int((difference > 0).sum())
-        summary[arm] = row
-    return {"splits": len(SPLIT_SEEDS), "reference": reference, "arms": summary}
+    return _summarise(measured, reference)
 
 
 def additions_study(X: pd.DataFrame, y: pd.Series) -> dict:
@@ -396,6 +381,158 @@ def retuning_study(X: pd.DataFrame, y: pd.Series, seed: int = SEED) -> dict:
     }
 
 
+def segmentation_study(X: pd.DataFrame, y: pd.Series) -> dict:
+    """Is the behavioural segmentation worth modelling on, or only describing with?
+
+    Segmented scorecards are standard in credit: fit one model per behavioural archetype
+    instead of one model for everyone. The expectation here is that it loses, because
+    boosted trees already partition the space internally and splitting 21,000 training
+    rows three ways leaves the smallest segment with a few thousand. Worth measuring
+    rather than asserting, since the segments exist either way.
+
+    The segmenter is refitted on each split's training rows, never on validation or test.
+    """
+    from sklearn.cluster import KMeans
+    from sklearn.impute import SimpleImputer
+    from sklearn.preprocessing import StandardScaler
+
+    from app.ml.segmentation import prepare
+
+    # k = 3, the silhouette winner recorded in segments.json. Fixed rather than re-chosen
+    # per split, so every split's arms describe the same segmentation.
+    segments = 3
+
+    print("  segmentation study", flush=True)
+    served = [column for column in X.columns
+              if column not in ADDITIONS and column not in PROTECTED]
+    rows = {"global": [], "global + segment": [], "per-segment models": []}
+
+    for split_seed in SPLIT_SEEDS:
+        index = split_indices(X.index, y, split_seed)
+        prepared = prepare(X[served])
+        imputer = SimpleImputer(strategy="median").fit(prepared.loc[index["train"]])
+        scaler = StandardScaler().fit(imputer.transform(prepared.loc[index["train"]]))
+        kmeans = KMeans(n_clusters=segments, n_init=10, random_state=SEED).fit(
+            scaler.transform(imputer.transform(prepared.loc[index["train"]])))
+        segment = pd.Series(
+            kmeans.predict(scaler.transform(imputer.transform(prepared))),
+            index=X.index, name="segment")
+
+        rows["global"].append(evaluate_arm(X, y, index, served))
+
+        with_segment = X.assign(segment=segment)
+        rows["global + segment"].append(
+            evaluate_arm(with_segment, y, index, served + ["segment"]))
+
+        rows["per-segment models"].append(
+            _per_segment_arm(X, y, index, served, segment))
+        for arm in rows:
+            print(f"    seed {split_seed} {arm:<22} auc {rows[arm][-1]['test_auc']:.4f}",
+                  flush=True)
+
+    return _summarise(rows, "global")
+
+
+def _per_segment_arm(X, y, index, columns, segment) -> dict:
+    """One model per segment, each scoring only the customers assigned to it."""
+
+    def scores_for(fit_index, score_index):
+        out = pd.Series(np.nan, index=score_index)
+        for label in sorted(segment.unique()):
+            fit_rows = fit_index[segment.loc[fit_index] == label]
+            score_rows = score_index[segment.loc[score_index] == label]
+            if len(score_rows) == 0:
+                continue
+            predictions = np.mean([
+                LGBMClassifier(**HYPERPARAMETERS, n_jobs=-1, random_state=seed, verbose=-1)
+                .fit(X.loc[fit_rows, columns], y.loc[fit_rows])
+                .predict_proba(X.loc[score_rows, columns])[:, 1] for seed in SEEDS], axis=0)
+            out.loc[score_rows] = predictions
+        return out.to_numpy()
+
+    validation_scores = scores_for(index["train"], index["validation"])
+    grid = np.unique(np.quantile(validation_scores, np.linspace(0.01, 0.99, 197)))
+    threshold = float(grid[int(np.argmax(
+        [f1_score(y.loc[index["validation"]], validation_scores >= t) for t in grid]))])
+
+    development = index["train"].union(index["validation"])
+    test_scores = scores_for(development, index["test"])
+    y_test = y.loc[index["test"]]
+    flagged = test_scores >= np.quantile(test_scores, 1 - ALERT_RATE)
+    return {
+        "validation_auc": float(roc_auc_score(y.loc[index["validation"]], validation_scores)),
+        "test_auc": float(roc_auc_score(y_test, test_scores)),
+        "test_f1": float(f1_score(y_test, (test_scores >= threshold).astype(int))),
+        "test_recall": float(recall_score(y_test, (test_scores >= threshold).astype(int))),
+        "recall_at_alert_rate": float(recall_score(y_test, flagged)),
+        "threshold": threshold,
+        "features": len(columns),
+    }
+
+
+def selection_study(X: pd.DataFrame, y: pd.Series) -> dict:
+    """Does an automatically selected subset beat using every column?
+
+    Columns are ranked by permutation importance measured on validation, never on test,
+    and the ranking is recomputed inside each split so no selection sees the data it is
+    scored on. The arms walk down that ranking. This is the selection half of the claim
+    that the feature space was searched rather than guessed; the extraction half, a
+    feature bank such as tsfresh, is not done.
+    """
+    from sklearn.inspection import permutation_importance
+
+    print("  selection study", flush=True)
+    candidates = [column for column in X.columns if column not in PROTECTED]
+    sizes = [10, 20, 30, 40, 50, 60]
+    rows = {f"top {size}": [] for size in sizes}
+    rows["all columns"] = []
+    rows["positive importance only"] = []
+    rankings = []
+
+    for split_seed in SPLIT_SEEDS:
+        index = split_indices(X.index, y, split_seed)
+        ranker = LGBMClassifier(**HYPERPARAMETERS, n_jobs=-1, random_state=SEED, verbose=-1)
+        ranker.fit(X.loc[index["train"], candidates], y.loc[index["train"]])
+        importance = permutation_importance(
+            ranker, X.loc[index["validation"], candidates], y.loc[index["validation"]],
+            scoring="roc_auc", n_repeats=3, random_state=SEED)
+        ranked = pd.Series(importance.importances_mean, index=candidates).sort_values(
+            ascending=False)
+        rankings.append({"split_seed": split_seed,
+                         "order": ranked.index.tolist(),
+                         "importance": [float(v) for v in ranked.to_numpy()]})
+
+        arms = {f"top {size}": ranked.index[:size].tolist() for size in sizes}
+        arms["all columns"] = candidates
+        arms["positive importance only"] = ranked[ranked > 0].index.tolist() or candidates
+        for arm, columns in arms.items():
+            rows[arm].append(evaluate_arm(X, y, index, columns))
+            print(f"    seed {split_seed} {arm:<26} {len(columns):>3} cols "
+                  f"auc {rows[arm][-1]['test_auc']:.4f}", flush=True)
+
+    summary = _summarise(rows, "all columns")
+    summary["rankings"] = rankings
+    return summary
+
+
+def _summarise(rows: dict, reference: str) -> dict:
+    """Paired differences against the reference arm, shared by the studies above."""
+    metrics = ["test_auc", "test_f1", "recall_at_alert_rate"]
+    summary = {}
+    for arm, runs in rows.items():
+        row = {metric: float(np.mean([run[metric] for run in runs])) for metric in metrics}
+        row["features"] = float(np.mean([run["features"] for run in runs]))
+        for metric in metrics:
+            difference = np.array([run[metric] for run in runs]) - np.array(
+                [run[metric] for run in rows[reference]])
+            row[f"delta_{metric}"] = float(difference.mean())
+            row[f"delta_{metric}_spread"] = float(difference.std())
+            if metric == "test_auc":
+                row["better_on_splits"] = int((difference > 0).sum())
+        summary[arm] = row
+    return {"splits": len(SPLIT_SEEDS), "reference": reference, "arms": summary}
+
+
 def main() -> dict:
     X, y = build_frame()
     print(f"{X.shape[1]} columns: {X.shape[1] - len(ADDITIONS) - len(PROTECTED)} served, "
@@ -414,7 +551,8 @@ def main() -> dict:
     # Written after each study rather than at the end: the whole run takes the better part
     # of an hour, and a partial artifact is more useful than none.
     for name, study in [("additions", additions_study), ("demographics", demographics_study),
-                        ("retuning", retuning_study)]:
+                        ("retuning", retuning_study), ("segmentation", segmentation_study),
+                        ("selection", selection_study)]:
         results["studies"][name] = study(X, y)
         with open(out, "w", encoding="utf-8") as handle:
             json.dump(results, handle, indent=1)
