@@ -40,64 +40,66 @@ recover. Half of all defaults come from customers who currently look healthy.
 
 **Accuracy is never a headline.** Predicting that nobody defaults scores 77.9% on this data.
 
-## 2. Protected attributes buy a small, consistent gain  [script]
+## 2. Protected attributes buy a small, consistent gain  [artifact]
 
-The one lever measured to beat the baseline on every split. Full deployed pipeline, five
-independent split seeds, paired by split.
+Full deployed pipeline, five independent split seeds, paired by split. Regenerable with
+`python -m app.ml.feature_experiments`.
 
-| Arm | Test AUC | Test F1 | Recall @20% | AUC delta |
-|---|---|---|---|---|
-| Blind (deployed) | 0.7870 | 0.5447 | 0.5169 | — |
-| + AGE | 0.7876 | 0.5452 | 0.5177 | +0.0005, better on 5/5 |
-| + all four | 0.7885 | 0.5476 | 0.5193 | +0.0014 (sd 0.0008), 5/5 |
-
-Logistic regression behaves the same way: +0.0020 AUC on 5/5 splits. F1 gains +0.0029 and
-recall at a 20% alert rate +0.0024.
+| Arm | Test AUC | AUC delta | Better on | Test F1 | Recall @20% |
+|---|---|---|---|---|---|
+| Blind (deployed) | 0.7870 | — | — | 0.5451 | 0.5159 |
+| + AGE | 0.7875 | +0.0004 | 4/5 | 0.5454 | 0.5185 |
+| + EDUCATION | 0.7873 | +0.0002 | 4/5 | 0.5455 | 0.5159 |
+| + SEX | 0.7873 | +0.0003 | 4/5 | 0.5438 | 0.5157 |
+| + all four | 0.7882 | **+0.0012** (spread 0.0006) | **5/5** | 0.5463 | 0.5187 |
 
 **For the report:** the project's earlier figure of 0.0007 came from a single split and
-understates it. The defensible claim is that **fairness through unawareness costs about 0.0014
-AUC** — a real effect, roughly twice the ensemble's own seed spread, and immaterial against the
-0.78 ceiling. Say it costs something and is still worth paying, rather than claiming it is
-free: using sex or marital status in a credit decision is prohibited and age is restricted, so
-the gain cannot be spent at any size.
+understates it. The defensible claim is that **fairness through unawareness costs about 0.0012
+AUC**, consistent in sign on every split, plus 0.0011 F1 and 0.0028 recall at a 20% alert rate.
+Say it costs something and is still worth paying, rather than claiming it is free: using sex or
+marital status in a credit decision is prohibited and age is restricted, so the gain cannot be
+spent at any size. Age contributes most of it, which is the one of the four with any
+behavioural reading.
 
-## 3. Engineered features do not move the model  [notebook] [script]
+## 3. The extra features give a small, consistent gain  [artifact] [notebook]
 
-Twenty-four columns in twelve groups were engineered beside the 46 served features and tested
-on training rows only (notebook 01, sections 3 and 4).
+Twenty-four columns in twelve groups engineered beside the 46 served features (notebook 01,
+section 3) and tested by `app.ml.feature_experiments`.
 
-**Individually several are strong.** Univariate AUC: `delinquency_run_current` 0.698,
-`pay_status_volatility` 0.659, `status_entropy` 0.633, `status_changes` 0.625, against 0.731 for
-the served `pay_months_late`. The open delinquency run separates a 13.7% default rate at zero
-months from 69.8% at six.
+**Individually several are strong.** Univariate AUC on training rows: `delinquency_run_current`
+0.698, `pay_status_volatility` 0.659, `status_entropy` 0.633, `status_changes` 0.625, against
+0.731 for the served `pay_months_late`. The open delinquency run separates a 13.7% default rate
+at zero months from 69.8% at six.
 
-**None of it pays.** Validation AUC, deployed hyperparameters, three seeds:
+**In the model, paired across five splits through the full pipeline:**
 
-| Arm | Validation AUC | Delta |
-|---|---|---|
-| Served only (46) | 0.7831 | — |
-| + predictability | 0.7834 | +0.0004 |
-| + recent vs historical | 0.7834 | +0.0003 |
-| + roll-rate transitions | 0.7833 | +0.0003 |
-| + every addition (24) | 0.7816 | −0.0015 |
+| Arm | Test AUC | AUC delta | Better on | Test F1 delta | Recall @20% delta |
+|---|---|---|---|---|---|
+| Served only (46) | 0.7870 | — | — | — | — |
+| + inferred spending | 0.7873 | +0.0003 | 5/5 | +0.0013 | +0.0006 |
+| + utilisation slope | 0.7873 | +0.0003 | 4/5 | +0.0008 | +0.0004 |
+| + roll-rate transitions | 0.7869 | −0.0001 | 1/5 | +0.0034 | −0.0006 |
+| + limit pressure | 0.7870 | −0.0000 | 1/5 | +0.0033 | +0.0002 |
+| **+ every addition (70)** | **0.7876** | **+0.0006** (spread 0.0002) | **5/5** | **+0.0026** | **+0.0012** |
 
-Seed spread is 0.0003, so nothing clears noise, and adding everything at once is actively
-worse. A five-split repeat through the full deployed pipeline reached the same conclusion on
-AUC, F1 and recall at a 20% alert rate. Permutation importance inside the combined model puts
-every addition below `util_2`.
+**A measurement lesson worth reporting.** The same comparison on a single validation split,
+with the model fitted on train only, gave −0.0015 for the full set and supported the opposite
+conclusion. The paired five-split version of the deployed pipeline — refit on train plus
+validation, threshold from validation, then test — gives +0.0006 on 5 of 5 splits with a paired
+spread of 0.0002. The effect is roughly three times that spread and a 5/5 sign run is p ≈ 0.03,
+so it is small but not noise. A single split could not resolve it in either direction.
 
 **Distinctness was necessary and not sufficient.** Four variants were dropped before testing
 for restating a served feature: a longest-arrears run (0.998 rank correlation with
 `pay_months_late`), an absolute utilisation slope (0.96 with `util_trend`), a utilisation shift
 (0.91), and the payment-to-bill ratio, which `repay_ratio_*` already computes by the same
-formula. What remains is independent — the closest is `months_cleared_bill` at 0.85,
-`payment_shift_ratio` at 0.30 — and still adds nothing. A feature can be unlike anything
-present and carry no information the model lacks.
+formula. What remains is independent, the closest being `months_cleared_bill` at 0.85.
 
-**For the report:** this is the strongest evidence that the dataset rather than the model is the
-binding constraint, because it rules out
-the most common reviewer suggestion ("engineer better features") with a measurement rather than
-an assertion.
+**For the report:** the extra features are worth about +0.0006 AUC and +0.0026 F1 — real,
+consistent, and far smaller than the effort that produced them. Whether to promote them into
+`feature_engineering.py` is a judgement call rather than an obvious win, and the two groups
+carrying most of it are the best motivated: inferred spending from the balance identity, and
+the six-month utilisation slope.
 
 ## 4. What each modelling choice is worth  [artifact]
 
@@ -109,14 +111,15 @@ an assertion.
 | Ensembling | single tuned LightGBM 0.7831 beats soft voting (0.7803–0.7820), stacking (0.7824), hard voting (0.6455) |
 | Model families | GradientBoosting 0.7807, ExtraTrees 0.7734, HistGradientBoosting 0.7724, AdaBoost 0.7704, KNN 0.7691, linear SVM 0.7531 |
 | Neural networks, 6 architectures | best 0.7798 (PyTorch, four layers); sklearn MLPs 0.7677–0.7747 |
-| Feature engineering, 24 columns | no gain (section 3 above) |
+| Feature engineering, 24 columns | +0.0006 AUC, consistent on 5/5 splits (section 3) |
 
-**Re-tuning does not rescue the added features.** The objection that they were judged under
-hyperparameters searched for the old 46-feature set was tested directly: 40 random
-configurations re-tuned by 3-fold CV on the expanded set. The deployed configuration scores
-0.7913 CV and the best random one also 0.7913, with 0.7911 and 0.7909 next. A greedy forward
-selection over the twelve feature groups kept exactly one, `predictability`, at +0.0004, and
-stopped. **[script]**
+**Re-tuning does not change the picture.** The objection that the extra features were judged
+under hyperparameters searched for the old 46-feature set was tested directly: 40 random
+configurations re-tuned by 3-fold CV on the expanded set. In a first run the deployed
+configuration scored 0.7913 CV and the best random one also 0.7913, with 0.7911 and 0.7909
+next. A greedy forward selection over the twelve feature groups kept exactly one,
+`predictability`, at +0.0004 on validation, and stopped. The version inside
+`feature_experiments.py` is re-running to make these figures regenerable. **[script]**
 
 **On Tomek links**, the best of the resampling arms. A Tomek link is a pair of nearest
 neighbours from opposite classes, which can only sit on the class boundary; the method deletes
