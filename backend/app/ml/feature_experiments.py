@@ -1,28 +1,26 @@
-"""Can anything beat 0.7831? The studies behind the ceiling claim.
+"""Feature-side comparison studies: which inputs are worth including.
 
-`experiments.py` asks whether a different model wins. These ask whether anything *else*
-does: more features, the protected attributes, or a configuration tuned for the larger
-feature set. Each is evidence for a claim in `docs/REPORT_FINDINGS.md`, and none of them
-is a candidate for deployment — `train.py` still builds the served model.
-
-Three studies:
+`experiments.py` compares models on a fixed feature set. These compare feature sets on a
+fixed model, plus the tuning that goes with them. None is a candidate for deployment;
+`train.py` still builds the served model.
 
 | Study | Question |
 | --- | --- |
-| `additions` | Do the engineered features in notebook 01 move the final output? |
+| `additions` | Do the extra features engineered in notebook 01 improve the final output? |
 | `demographics` | What does excluding the protected attributes cost? |
-| `retuning` | Were the additions judged under hyperparameters chosen without them? |
+| `retuning` | Does a configuration tuned on the larger feature set change the answer? |
 
-**Everything is paired across five independent split seeds.** A single validation split
-cannot resolve differences of 0.001 when its own noise is several times that, which is how
-the earlier single-split figures (0.0007 for unawareness, +0.0008 for a blend) came out
-misleading. The paired design measures the difference on the same splits, and the spread of
-that difference is what decides whether an effect is real.
+**Everything is paired across five independent split seeds.** A single split cannot resolve
+differences of 0.001 when its own noise is several times that, which is how two earlier
+single-split figures came out misleading: 0.0007 for unawareness, and a +0.0008 blend gain
+that reversed to -0.0014 once tested on data that had not chosen its weight. The paired
+design measures each difference on the same splits, and the spread of that difference is
+what decides whether an effect is real.
 
 Each arm runs the deployed pipeline end to end: the three-seed ensemble on train, the
 F1-optimal threshold from validation, a refit on train plus validation, then test.
 
-Run `python -m app.ml.ceiling` to regenerate `ceiling_studies.json`.
+Run `python -m app.ml.feature_experiments` to regenerate `feature_experiments.json`.
 """
 import json
 import time
@@ -84,7 +82,7 @@ def artifacts_dir() -> Path:
 
 
 def engineer_additions(df: pd.DataFrame) -> pd.DataFrame:
-    """The candidate columns from notebook 01, section 3.
+    """The extra columns defined in notebook 01, section 3.
 
     Kept here rather than in `feature_engineering.py` because they are not served. The
     notebook computes them inline and asserts this function agrees, so the two cannot
@@ -271,7 +269,7 @@ def paired_study(X: pd.DataFrame, y: pd.Series, arms: dict, reference: str) -> d
 
 
 def additions_study(X: pd.DataFrame, y: pd.Series) -> dict:
-    """Do the engineered additions move the final output? One arm per concept group."""
+    """Do the extra features improve the final output? One arm per feature group."""
     served = [column for column in X.columns
               if column not in ADDITIONS and column not in PROTECTED]
     arms = {"served only": served}
@@ -284,7 +282,11 @@ def additions_study(X: pd.DataFrame, y: pd.Series) -> dict:
 
 def demographics_study(X: pd.DataFrame, y: pd.Series) -> dict:
     """What does fairness through unawareness cost? Protected attributes are inputs here
-    and nowhere else in the project; this measures the price of leaving them out."""
+    and nowhere else in the project; this measures the price of leaving them out.
+
+    A gain here is not a reason to include them: sex and marital status are prohibited
+    inputs to a credit decision and age is restricted. The number tells the report what
+    compliance costs, not what to deploy."""
     served = [column for column in X.columns
               if column not in ADDITIONS and column not in PROTECTED]
     arms = {
@@ -407,7 +409,7 @@ def main() -> dict:
         "minimum_share_assumed": MINIMUM_SHARE,
         "studies": {},
     }
-    out = artifacts_dir() / "ceiling_studies.json"
+    out = artifacts_dir() / "feature_experiments.json"
 
     # Written after each study rather than at the end: the whole run takes the better part
     # of an hour, and a partial artifact is more useful than none.

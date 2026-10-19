@@ -94,11 +94,12 @@ formula. What remains is independent — the closest is `months_cleared_bill` at
 `payment_shift_ratio` at 0.30 — and still adds nothing. A feature can be unlike anything
 present and carry no information the model lacks.
 
-**For the report:** this is the strongest single piece of ceiling evidence, because it rules out
+**For the report:** this is the strongest evidence that the dataset rather than the model is the
+binding constraint, because it rules out
 the most common reviewer suggestion ("engineer better features") with a measurement rather than
 an assertion.
 
-## 4. The 0.78 ceiling  [artifact]
+## 4. What each modelling choice is worth  [artifact]
 
 | Evidence | Result |
 |---|---|
@@ -219,7 +220,7 @@ early stopped on validation AUC.
 
 Rank correlation between the GRU's scores and the booster's: **0.917**.
 
-**For the report:** this is the cleanest statement of the ceiling in the project. A network given
+**For the report:** this is the clearest evidence that the dataset is the binding constraint. A network given
 no feature engineering at all — only the raw months and the limit — lands 0.008 behind a tuned
 booster on 46 engineered features, and ranks customers almost identically to it. The conclusion
 is not that the engineered features are bad but that the information in those eighteen numbers
