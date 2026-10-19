@@ -227,12 +227,22 @@ is already extracted, and two very different model classes converge on the same 
 also corroborates Gunnarsson et al. (2021) on deep learning for credit scoring, and Grinsztajn
 et al. (2022) on tree models still leading on tabular data.
 
-**The blend is the one lever still open.** +0.0008 on validation, across a plateau (weights 0.20
-to 0.35 all give 0.7839) rather than a single spike, which argues against it being pure noise.
-But the weight was chosen on the split it was scored on, so the figure is biased upward; a test
-evaluation with the weight fixed at 0.30 is running. One test split carries about ±0.005 of noise
-on AUC by itself, which is larger than the effect, so a five-split paired repeat would be needed
-before this becomes a claim.
+**The blend does not survive an honest test.** On validation it gained +0.0008 across a plateau
+(weights 0.20 to 0.35 all giving 0.7839) rather than a single spike, which looked like a small
+real effect. With the weight then fixed at 0.30 and applied to the test split, both arms fitted
+on train only:
+
+| Arm | Test AUC |
+|---|---|
+| Booster alone | 0.7824 |
+| GRU alone | 0.7685 |
+| Blend at 0.30 | 0.7810 (−0.0014) |
+
+**For the report:** this is a clean demonstration of selection bias worth a paragraph of its
+own. Choosing the best of fourteen blend weights on validation produced a gain that reversed
+sign on data that had not chosen it, and the plateau — which I had read as evidence against
+noise — did not save it. Every tuning decision in the project is exposed to this, which is why
+the test split is evaluated once and why operating points are chosen on validation.
 
 **Caveats to state rather than hide:** one split, one architecture, no hyperparameter search for
 the network, and an input encoding chosen by hand. The measured claim is about this GRU, not
