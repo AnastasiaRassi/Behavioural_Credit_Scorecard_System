@@ -1,4 +1,4 @@
-# Credit Risk Modelling System
+# Behavioural Credit Scorecard System
 
 An explainable, fair credit-risk assessment platform. The system scores a credit-card
 customer's risk of missing their next payment, explains each score in plain language, audits
