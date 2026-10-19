@@ -61,6 +61,9 @@ psycopg[binary]==3.3.6
 # Local explanation surrogate, compared against native tree SHAP
 lime==0.2.0.1
 
+# Bias mitigation: constrained training and post-processing
+fairlearn==0.15.0
+
 # Neural network baseline for the model comparison study. CPU build:
 #   pip install torch --index-url https://download.pytorch.org/whl/cpu
 torch==2.14.1
