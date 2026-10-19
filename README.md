@@ -220,7 +220,8 @@ They are kept as analysis and **not** promoted into the served feature set. Dist
 necessary but not sufficient: a feature can be unlike anything present and still carry no
 information the model lacks.
 
-**Model comparison studies** (`04_model_comparison.ipynb`). Four questions, all scored on
+**Additional studies** (`04_additional_studies.ipynb`). Checks that feed no decision, where
+notebook 02 holds the choices that build the served model. Sections 1 to 4 are scored on
 validation so the test split stays reserved. Class balancing: seven strategies, none beat the
 0.7829 baseline by more than noise (Tomek links 0.7833 is the best of them) and all degraded
 calibration, with SMOTE at 0.7799 and ADASYN at 0.7777 the weakest. Ensembling: a single tuned
@@ -228,7 +229,8 @@ LightGBM at 0.7831 beat soft voting (0.7803 to 0.7820), stacking (0.7824) and ha
 (0.6455). Model families: sklearn GradientBoosting 0.7807, ExtraTrees 0.7734,
 HistGradientBoosting 0.7724, AdaBoost 0.7704, KNN 0.7691, linear SVM 0.7531. Deep learning: six
 architectures, best 0.7798 from a four-layer PyTorch network, with sklearn MLPs between 0.7677
-and 0.7747. Nothing beat the deployed configuration.
+and 0.7747. Nothing beat the deployed configuration. Sections 5 and 6 add the sequence models
+and the feature-side studies, both paired across five independent splits.
 
 **Behavioural segmentation** (`03_unsupervised_modelling.ipynb`). K-means on an interpretable
 subset of the engineered features, k = 3 chosen by silhouette (0.284). The archetypes are the
@@ -282,7 +284,7 @@ credit_risk_system/
 │   ├── 01_data_preparation.ipynb       # Cleaning, feature engineering, splits, candidate features
 │   ├── 02_supervised_modelling.ipynb   # Model comparison, tuning, threshold, fairness, importance
 │   ├── 03_unsupervised_modelling.ipynb # Segmentation and clustering comparison
-│   ├── 04_model_comparison.ipynb       # Resampling, ensembling, families, neural nets
+│   ├── 04_additional_studies.ipynb     # Resampling, ensembles, families, nets, sequences, features
 │   └── 05_predictive_multiplicity.ipynb
 ├── backend/
 │   ├── app/
@@ -295,6 +297,8 @@ credit_risk_system/
 │   │   │   ├── calibration.py          # Why nothing is fitted on top of the model
 │   │   │   ├── segmentation.py         # Behavioural segments
 │   │   │   ├── multiplicity.py         # Predictive multiplicity study
+│   │   │   ├── feature_experiments.py  # Which inputs are worth including
+│   │   │   ├── sequence_models.py      # Reading the months in order
 │   │   │   ├── mitigation.py           # Five bias-mitigation methods
 │   │   │   ├── experiments.py          # Comparison studies
 │   │   │   ├── fairness_audit.py       # Audit (computed in train.py)
