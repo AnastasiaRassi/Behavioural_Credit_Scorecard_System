@@ -14,20 +14,43 @@ Final Year Project (TM471), Arab Open University Lebanon.
 Three objectives, plus fairness. Everything in this repository serves one of them.
 
 1. **Train accurate credit-risk models.** Done.
-2. **Explain decisions globally and per applicant.** Tree SHAP is in production; LIME and an
-   occlusion method are implemented for comparison but not yet run as a study.
+2. **Explain decisions globally and per applicant.** Tree SHAP is in production; occlusion is
+   implemented and used across six models in the multiplicity study; LIME is implemented but
+   its stability comparison has not been run.
 3. **Measure and mitigate bias**, across sex, age, education and marital status. Measurement
    is done and audited on every training run; five mitigation methods are implemented and not
    yet run.
 
-Supporting these: behavioural segmentation, used to test whether explanations stay consistent
-for similar customers, and a predictive-multiplicity study on whether equally accurate models
-agree about individuals.
+Supporting these: behavioural segmentation, used to test whether the risk model and its
+explanations hold up inside each behavioural archetype rather than only on average.
 
-**Research angle:** compare explanation methods for consistency. Tree SHAP is exact and
-deterministic; LIME samples randomly and can return a different explanation for the same
-customer on repeated runs. That difference is measurable, and it matters for any system
-claiming to support a right to explanation.
+### Research angle
+
+**How arbitrary is a model-based credit decision, and the reason the customer is given for
+it?** A right to explanation assumes there is *an* explanation. If two models a bank could
+equally defend decline different people and cite different reasons for the people they both
+decline, then "the model said so" is a policy choice dressed as a technical one. The question
+splits in two, and the harder half is answered:
+
+- **Across models, with the explanation method held fixed — done.** Six configurations within
+  0.0088 AUC of each other disagree about 8.5% of customers; 4.3% would have their decision
+  reversed by swapping the deployed model for an equally accurate one. Reasons are worse than
+  decisions: among customers every model flags, *no* customer receives the same top three
+  drivers from all six, and the single top driver is unanimous for only 12.4%. The disagreement
+  is 1.96× concentrated in the Distressed segment, the customers with the most at stake. All
+  six are explained by the same model-agnostic occlusion method on purpose, so model
+  disagreement is not confounded with method disagreement.
+- **Across methods, with the model held fixed — implemented, not run.** Tree SHAP is exact and
+  deterministic; LIME samples randomly and can return a different explanation for the same
+  customer on a second call. `explanation_methods.py` puts all three behind one interface for
+  this comparison.
+
+Three further findings fall out of the modelling work and are reported rather than buried:
+that this dataset has a hard **0.78 ceiling** no amount of method clears, and that published
+figures above it are generally artifacts; that **calibrating a log-loss-trained booster made it
+worse** on every measure, against the usual advice to always calibrate; and that **disparate
+impact is stable across splits while equalized-odds gaps are not**, so per-group error gaps
+cannot support claims about a specific group on a sample this size.
 
 ### Deliberately out of scope
 
@@ -37,7 +60,7 @@ One semester, one person. These were each considered and dropped, with reasons:
 |---|---|
 | Performance decay and drift monitoring over time | The dataset is a single six-month snapshot with no time axis, so it cannot be measured. The drift endpoint computes PSI against the training distribution, which detects input shift but cannot validate outcome decay |
 | Weekly replay and retraining policies | Same reason; depends on the monitoring above |
-| Federated learning | Needs multiple data holders. One bank's data would have to be split into institutions that never existed, making the result an artefact of the simulation |
+| Federated learning | Needs several holders of the *same* features who cannot pool their data. A second dataset does not supply that: Bondora and Home Credit answer a different prediction task with a different schema, so there is no shared model to average. The alternative is splitting one bank's customers into institutions that never existed, which makes the result an artefact of the partition |
 | User study on explanation clarity | Needs ethics approval and participant recruitment. Within-segment explanation coherence tests consistency without human subjects |
 
 Anything not serving an objective above does not get built, however interesting.
@@ -351,9 +374,10 @@ Stated rather than hidden, since each one would otherwise mislead a reader.
   sophistication is worth roughly 0.02. Higher published figures on this dataset are usually
   either accuracy quoted as AUC or SMOTE applied before the split; the second was reproduced
   here and inflated test AUC from 0.780 to 0.924.
-- **Objective 2 is incomplete.** `explanation_methods.py` implements SHAP, LIME and occlusion
-  behind one interface, but the stability comparison that is the research angle has not been
-  run. Counterfactuals are not built.
+- **Objective 2 is incomplete.** The across-models half of the research angle is done; the
+  across-methods half is not. `explanation_methods.py` implements SHAP, LIME and occlusion
+  behind one interface, but run-to-run variance per method, agreement between methods and
+  coherence within a segment have not been measured. Counterfactuals are not built.
 - **Objective 3 has measurement but no reported mitigation.** `mitigation.py` implements
   reweighting, exponentiated gradient, per-group thresholds and fairlearn's threshold
   optimiser, and has not been run, so no mitigation frontier exists yet.
