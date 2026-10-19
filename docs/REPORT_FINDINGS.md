@@ -110,6 +110,28 @@ an assertion.
 | Neural networks, 6 architectures | best 0.7798 (PyTorch, four layers); sklearn MLPs 0.7677–0.7747 |
 | Feature engineering, 24 columns | no gain (section 3 above) |
 
+**Re-tuning does not rescue the added features.** The objection that they were judged under
+hyperparameters searched for the old 46-feature set was tested directly: 40 random
+configurations re-tuned by 3-fold CV on the expanded set. The deployed configuration scores
+0.7913 CV and the best random one also 0.7913, with 0.7911 and 0.7909 next. A greedy forward
+selection over the twelve feature groups kept exactly one, `predictability`, at +0.0004, and
+stopped. **[script]**
+
+**On Tomek links**, the best of the resampling arms. A Tomek link is a pair of nearest
+neighbours from opposite classes, which can only sit on the class boundary; the method deletes
+the majority-class member of each pair. It is boundary cleaning rather than rebalancing —
+nothing is synthesised and the ratio barely moves, 21,000 rows at 22.1% default becoming 19,782
+at 23%. That is why it alone kept its calibration (Brier 0.1357 against the baseline's 0.1351,
+where `class_weight=balanced` reached 0.178). But it bought +0.0004 AUC by deleting exactly the
+ambiguous cases, and lost PR-AUC (0.5540) and best F1 (0.5414) doing it. For a lender that
+trade is backwards: the ambiguous region is where the decisions are.
+
+**Resampling improves only the cutoff-dependent metric, and for the wrong reason.** Balanced
+accuracy rises for every reweighting arm (0.6482 to 0.7157 for `class_weight=balanced`) because
+it is measured at the 0.5 cutoff and resampling inflates the predicted probabilities. The Brier
+column shows the cost. The deployed model obtains the same effect by setting its threshold to
+0.2389 and keeps honest probabilities, which is why threshold tuning is the right lever.
+
 **Higher published figures on this dataset are usually artifacts.** Applying SMOTE *before* the
 split was reproduced here and inflated test AUC to 0.9233. The other common artifact is
 accuracy quoted as if it were AUC — easy to do when the majority class is 77.9%.
@@ -182,6 +204,40 @@ K-means on an interpretable subset, k = 3 by silhouette (0.284).
 Used to report performance and fairness per archetype rather than only in aggregate, and to
 locate where multiplicity concentrates (section 6).
 
+## 9. The engineered features and the raw sequence carry the same information  [script]
+
+Every other model in the project reads flat per-customer statistics. This one reads the monthly
+matrix in order: 6 timesteps by 3 channels (repayment status, utilisation, payment as a share of
+the limit), with the log credit limit as a static input. A GRU, 48 hidden units, three seeds,
+early stopped on validation AUC.
+
+| Model | Validation AUC |
+|---|---|
+| Deployed booster, 46 engineered features | 0.7832 |
+| GRU, raw sequence only, three-seed ensemble | 0.7752 |
+| Rank-scale blend, weight 0.30 chosen on validation | 0.7839 |
+
+Rank correlation between the GRU's scores and the booster's: **0.917**.
+
+**For the report:** this is the cleanest statement of the ceiling in the project. A network given
+no feature engineering at all — only the raw months and the limit — lands 0.008 behind a tuned
+booster on 46 engineered features, and ranks customers almost identically to it. The conclusion
+is not that the engineered features are bad but that the information in those eighteen numbers
+is already extracted, and two very different model classes converge on the same ordering. It
+also corroborates Gunnarsson et al. (2021) on deep learning for credit scoring, and Grinsztajn
+et al. (2022) on tree models still leading on tabular data.
+
+**The blend is the one lever still open.** +0.0008 on validation, across a plateau (weights 0.20
+to 0.35 all give 0.7839) rather than a single spike, which argues against it being pure noise.
+But the weight was chosen on the split it was scored on, so the figure is biased upward; a test
+evaluation with the weight fixed at 0.30 is running. One test split carries about ±0.005 of noise
+on AUC by itself, which is larger than the effect, so a five-split paired repeat would be needed
+before this becomes a claim.
+
+**Caveats to state rather than hide:** one split, one architecture, no hyperparameter search for
+the network, and an input encoding chosen by hand. The measured claim is about this GRU, not
+about sequence models in general.
+
 ## Open items
 
 - **Two columns now breach the distinctness rule.** The latest run puts `spend_to_payment` at
@@ -191,11 +247,12 @@ locate where multiplicity concentrates (section 6).
 - **Three [script] findings are not reproducible from the repository**: the demographics
   comparison (section 2), the five-split repeats (sections 2 and 3). They belong in
   `experiments.py` as a study writing to `experiment_results.json`, per CODE_CONVENTIONS §16.
-- **Running:** greedy group selection plus hyperparameter re-tuning on the expanded feature set,
-  to test whether the added features were judged under a configuration chosen without them.
-- **Untested:** a sequence model (GRU or 1D-CNN) over the raw 6×3 monthly matrix, stacked with
-  the booster. Nothing has read these months as a sequence; every model so far saw flat
-  summaries. Also untested: a systematic feature bank (`tsfresh`, `catch22`) with selection
-  inside cross-validation, which would replace hand-picked features with a searched space.
+- **Running:** the test evaluation of the sequence blend, weight fixed at 0.30 (section 9).
+- **Untested:** a systematic feature bank (`tsfresh`, `catch22`) with selection inside
+  cross-validation, which would replace hand-picked features with a searched space. Neither
+  package is installed yet. Also untested on the network side: an input encoding that treats
+  `PAY_n` as categorical rather than scaled, attention over the six months, a hyperparameter
+  search for the network, and feeding the learned representation into the booster as features
+  rather than blending the two sets of probabilities.
 - **The minimum-payment constant is an assumption.** `MINIMUM_SHARE = 0.10` in notebook 01 needs
   checking against the 2005 Taiwanese regulation before any figure derived from it is published.
