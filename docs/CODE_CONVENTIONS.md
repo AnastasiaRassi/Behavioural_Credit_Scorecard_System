@@ -26,20 +26,36 @@ backend/app/
 │   ├── admin.py                 # metrics, sweeps, importance, versions
 │   └── monitoring.py            # drift and production performance
 ├── db/
-│   ├── models.py                # user_account, model_version, prediction,
-│   │                            #   decision, observed_outcome
+│   ├── models/                  # the schema, one module per concern
+│   │   ├── accounts.py          #   user_account: who can sign in
+│   │   ├── customers.py         #   customer, monthly_statement, credit_outcome
+│   │   ├── scoring.py           #   model_version, prediction
+│   │   ├── decisions.py         #   decision, observed_outcome
+│   │   └── base.py              #   declarative base and shared defaults
 │   ├── database.py              # engine, session_scope(), create_all()
-│   └── seed.py                  # demo staff and the live model version
+│   ├── ingest.py                # load_taiwan(): the dataset into the tables
+│   ├── statements.py            # the stored months pivoted back to a wide frame
+│   ├── customer_registry.py     # a customer from submitted columns; account links
+│   ├── queue_ids.py             # worklist row id <-> source customer id
+│   └── seed.py                  # demo accounts and the live model version
 ├── schemas/                     # pydantic request and response shapes
 ├── core/config.py               # DATABASE_URL, read once from .env
+├── core/passwords.py            # scrypt hashing; the only plaintext handler
 ├── main.py                      # the FastAPI app and /health
 └── artifacts/                   # generated, gitignored
 ```
 
-There is no `auth.py` and no `security.py`. The system has roles but no
-authentication: the officer email on a request says who acted, not that they are who
-they claim. A real deployment puts an identity provider in front of the API, and
-saying so is more honest than a login form that checks nothing.
+`user_account` holds credentials, but storing a hash is not a login. How a request
+proves who is making it is a separate concern from this schema; what the schema
+guarantees is that `password_hash` is never readable. `core/passwords.py` hashes
+with stdlib scrypt and nothing else touches a plaintext password, and the seed
+stores a random one per account rather than a shared demo credential.
+
+**Rule: a `user_account` is a login, a `customer` is a scoring subject.** They are
+separate tables joined by a nullable, unique FK, set only when a cardholder
+registers. Staff never get a customer row, and the 30,000 dataset entities never
+get an account. Keying a prediction on an account would have forced a
+credential-bearing row into existence for every customer ever scored.
 
 **Rule: `ml/` holds logic, `api/` holds only routing.** An endpoint should import from
 `ml/` and translate between HTTP and Python. No scoring maths in a route handler.

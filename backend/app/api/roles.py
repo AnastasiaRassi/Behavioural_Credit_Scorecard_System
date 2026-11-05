@@ -9,7 +9,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_session
-from app.db.models import ROLES, User
+from app.db.models import ROLES, UserAccount
 from app.schemas.worklist import RoleOut
 
 router = APIRouter(tags=["roles"])
@@ -48,7 +48,9 @@ def read_roles(session: Session = Depends(get_session)):
     """
     counts = {role: 0 for role in ROLES}
     for role, total in (
-        session.query(User.role, func.count(User.id)).group_by(User.role).all()
+        session.query(UserAccount.role, func.count(UserAccount.id))
+        .group_by(UserAccount.role)
+        .all()
     ):
         counts[role] = total
 
@@ -64,6 +66,18 @@ def read_roles(session: Session = Depends(get_session)):
     ]
 
 
+def _listed(user: UserAccount) -> dict:
+    """A user as a picker needs them, plus which customer a cardholder is."""
+    # An account id is not a customer id, so a screen that has only picked a
+    # cardholder still cannot address their account. None for staff, who are not
+    # customers at all.
+    registered_as = user.customer
+    return {
+        **user.to_dict(),
+        "customer_id": registered_as.customer_id if registered_as else None,
+    }
+
+
 @router.get("/users")
 def read_users(
     role: str | None = Query(default=None),
@@ -75,19 +89,15 @@ def read_users(
     to a customer, and listing every scored person would be a directory of
     people at risk.
     """
-    query = session.query(User)
+    query = session.query(UserAccount)
     if role:
         query = query.filter_by(role=role)
     else:
-        query = query.filter(User.role != "cardholder")
+        query = query.filter(UserAccount.role != "cardholder")
 
     return [
-        {
-            "id": str(user.id),
-            "display_name": user.display_name,
-            "full_name": user.full_name,
-            "email": user.email,
-            "role": user.role,
-        }
-        for user in query.order_by(User.role, User.display_name).all()
+        _listed(user)
+        for user in query.order_by(
+            UserAccount.role, UserAccount.display_name
+        ).all()
     ]

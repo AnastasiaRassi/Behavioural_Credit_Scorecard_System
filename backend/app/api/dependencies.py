@@ -11,7 +11,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.db.database import _session_factory
-from app.db.models import ModelVersion, Prediction, User
+from app.db.models import ModelVersion, Prediction, UserAccount
 from app.ml.explainability import Explainer
 from app.ml.scorer import ArtifactsMissing, CreditScorer
 
@@ -80,8 +80,8 @@ def prediction_or_404(session: Session, prediction_id: str) -> Prediction:
     return prediction
 
 
-def user_by_email(session: Session, email: str, expected_role: str) -> User:
-    user = session.query(User).filter_by(email=email).one_or_none()
+def user_by_email(session: Session, email: str, expected_role: str) -> UserAccount:
+    user = session.query(UserAccount).filter_by(email=email).one_or_none()
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=f"Unknown user {email}"

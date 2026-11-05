@@ -305,7 +305,7 @@ credit_risk_system/
 │   │   │   ├── drift.py                # Population stability index
 │   │   │   └── worklist.py             # Officer queue, reduced per role
 │   │   ├── api/                        # Routing only, no scoring maths
-│   │   ├── db/                         # SQLAlchemy models, session, seed
+│   │   ├── db/                         # Schema in models/, ingestion, session, seed
 │   │   ├── schemas/                    # Pydantic request and response shapes
 │   │   └── main.py                     # The FastAPI app and /health
 │   ├── artifacts/                      # Generated, gitignored
@@ -344,6 +344,27 @@ python -m app.ml.experiments            # experiment_results.json
 python -m app.ml.segmentation           # segments.json, segmenter.joblib
 python -m app.ml.clustering_comparison  # clustering_comparison.json
 python -m app.ml.multiplicity           # multiplicity.json
+```
+
+Then load the database. `DATABASE_URL` goes in `.env`, which is gitignored, so no
+credential reaches the repo. Ingestion reads the original `.xls`, because the cached CSV
+drops the dataset's `ID` column and `customer` is keyed on it:
+
+```bash
+cd backend
+python -m app.db.ingest   # customer, monthly_statement, credit_outcome
+python -m app.db.seed     # demo accounts and the live model version
+```
+
+Both are idempotent, so rerunning them after a retrain is safe. A database built before
+accounts and customers were separated cannot be migrated — a prediction's subject moved
+from an account to a customer, and the old rows never stored a customer id. It holds demo
+output only, so rebuild it:
+
+```bash
+cd backend
+python -c "from app.db.database import drop_all; drop_all()"
+python -m app.db.ingest && python -m app.db.seed
 ```
 
 Run the API, then the dashboard:

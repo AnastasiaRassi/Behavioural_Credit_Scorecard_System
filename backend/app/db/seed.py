@@ -1,25 +1,32 @@
 """Seed the demo accounts and register the model that artifacts/ currently holds.
 
-Run from the backend/ directory:
+Run from the backend/ directory, after ingestion:
 
+    python -m app.db.ingest
     python -m app.db.seed
 
 Idempotent: rerunning changes nothing, so it is safe after every retrain. The
 model version is read from scoring_config.json rather than typed here, so the
 registered version can never claim to be a model the artifacts do not contain.
 
-Seeds people and the model only. Predictions are written by the API when a
-customer is actually scored.
+Seeds accounts and the model only. Customers come from the dataset via
+db/ingest.py, and predictions are written by the API when someone is scored.
 """
+import json
+import os
 from datetime import datetime, time, timezone
+from secrets import token_urlsafe
 
+from sqlalchemy.orm import Session
+
+from app.core.passwords import hash_password
+from app.db.customer_registry import link_account
 from app.db.database import create_all, session_scope
-from app.db.models import ModelVersion, User
+from app.db.models import Customer, ModelVersion, UserAccount
+from app.db.queue_ids import source_id_for
 from app.ml.train import artifacts_dir
 
-import json
-
-# Demo staff.
+# Demo staff: email, name, role.
 STAFF = [
     ("officer@example.test", "Rana Haddad", "officer"),
     ("officer2@example.test", "Samir Khoury", "officer"),
@@ -27,13 +34,8 @@ STAFF = [
 ]
 
 # A handful of cardholders so the cardholder role has accounts to open without
-# an officer having scored anyone first. The rest of the queue still becomes a
-# cardholder on first contact, as before.
-#
-# display_name stays the queue's customer id, because the bridge in
-# db/queue_predictions.py finds a cardholder by it. The person's name lives in
-# full_name, so an officer can search for someone the way they would be asked
-# for them on the phone.
+# an officer having scored anyone first. Each one is linked to the customer it
+# represents, which is how a login reaches a scoring subject at all.
 DEMO_CARDHOLDERS = 5
 
 # Invented people. Drawn from a fixed list rather than a generator library so
@@ -48,6 +50,17 @@ LAST_NAMES = (
     "Haddad", "Khoury", "Nassar", "Saab", "Gerges", "Mansour", "Aoun",
     "Chalhoub", "Daher", "Fares", "Rizk", "Sleiman",
 )
+
+
+def demo_password() -> str:
+    """A password for a seeded account: from the environment, else unguessable.
+
+    The system has no login (docs/code_conventions.md §1), so nothing needs to
+    know this. A random one keeps `password_hash` honest without putting a
+    shared demo credential in version control; set SEED_PASSWORD in .env if a
+    login is ever added and these accounts have to be signed into.
+    """
+    return os.environ.get("SEED_PASSWORD") or token_urlsafe(32)
 
 
 def live_model() -> dict:
@@ -97,81 +110,107 @@ def demo_cardholders(count: int = DEMO_CARDHOLDERS) -> list[tuple[str, str, str]
 
     people = []
     for row in chosen:
-        customer_id = row["customer_id"]
+        # The worklist labels rows by position, so translate once here and let
+        # everything downstream — the name included — key off the stored id.
+        customer_id = source_id_for(row["customer_id"])
         name = invent_name(customer_id)
         handle = name.lower().replace(" ", ".")
         people.append((customer_id, name, f"{handle}@example.test"))
     return people
 
 
+def _seed_staff(session: Session) -> list[str]:
+    added = []
+    for email, display_name, role in STAFF:
+        if session.query(UserAccount).filter_by(email=email).one_or_none():
+            continue
+        session.add(
+            UserAccount(
+                email=email,
+                display_name=display_name,
+                password_hash=hash_password(demo_password()),
+                role=role,
+            )
+        )
+        added.append(email)
+    return added
+
+
+def _seed_cardholders(session: Session) -> tuple[list[str], list[str]]:
+    added, not_ingested = [], []
+    for customer_id, name, email in demo_cardholders():
+        customer = session.get(Customer, customer_id)
+        if customer is None:
+            not_ingested.append(customer_id)
+            continue
+        if customer.user_account_id is not None:
+            continue
+        if session.query(UserAccount).filter_by(email=email).one_or_none():
+            continue
+
+        account = UserAccount(
+            email=email,
+            display_name=name,
+            password_hash=hash_password(demo_password()),
+            role="cardholder",
+        )
+        session.add(account)
+        session.flush()
+        link_account(session, customer, account)
+        added.append(f"{customer_id} ({name})")
+    return added, not_ingested
+
+
+def _seed_model_version(session: Session) -> list[str]:
+    identity = live_model()
+    existing = (
+        session.query(ModelVersion)
+        .filter_by(version=identity["version"])
+        .one_or_none()
+    )
+    if existing is not None:
+        return []
+
+    # The partial unique index allows only one live row, so demote any earlier
+    # model before registering this one as live.
+    session.query(ModelVersion).filter_by(is_live=True).update({"is_live": False})
+    session.flush()
+    session.add(ModelVersion(**identity, is_live=True))
+    return [identity["version"]]
+
+
 def seed() -> dict:
     create_all()
-    added = {"users": [], "model_versions": [], "cardholders": []}
 
     with session_scope() as session:
-        for email, display_name, role in STAFF:
-            if session.query(User).filter_by(email=email).one_or_none():
-                continue
-            session.add(
-                User(
-                    email=email,
-                    display_name=display_name,
-                    full_name=display_name,
-                    role=role,
-                )
-            )
-            added["users"].append(email)
+        users = _seed_staff(session)
+        cardholders, not_ingested = _seed_cardholders(session)
+        versions = _seed_model_version(session)
 
-        for customer_id, name, email in demo_cardholders():
-            existing = session.query(User).filter_by(
-                display_name=customer_id, role="cardholder"
-            ).one_or_none()
-            if existing is not None:
-                # Backfill a row seeded before full_name existed.
-                if existing.full_name is None:
-                    existing.full_name = name
-                    added["cardholders"].append(f"{customer_id} ({name}, named)")
-                continue
-            session.add(
-                User(
-                    email=email,
-                    display_name=customer_id,
-                    full_name=name,
-                    role="cardholder",
-                )
-            )
-            added["cardholders"].append(f"{customer_id} ({name})")
-
-        identity = live_model()
-        existing = (
-            session.query(ModelVersion)
-            .filter_by(version=identity["version"])
-            .one_or_none()
-        )
-        if existing is None:
-            # The partial unique index allows only one live row, so demote any
-            # earlier model before registering this one as live.
-            session.query(ModelVersion).filter_by(is_live=True).update(
-                {"is_live": False}
-            )
-            session.flush()
-            session.add(ModelVersion(**identity, is_live=True))
-            added["model_versions"].append(identity["version"])
-
-    return added
+    return {
+        "users": users,
+        "cardholders": cardholders,
+        "model_versions": versions,
+        "not_ingested": not_ingested,
+    }
 
 
 def main() -> dict:
     added = seed()
     if not any(added.values()):
         print("Nothing to add; the database is already seeded.")
-    else:
-        for email in added["users"]:
-            print(f"user           {email}")
-        for customer_id in added["cardholders"]:
-            print(f"cardholder     {customer_id}")
-        for version in added["model_versions"]:
-            print(f"model version  {version} (live)")
+        return added
+
+    for email in added["users"]:
+        print(f"user           {email}")
+    for customer_id in added["cardholders"]:
+        print(f"cardholder     {customer_id}")
+    for version in added["model_versions"]:
+        print(f"model version  {version} (live)")
+    if added["not_ingested"]:
+        missing = ", ".join(added["not_ingested"])
+        # Plain hyphen: a Windows console on cp1252 renders an em dash as mojibake.
+        print(f"skipped        {missing} - not ingested. Run: python -m app.db.ingest")
     return added
 
 

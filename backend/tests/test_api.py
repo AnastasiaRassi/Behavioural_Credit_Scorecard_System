@@ -11,25 +11,22 @@ from datetime import datetime, timezone
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_session
-from app.db.database import engine
-from app.db.models import ModelVersion, User
+from app.core.passwords import hash_password
+from app.db.models import ModelVersion, UserAccount
 from app.main import app
+from app.ml import worklist
 from app.ml.scorer import example_customer
+from tests.conftest import connect_or_skip, ensure_queued_customer
 
 OFFICER_EMAIL = "test-officer@example.test"
 
 
 @pytest.fixture
 def client():
-    try:
-        connection = engine().connect()
-    except OperationalError as exception:
-        pytest.skip(f"no database reachable: {exception}")
-
+    connection = connect_or_skip()
     transaction = connection.begin()
     session = Session(bind=connection, expire_on_commit=False)
 
@@ -41,7 +38,20 @@ def client():
         trained_on=datetime.now(timezone.utc),
         is_live=True,
     ))
-    session.add(User(email=OFFICER_EMAIL, display_name="Test Officer", role="officer"))
+    session.add(UserAccount(
+        email=OFFICER_EMAIL,
+        display_name="Test Officer",
+        password_hash=hash_password("not-a-real-password"),
+        role="officer",
+    ))
+
+    # The officer flow writes predictions against a real customer, which
+    # ingestion normally provides. Seeded here so the suite does not require an
+    # ingested database.
+    queued = worklist.all_rows()
+    if queued:
+        ensure_queued_customer(session, queued[0])
+
     session.flush()
 
     # The endpoints must not commit or close the outer transaction.
@@ -68,7 +78,7 @@ def test_health_reports_the_served_model(client):
 
 
 def test_scoring_returns_a_band_and_reasons(client):
-    response = _score(client, cardholder_reference="Cardholder 7001")
+    response = _score(client, cardholder_reference="TEST-7001")
     assert response.status_code == 201
 
     body = response.json()

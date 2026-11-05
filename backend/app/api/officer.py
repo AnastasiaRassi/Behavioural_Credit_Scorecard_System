@@ -9,8 +9,8 @@ from app.api.dependencies import (
     live_model_version,
     user_by_email,
 )
-from app.db import queue_predictions
-from app.db.models import Decision, User
+from app.db import customer_registry, queue_ids, queue_predictions
+from app.db.models import Customer, Decision, UserAccount
 from app.ml import artifacts, worklist
 from app.schemas.decisions import DecisionCreate, DecisionOut
 from app.schemas.scoring import ScoreResponse
@@ -82,25 +82,29 @@ def search_customers(
 ):
     """Find a customer the way an officer would be given one: by name.
 
-    Names live in the database and the queue lives in an artifact, so this
-    searches people first and falls back to the account number. Only cardholders
-    the system has met have a name, so an account nobody has opened is still
-    reachable by its id and nothing else.
+    A name exists only where a cardholder registered an account, so this searches
+    the registered ones first and falls back to the account number. A customer
+    nobody has registered is still reachable by its id and nothing else.
     """
     needle = q.strip().lower()
 
-    named = (
-        session.query(User)
-        .filter(User.role == "cardholder")
+    registered = (
+        session.query(Customer, UserAccount)
+        .join(UserAccount, Customer.user_account_id == UserAccount.id)
         .filter(
-            User.full_name.ilike(f"%{needle}%")
-            | User.email.ilike(f"%{needle}%")
-            | User.display_name.ilike(f"%{needle}%")
+            UserAccount.display_name.ilike(f"%{needle}%")
+            | UserAccount.email.ilike(f"%{needle}%")
         )
         .limit(limit)
         .all()
     )
-    found = {user.display_name: user.full_name for user in named}
+    # Keyed by the worklist's id, which is what the screens link to. Account
+    # numbers are searched against the queue below rather than here, so one
+    # typed id cannot match two different customers across the two id spaces.
+    found = {
+        queue_ids.queue_id_for(customer.customer_id): account.display_name
+        for customer, account in registered
+    }
 
     # Account numbers, for everyone the system has not met. Punctuation and the
     # C prefix are optional, because nobody types an id the way it is stored.
@@ -142,12 +146,7 @@ def read_customer_detail(
     """
     detail = worklist.customer_detail(_queued_or_404(customer_id))
 
-    cardholder = (
-        session.query(User)
-        .filter_by(display_name=customer_id, role="cardholder")
-        .one_or_none()
-    )
-    detail["full_name"] = cardholder.full_name if cardholder else None
+    detail["full_name"] = customer_registry.display_name_for(session, customer_id)
 
     stored = queue_predictions.latest_for_cardholder(session, customer_id)
     detail["latest_prediction"] = stored.to_dict() if stored else None
@@ -258,17 +257,13 @@ def read_customer_decisions(
     first decision materialises one.
     """
     _queued_or_404(customer_id)
-    cardholder = (
-        session.query(queue_predictions.User)
-        .filter_by(display_name=customer_id, role="cardholder")
-        .one_or_none()
-    )
-    if cardholder is None:
+    customer = session.get(Customer, queue_ids.source_id_for(customer_id))
+    if customer is None:
         return []
 
     decisions = [
         decision
-        for prediction in cardholder.predictions
+        for prediction in customer.predictions
         for decision in prediction.decisions
     ]
     return [

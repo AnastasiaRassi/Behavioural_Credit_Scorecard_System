@@ -13,7 +13,8 @@ from app.api.dependencies import (
     prediction_or_404,
     user_by_email,
 )
-from app.db.models import Prediction, User
+from app.db import customer_registry
+from app.db.models import Prediction
 from app.ml.feature_engineering import RAW_COLUMNS
 from app.schemas.scoring import (
     BatchRow,
@@ -30,23 +31,6 @@ SHOWN_REASONS = 6
 
 # A batch larger than this is a job, not a request.
 MAX_BATCH_ROWS = 5000
-
-
-def _cardholder(session: Session, reference: str | None) -> User:
-    """Find the named cardholder, or create one for a walk-in."""
-    if reference:
-        existing = session.query(User).filter_by(
-            display_name=reference, role="cardholder"
-        ).one_or_none()
-        if existing is not None:
-            return existing
-
-    cardholder = User(
-        display_name=reference or "Unnamed cardholder", role="cardholder"
-    )
-    session.add(cardholder)
-    session.flush()
-    return cardholder
 
 
 @router.post("", response_model=ScoreResponse, status_code=status.HTTP_201_CREATED)
@@ -71,8 +55,14 @@ def score_customer(
     if request.scored_by:
         user_by_email(session, request.scored_by, "officer")
 
+    # The submitted columns are everything `customer` needs, so a cardholder the
+    # dataset never contained becomes a real subject rather than a loose score.
+    subject = customer_registry.register_from_raw(
+        session, customer, request.cardholder_reference
+    )
+
     prediction = Prediction(
-        subject_user_id=_cardholder(session, request.cardholder_reference).id,
+        subject_customer_id=subject.customer_id,
         model_version_id=version.id,
         probability=result.probability,
         risk_band=result.risk_band,
@@ -109,7 +99,10 @@ def read_prediction(prediction_id: str, session: Session = Depends(get_session))
 
     stored = prediction.to_dict()
     stored["model_version"] = prediction.model_version.version
-    stored["cardholder"] = prediction.subject.display_name
+    stored["cardholder"] = prediction.subject_customer_id
+    stored["cardholder_name"] = customer_registry.display_name_for(
+        session, prediction.subject_customer_id
+    )
     stored["decisions"] = [decision.to_dict() for decision in prediction.decisions]
     return stored
 
