@@ -1,19 +1,35 @@
-"""Shared request dependencies: the scorer, the explainer and a session.
+"""Shared request dependencies: the scorer, the explainer, a session, the caller.
 
 The scorer and explainer are process-wide and cached, since loading the ensemble
 costs far more than a request should. The session is per request.
+
+Authorization also lives here. The caller's identity arrives as an asserted
+claim on a header rather than from a local login, because credential
+verification belongs at an identity provider in front of this service (§1). What
+that identity is *allowed to read* is still this layer's decision, and is made in
+one place so a real OIDC validator can replace the claim without the rules
+moving.
 """
 import uuid
 from functools import lru_cache
 from typing import Iterator
 
-from fastapi import HTTPException, status
+from fastapi import Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.db.database import _session_factory
 from app.db.models import ModelVersion, Prediction, UserAccount
+from app.db.queue_ids import source_id_for
 from app.ml.explainability import Explainer
 from app.ml.scorer import ArtifactsMissing, CreditScorer
+
+# Where the gateway puts the upstream claim. Named for what it is so a reader
+# does not mistake it for a credential.
+IDENTITY_HEADER = "X-User-Identity"
+
+# Staff entitled to read any cardholder's account. A cardholder reads only their
+# own, and no other role reaches the account at all.
+ACCOUNT_READERS: tuple[str, ...] = ("officer", "engineer")
 
 
 @lru_cache(maxsize=1)
@@ -80,15 +96,58 @@ def prediction_or_404(session: Session, prediction_id: str) -> Prediction:
     return prediction
 
 
-def user_by_email(session: Session, email: str, expected_role: str) -> UserAccount:
+def user_by_email(
+    session: Session, email: str, expected_role: str | tuple[str, ...]
+) -> UserAccount:
+    """The account behind an asserted email: 404 if unknown, 403 if the wrong role."""
+    allowed = (expected_role,) if isinstance(expected_role, str) else expected_role
+
     user = session.query(UserAccount).filter_by(email=email).one_or_none()
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=f"Unknown user {email}"
         )
-    if user.role != expected_role:
+    if user.role not in allowed:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"{email} is a {user.role}, not a {expected_role}",
+            detail=f"{email} is a {user.role}, not a {' or a '.join(allowed)}",
         )
     return user
+
+
+def authorise_account_read(
+    session: Session, identity: str, customer_id: str
+) -> UserAccount:
+    """Who may read one cardholder's account: that cardholder, or any staff reader.
+
+    The only place this rule is written, so a route never decides it for itself.
+    """
+    user = user_by_email(session, identity, ACCOUNT_READERS + ("cardholder",))
+    if user.role in ACCOUNT_READERS:
+        return user
+
+    # A cardholder is identified by email, never by customer id, so the claim is
+    # matched against the customer this account actually registered as rather
+    # than compared to the path. The path carries a worklist id, which is keyed
+    # by row position, so it has to be mapped before the comparison means
+    # anything — untranslated, it never matches and locks every cardholder out.
+    registered_as = user.customer
+    if registered_as is None or registered_as.customer_id != source_id_for(customer_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"{identity} may only read their own account",
+        )
+    return user
+
+
+def account_reader(
+    customer_id: str,
+    identity: str = Header(alias=IDENTITY_HEADER),
+    session: Session = Depends(get_session),
+) -> UserAccount:
+    """Route guard: the asserted caller, authorised to read this one account."""
+    # The header is an unverified claim injected by the API gateway, not a local
+    # login: nothing here checks a signature, a token or a password. Verifying
+    # who the caller is belongs upstream at the identity provider; this layer
+    # only decides what the asserted identity may read.
+    return authorise_account_read(session, identity, customer_id)

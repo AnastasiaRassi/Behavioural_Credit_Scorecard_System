@@ -155,6 +155,38 @@ def _who(role: str, label: str) -> str | None:
     return by_name[chosen]
 
 
+def _which_account() -> tuple[str, str] | None:
+    """Which cardholder is asking, and the account they are entitled to read.
+
+    Stands in for a sign-in: the API authorises the chosen identity but cannot
+    verify it, and says so.
+    """
+    st.caption(
+        "A cardholder reaches only their own account — the API refuses any "
+        "other. Picking who you are stands in for authentication, which a real "
+        "deployment would do upstream."
+    )
+
+    try:
+        known = [user for user in api.users(role="cardholder") if user["customer_id"]]
+    except api.ServiceUnavailable as exception:
+        api.guard(exception)
+        return None
+
+    if not known:
+        st.info(
+            "No registered cardholder accounts. Seed them with: "
+            "`cd backend && python -m app.db.seed`"
+        )
+        return None
+
+    by_name = {user["display_name"]: user for user in known}
+    chosen = by_name[st.selectbox("Account", list(by_name))]
+
+    st.session_state[IDENTITY_KEY] = chosen["email"]
+    return chosen["email"], chosen["customer_id"]
+
+
 # --- the three screens ----------------------------------------------------
 
 
@@ -167,7 +199,10 @@ def _officer() -> None:
 
 def _cardholder() -> None:
     st.subheader("Your account")
-    cardholder.render()
+    account = _which_account()
+    if account is None:
+        return
+    cardholder.render(*account)
 
 
 def _engineer() -> None:

@@ -5,8 +5,13 @@ at the same prediction, while still being sent different payloads.
 """
 import pytest
 
+from app.api.dependencies import IDENTITY_HEADER
 from app.ml import worklist
-from tests.test_api import OFFICER_EMAIL, client  # noqa: F401  (fixture import)
+from tests.test_api import (  # noqa: F401  (fixture imports)
+    OFFICER_EMAIL,
+    api_session,
+    client,
+)
 
 
 @pytest.fixture(scope="module")
@@ -17,6 +22,13 @@ def customer_id() -> str:
 def _predict(client, customer_id: str, officer: str = OFFICER_EMAIL):
     return client.post(
         f"/officer/customers/{customer_id}/predict", params={"scored_by": officer}
+    )
+
+
+def _cardholder_view(client, customer_id: str):
+    """Read as the officer: these cases are about the payload, not the boundary."""
+    return client.get(
+        f"/cardholders/{customer_id}", headers={IDENTITY_HEADER: OFFICER_EMAIL}
     )
 
 
@@ -79,7 +91,7 @@ def test_running_it_twice_keeps_both_scores(client, customer_id):
 
 def test_the_cardholder_sees_the_officer_prediction(client, customer_id):
     _predict(client, customer_id)
-    cardholder = client.get(f"/cardholders/{customer_id}").json()
+    cardholder = _cardholder_view(client, customer_id).json()
     officer_view = client.get(f"/officer/customers/{customer_id}").json()
 
     assert cardholder["risk_band"] == officer_view["latest_prediction"]["risk_band"]
@@ -89,7 +101,7 @@ def test_the_cardholder_sees_the_officer_prediction(client, customer_id):
 
 def test_the_cardholder_still_is_not_sent_the_number(client, customer_id):
     _predict(client, customer_id)
-    body = client.get(f"/cardholders/{customer_id}").json()
+    body = _cardholder_view(client, customer_id).json()
 
     assert "probability" not in body
     assert "threshold" not in body

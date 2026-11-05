@@ -18,6 +18,10 @@ import streamlit as st
 BASE_URL = "http://127.0.0.1:8014"
 TIMEOUT_SECONDS = 30
 
+# Matches app.api.dependencies.IDENTITY_HEADER. Stands in for the header an API
+# gateway would inject from a verified token; sending it proves nothing.
+IDENTITY_HEADER = "X-User-Identity"
+
 START_COMMAND = "cd backend && uvicorn app.main:app --port 8014"
 
 # Recorded baseline. The status light goes amber if test AUC drifts from this.
@@ -30,12 +34,18 @@ class ServiceUnavailable(RuntimeError):
     pass
 
 
-def _request(path: str, payload: dict | None = None, method: str | None = None):
+def _request(
+    path: str,
+    payload: dict | None = None,
+    method: str | None = None,
+    identity: str | None = None,
+):
     url = BASE_URL + path
     body = json.dumps(payload).encode() if payload is not None else None
-    request = urllib.request.Request(
-        url, data=body, headers={"Content-Type": "application/json"}, method=method
-    )
+    headers = {"Content-Type": "application/json"}
+    if identity is not None:
+        headers[IDENTITY_HEADER] = identity
+    request = urllib.request.Request(url, data=body, headers=headers, method=method)
     try:
         with urllib.request.urlopen(request, timeout=TIMEOUT_SECONDS) as response:
             return json.load(response)
@@ -208,9 +218,11 @@ def decisions(customer_id: str) -> list[dict]:
 
 
 @st.cache_data(ttl=10, show_spinner=False)
-def cardholder(customer_id: str) -> dict:
+def cardholder(customer_id: str, identity: str) -> dict:
     """Deliberately narrower than the officer's view: no probability is sent."""
-    return _get(f"/cardholders/{customer_id}")
+    # The identity is an argument rather than read from session state here, so it
+    # is part of the cache key: two cardholders must never share a response.
+    return _request(f"/cardholders/{customer_id}", identity=identity)
 
 
 # --- derived --------------------------------------------------------------

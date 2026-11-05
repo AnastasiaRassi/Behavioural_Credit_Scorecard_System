@@ -5,14 +5,59 @@ that carries a number the screen declines to draw has still disclosed it.
 """
 import pytest
 
+from app.api.dependencies import IDENTITY_HEADER
+from app.core.passwords import hash_password
+from app.db import customer_registry
+from app.db.models import Customer, UserAccount
+from app.db.queue_ids import source_id_for
 from app.ml import worklist
 from app.ml.scorer import example_customer
-from tests.test_api import OFFICER_EMAIL, client  # noqa: F401  (fixture import)
+from tests.test_api import (  # noqa: F401  (fixture imports)
+    OFFICER_EMAIL,
+    api_session,
+    client,
+)
+
+CARDHOLDER_EMAIL = "test-cardholder@example.test"
 
 
 @pytest.fixture(scope="module")
 def any_customer_id() -> str:
     return worklist.all_rows()[0]["customer_id"]
+
+
+@pytest.fixture(scope="module")
+def other_customer_id() -> str:
+    return worklist.all_rows()[-1]["customer_id"]
+
+
+@pytest.fixture
+def cardholder_identity(api_session, any_customer_id) -> str:
+    """A cardholder registered as `any_customer_id`, the way the seed links one."""
+    account = UserAccount(
+        email=CARDHOLDER_EMAIL,
+        display_name="Test Cardholder",
+        password_hash=hash_password("not-a-real-password"),
+        role="cardholder",
+    )
+    api_session.add(account)
+    api_session.flush()
+
+    # The worklist labels rows by position, so its id is not the key `customer`
+    # is stored under. db/queue_ids.py owns that mapping.
+    customer_id = source_id_for(any_customer_id)
+    registered_as = api_session.get(Customer, customer_id)
+    if registered_as is None:
+        pytest.skip(f"customer {customer_id} is not ingested; run python -m app.db.ingest")
+
+    customer_registry.link_account(api_session, registered_as, account)
+    return account.email
+
+
+def _read_account(client, customer_id: str, identity: str):
+    return client.get(
+        f"/cardholders/{customer_id}", headers={IDENTITY_HEADER: identity}
+    )
 
 
 # --- landing ------------------------------------------------------------------
@@ -78,8 +123,11 @@ def test_an_unknown_queued_customer_is_a_404(client):
 
 # --- cardholder ---------------------------------------------------------------
 
+# These read as the officer, who is entitled to any account: they are about the
+# shape of the payload, not about who may ask for it.
+
 def test_a_cardholder_is_not_sent_the_number(client, any_customer_id):
-    body = client.get(f"/cardholders/{any_customer_id}").json()
+    body = _read_account(client, any_customer_id, OFFICER_EMAIL).json()
 
     assert "probability" not in body
     assert "threshold" not in body
@@ -87,7 +135,7 @@ def test_a_cardholder_is_not_sent_the_number(client, any_customer_id):
 
 
 def test_a_cardholder_gets_a_band_and_plain_reasons(client, any_customer_id):
-    body = client.get(f"/cardholders/{any_customer_id}").json()
+    body = _read_account(client, any_customer_id, OFFICER_EMAIL).json()
 
     assert body["risk_band"] in {"Low", "Medium", "High"}
     assert isinstance(body["needs_attention"], bool)
@@ -98,7 +146,7 @@ def test_a_cardholder_gets_a_band_and_plain_reasons(client, any_customer_id):
 
 def test_the_two_views_describe_the_same_account(client, any_customer_id):
     officer_view = client.get(f"/officer/queue/{any_customer_id}").json()
-    cardholder = client.get(f"/cardholders/{any_customer_id}").json()
+    cardholder = _read_account(client, any_customer_id, OFFICER_EMAIL).json()
 
     assert cardholder["risk_band"] == officer_view["risk_band"]
     assert cardholder["needs_attention"] == officer_view["flagged"]
@@ -106,7 +154,36 @@ def test_the_two_views_describe_the_same_account(client, any_customer_id):
 
 
 def test_an_unknown_account_is_a_404(client):
-    assert client.get("/cardholders/C-nobody").status_code == 404
+    assert _read_account(client, "C-nobody", OFFICER_EMAIL).status_code == 404
+
+
+# --- who may read an account --------------------------------------------------
+
+def test_a_cardholder_cannot_read_another_account(
+    client, cardholder_identity, other_customer_id
+):
+    """The defect this guard exists for: any id was readable by any caller."""
+    response = _read_account(client, other_customer_id, cardholder_identity)
+    assert response.status_code == 403
+
+
+def test_a_cardholder_can_read_their_own_account(
+    client, cardholder_identity, any_customer_id
+):
+    response = _read_account(client, any_customer_id, cardholder_identity)
+
+    assert response.status_code == 200
+    assert response.json()["risk_band"] in {"Low", "Medium", "High"}
+
+
+def test_an_officer_can_read_any_account(client, any_customer_id, other_customer_id):
+    for customer_id in (any_customer_id, other_customer_id):
+        assert _read_account(client, customer_id, OFFICER_EMAIL).status_code == 200
+
+
+def test_an_account_cannot_be_read_without_an_identity(client, any_customer_id):
+    """The boundary is required, not advisory: no header is not an anonymous read."""
+    assert client.get(f"/cardholders/{any_customer_id}").status_code == 422
 
 
 # --- ML engineer --------------------------------------------------------------

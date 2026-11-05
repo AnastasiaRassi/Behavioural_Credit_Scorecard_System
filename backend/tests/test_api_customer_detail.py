@@ -8,7 +8,11 @@ import pytest
 
 from app.ml import worklist
 from app.ml.explainability import MONTH_LABELS, MONTHS_OBSERVED, month_label
-from tests.test_api import OFFICER_EMAIL, client  # noqa: F401  (fixture import)
+from tests.test_api import (  # noqa: F401  (fixture imports)
+    OFFICER_EMAIL,
+    api_session,
+    client,
+)
 
 
 @pytest.fixture(scope="module")

@@ -3,11 +3,14 @@
 A behavioural scorecard re-scores someone who already holds the card, so this is
 an early warning, never a decision. The payload reflects that: it carries the
 band and the reasons, not the probability or the threshold.
+
+Who may read it is decided by `dependencies.account_reader`, not here: narrowing
+the payload is pointless if anyone can ask for anyone's.
 """
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import get_session
+from app.api.dependencies import account_reader, get_session
 from app.db import queue_predictions
 from app.ml import worklist
 from app.schemas.worklist import CardholderView
@@ -15,7 +18,11 @@ from app.schemas.worklist import CardholderView
 router = APIRouter(prefix="/cardholders", tags=["cardholder"])
 
 
-@router.get("/{customer_id}", response_model=CardholderView)
+@router.get(
+    "/{customer_id}",
+    response_model=CardholderView,
+    dependencies=[Depends(account_reader)],
+)
 def read_own_account(
     customer_id: str, session: Session = Depends(get_session)
 ):

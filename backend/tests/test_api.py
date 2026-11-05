@@ -25,7 +25,12 @@ OFFICER_EMAIL = "test-officer@example.test"
 
 
 @pytest.fixture
-def client():
+def api_session():
+    """The session the endpoints will be given, inside a transaction that rolls back.
+
+    Exposed separately from `client` so a test can seed a row the request then
+    has to find, such as an account the authorization guard looks up.
+    """
     connection = connect_or_skip()
     transaction = connection.begin()
     session = Session(bind=connection, expire_on_commit=False)
@@ -54,15 +59,22 @@ def client():
 
     session.flush()
 
+    try:
+        yield session
+    finally:
+        session.close()
+        transaction.rollback()
+        connection.close()
+
+
+@pytest.fixture
+def client(api_session):
     # The endpoints must not commit or close the outer transaction.
-    app.dependency_overrides[get_session] = lambda: session
+    app.dependency_overrides[get_session] = lambda: api_session
     try:
         yield TestClient(app)
     finally:
         app.dependency_overrides.clear()
-        session.close()
-        transaction.rollback()
-        connection.close()
 
 
 def _score(client, **overrides):

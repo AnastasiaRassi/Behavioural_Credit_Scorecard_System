@@ -2,7 +2,9 @@
 
 Shows no probability and no threshold, because the API does not send them. That
 enforcement is the backend's (`worklist.cardholder_view`), not this screen's: a
-page that merely declined to draw the number would still have received it.
+page that merely declined to draw the number would still have received it. The
+same holds for *whose* account this is: the screen is handed an identity and the
+account it may read, and the API refuses the pairing if it is wrong.
 
 Telling someone they are predicted to default is distressing, can be
 self-fulfilling, and commits the lender to specific reasons the moment it acts.
@@ -46,9 +48,11 @@ anything that needs action, and you can ask for a human review of any decision.
 """
 
 
-def render() -> None:
-    account = _signed_in_as()
-    if account is None:
+def render(identity: str, customer_id: str) -> None:
+    try:
+        account = api.cardholder(customer_id, identity)
+    except api.ServiceUnavailable as exception:
+        api.guard(exception)
         return
 
     st.divider()
@@ -60,35 +64,6 @@ def render() -> None:
     st.divider()
     _account(account)
     _consent()
-
-
-def _signed_in_as() -> dict | None:
-    """Stands in for a sign-in, which does not exist yet."""
-    st.caption(
-        "Signed in as — a real cardholder would see only their own account. "
-        "This picker stands in for authentication, which is not built yet."
-    )
-
-    try:
-        known = api.users(role="cardholder")
-    except api.ServiceUnavailable as exception:
-        api.guard(exception)
-        return None
-
-    if not known:
-        st.info("No cardholder accounts seeded. Run: `cd backend && python -m app.db.seed`")
-        return None
-
-    chosen = st.selectbox(
-        "Account",
-        [user["display_name"] for user in known],
-        format_func=lambda name: f"Account {name}",
-    )
-    try:
-        return api.cardholder(chosen)
-    except api.ServiceUnavailable as exception:
-        api.guard(exception)
-        return None
 
 
 def _warning(account: dict) -> None:
