@@ -23,7 +23,6 @@ from app.core.passwords import hash_password
 from app.db.customer_registry import link_account
 from app.db.database import create_all, session_scope
 from app.db.models import Customer, ModelVersion, UserAccount
-from app.db.queue_ids import source_id_for
 from app.ml.train import artifacts_dir
 
 # Demo staff: email, name, role.
@@ -110,9 +109,7 @@ def demo_cardholders(count: int = DEMO_CARDHOLDERS) -> list[tuple[str, str, str]
 
     people = []
     for row in chosen:
-        # The worklist labels rows by position, so translate once here and let
-        # everything downstream — the name included — key off the stored id.
-        customer_id = source_id_for(row["customer_id"])
+        customer_id = row["customer_id"]
         name = invent_name(customer_id)
         handle = name.lower().replace(" ", ".")
         people.append((customer_id, name, f"{handle}@example.test"))

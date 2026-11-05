@@ -9,7 +9,7 @@ from app.api.dependencies import (
     live_model_version,
     user_by_email,
 )
-from app.db import customer_registry, queue_ids, queue_predictions
+from app.db import customer_registry, queue_predictions
 from app.db.models import Customer, Decision, UserAccount
 from app.ml import artifacts, worklist
 from app.schemas.decisions import DecisionCreate, DecisionOut
@@ -98,20 +98,25 @@ def search_customers(
         .limit(limit)
         .all()
     )
-    # Keyed by the worklist's id, which is what the screens link to. Account
-    # numbers are searched against the queue below rather than here, so one
-    # typed id cannot match two different customers across the two id spaces.
     found = {
-        queue_ids.queue_id_for(customer.customer_id): account.display_name
+        customer.customer_id: account.display_name
         for customer, account in registered
     }
 
-    # Account numbers, for everyone the system has not met. Punctuation and the
-    # C prefix are optional, because nobody types an id the way it is stored.
-    bare = needle.upper().removeprefix("C-").removeprefix("C")
-    if bare.isdigit():
-        for row in worklist.filter_rows(worklist.all_rows(), search=bare)[:limit]:
+    # Account numbers, for everyone the system has not met. Matched as typed: a
+    # customer id is bare digits, and quietly stripping a prefix off one would
+    # name a different customer.
+    if needle.isdigit():
+        for row in worklist.filter_rows(worklist.all_rows(), search=needle)[:limit]:
             found.setdefault(row["customer_id"], None)
+
+    # A customer found by number may still have registered, and the name branch
+    # above would not have matched them on it.
+    unnamed = [customer_id for customer_id, name in found.items() if name is None]
+    for customer_id, name in customer_registry.display_names_for(
+        session, unnamed
+    ).items():
+        found[customer_id] = name
 
     return [
         {
@@ -257,7 +262,7 @@ def read_customer_decisions(
     first decision materialises one.
     """
     _queued_or_404(customer_id)
-    customer = session.get(Customer, queue_ids.source_id_for(customer_id))
+    customer = session.get(Customer, customer_id)
     if customer is None:
         return []
 

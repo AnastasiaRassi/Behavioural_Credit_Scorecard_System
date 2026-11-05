@@ -146,10 +146,7 @@ def _who(role: str, label: str) -> str | None:
         )
         return None
 
-    by_name = {
-        (user.get("full_name") or user["display_name"]): user["email"]
-        for user in staff
-    }
+    by_name = {user["display_name"]: user["email"] for user in staff}
     chosen = st.sidebar.selectbox(label, list(by_name))
     st.sidebar.caption(by_name[chosen])
     return by_name[chosen]

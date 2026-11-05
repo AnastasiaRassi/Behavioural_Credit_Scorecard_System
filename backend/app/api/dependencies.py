@@ -19,7 +19,6 @@ from sqlalchemy.orm import Session
 
 from app.db.database import _session_factory
 from app.db.models import ModelVersion, Prediction, UserAccount
-from app.db.queue_ids import source_id_for
 from app.ml.explainability import Explainer
 from app.ml.scorer import ArtifactsMissing, CreditScorer
 
@@ -128,11 +127,9 @@ def authorise_account_read(
 
     # A cardholder is identified by email, never by customer id, so the claim is
     # matched against the customer this account actually registered as rather
-    # than compared to the path. The path carries a worklist id, which is keyed
-    # by row position, so it has to be mapped before the comparison means
-    # anything — untranslated, it never matches and locks every cardholder out.
+    # than compared to the path.
     registered_as = user.customer
-    if registered_as is None or registered_as.customer_id != source_id_for(customer_id):
+    if registered_as is None or registered_as.customer_id != customer_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"{identity} may only read their own account",

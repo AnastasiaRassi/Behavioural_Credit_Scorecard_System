@@ -12,7 +12,6 @@ from sqlalchemy.orm import Session
 
 from app.db.database import engine
 from app.db.models import Customer, MonthlyStatement
-from app.db.queue_ids import source_id_for
 
 REBUILD = (
     'python -c "from app.db.database import drop_all; drop_all()" '
@@ -52,11 +51,11 @@ def connect_or_skip() -> Connection:
 def ensure_queued_customer(session: Session, row: dict) -> str:
     """Give a worklist row the customer row ingestion would have created.
 
-    Lets the API tests run against a database nobody has ingested, and exercises
-    the queue-id mapping on the way: the figures are taken from the queue row, so
-    the bridge's own verification has to agree with them.
+    Lets the API tests run against a database nobody has ingested. The figures
+    come from the queue row itself, so the bridge's own verification has to agree
+    with them.
     """
-    customer_id = source_id_for(row["customer_id"])
+    customer_id = row["customer_id"]
     if session.get(Customer, customer_id) is not None:
         return customer_id
 

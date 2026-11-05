@@ -10,12 +10,12 @@ not grounds for rewriting the history the label was observed against. What was
 actually submitted is kept on `prediction.raw_input` either way.
 """
 import uuid
+from typing import Sequence
 
 import pandas as pd
 from sqlalchemy.orm import Session
 
 from app.db.models import MONTHS_OBSERVED, Customer, MonthlyStatement, UserAccount
-from app.db.queue_ids import source_id_for
 from app.ml.feature_engineering import clean
 
 # Walk-ins are prefixed so they can never collide with a source id, which is
@@ -75,9 +75,23 @@ def link_account(session: Session, customer: Customer, account: UserAccount) -> 
     return customer
 
 
-def display_name_for(session: Session, queue_id: str) -> str | None:
-    """The registered cardholder's name for a worklist id, or None if unregistered."""
-    customer = session.get(Customer, source_id_for(queue_id))
+def display_name_for(session: Session, customer_id: str) -> str | None:
+    """The registered cardholder's name for a customer, or None if unregistered."""
+    customer = session.get(Customer, customer_id)
     if customer is None or customer.account is None:
         return None
     return customer.account.display_name
+
+
+def display_names_for(session: Session, customer_ids: Sequence[str]) -> dict[str, str]:
+    """Names for several customers at once, omitting the unregistered ones."""
+    if not customer_ids:
+        return {}
+
+    rows = (
+        session.query(Customer.customer_id, UserAccount.display_name)
+        .join(UserAccount, Customer.user_account_id == UserAccount.id)
+        .filter(Customer.customer_id.in_(list(customer_ids)))
+        .all()
+    )
+    return {customer_id: name for customer_id, name in rows}

@@ -36,7 +36,6 @@ backend/app/
 │   ├── ingest.py                # load_taiwan(): the dataset into the tables
 │   ├── statements.py            # the stored months pivoted back to a wide frame
 │   ├── customer_registry.py     # a customer from submitted columns; account links
-│   ├── queue_ids.py             # worklist row id <-> source customer id
 │   └── seed.py                  # demo accounts and the live model version
 ├── schemas/                     # pydantic request and response shapes
 ├── core/config.py               # DATABASE_URL, read once from .env

@@ -105,10 +105,11 @@ def _suggestions() -> None:
     except api.ServiceUnavailable as exception:
         api.guard(exception)
         return
-    if known:
+    registered = [user for user in known if user["customer_id"]]
+    if registered:
         st.caption("Try: " + ", ".join(
-            f"**{user['full_name']}** (`{user['display_name']}`)"
-            for user in known if user.get("full_name")
+            f"**{user['display_name']}** (`{user['customer_id']}`)"
+            for user in registered
         ))
 
 

@@ -62,7 +62,7 @@ class CustomerDetail(BaseModel):
     customer_id: str
     full_name: str | None = Field(
         default=None,
-        description="Known only for cardholders the system has met; the id otherwise",
+        description="The registered cardholder's name; None if nobody registered",
     )
     probability: float
     risk_band: str

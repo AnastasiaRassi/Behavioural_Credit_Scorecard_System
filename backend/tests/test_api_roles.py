@@ -9,7 +9,6 @@ from app.api.dependencies import IDENTITY_HEADER
 from app.core.passwords import hash_password
 from app.db import customer_registry
 from app.db.models import Customer, UserAccount
-from app.db.queue_ids import source_id_for
 from app.ml import worklist
 from app.ml.scorer import example_customer
 from tests.test_api import (  # noqa: F401  (fixture imports)
@@ -43,9 +42,7 @@ def cardholder_identity(api_session, any_customer_id) -> str:
     api_session.add(account)
     api_session.flush()
 
-    # The worklist labels rows by position, so its id is not the key `customer`
-    # is stored under. db/queue_ids.py owns that mapping.
-    customer_id = source_id_for(any_customer_id)
+    customer_id = any_customer_id
     registered_as = api_session.get(Customer, customer_id)
     if registered_as is None:
         pytest.skip(f"customer {customer_id} is not ingested; run python -m app.db.ingest")

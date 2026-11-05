@@ -14,16 +14,16 @@ A prediction points straight at `customer.customer_id`, so no cardholder row has
 to be invented to carry an id. The customer must already be ingested; the queue
 is built from the same dataset, so a missing one means ingestion has not been run.
 
-db/queue_ids.py owns the mapping between the queue's row ids and the database's
-source ids. Every lookup here checks the result against the stored figures rather
-than trusting it, because a silent off-by-one would attach a decision to the
-wrong person's account.
+ml/worklist.py already maps the artifact's row labels onto customer ids, so the
+id on a queue row is the key to look up. Every lookup here still checks the
+figures against the stored ones rather than trusting the match, because pointing
+a decision at the wrong person's account is the worst thing this module could
+do.
 """
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models import Customer, ModelVersion, MonthlyStatement, Prediction
-from app.db.queue_ids import source_id_for
 from app.ml.explainability import MONTHS_OBSERVED
 
 
@@ -67,7 +67,7 @@ def scored_columns(row: dict) -> dict:
 
 def customer_for_queue_row(session: Session, row: dict) -> Customer:
     """The stored customer a queue row describes, with the id mapping checked."""
-    customer_id = source_id_for(row["customer_id"])
+    customer_id = row["customer_id"]
     customer = session.get(Customer, customer_id)
     if customer is None:
         raise CustomerNotIngested(
@@ -84,7 +84,7 @@ def latest_for_cardholder(session: Session, customer_id: str) -> Prediction | No
     """The newest stored score for a queue customer, if one has been run."""
     return session.scalars(
         select(Prediction)
-        .where(Prediction.subject_customer_id == source_id_for(customer_id))
+        .where(Prediction.subject_customer_id == customer_id)
         .order_by(Prediction.created_at.desc())
         .limit(1)
     ).first()

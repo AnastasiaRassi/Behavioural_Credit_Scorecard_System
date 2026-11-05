@@ -12,15 +12,41 @@ from app.ml import artifacts
 
 BANDS = ("Low", "Medium", "High")
 
+# train.py labels queue rows `C-<row position>`, because the frame it builds them
+# from is positionally indexed: feature_engineering drops the dataset's own ID
+# column. The database is keyed on that published id instead, so the artifact's
+# label is translated here, at the one point it enters the system, and every
+# caller downstream speaks the same id as `customer.customer_id`.
+#
+# Source ids are 1-based and positions are 0-based, hence the offset. All of this
+# goes away if the queue is ever served from the database instead of a file.
+QUEUE_ID_PREFIX = "C-"
+QUEUE_ID_OFFSET = 1
+
 # A page of the worklist. The full queue is thousands of rows, which no officer
 # scrolls and no response should carry.
 DEFAULT_PAGE = 50
 MAX_PAGE = 500
 
 
+def source_customer_id(queue_id: str) -> str:
+    """The database's customer id for a label in the queue artifact."""
+    if not str(queue_id).startswith(QUEUE_ID_PREFIX):
+        # Already a customer id. Translating again would silently name a
+        # different customer, so leave it alone.
+        return str(queue_id)
+    position = str(queue_id).removeprefix(QUEUE_ID_PREFIX)
+    if not position.isdigit():
+        return str(queue_id)
+    return str(int(position) + QUEUE_ID_OFFSET)
+
+
 def all_rows() -> list[dict]:
-    """Every queued customer, riskiest first."""
-    rows = artifacts.officer_queue()
+    """Every queued customer, riskiest first, keyed by their customer id."""
+    rows = [
+        {**row, "customer_id": source_customer_id(row["customer_id"])}
+        for row in artifacts.officer_queue()
+    ]
     return sorted(rows, key=lambda row: row["probability"], reverse=True)
 
 
