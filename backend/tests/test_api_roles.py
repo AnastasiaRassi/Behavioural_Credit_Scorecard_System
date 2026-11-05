@@ -5,12 +5,12 @@ that carries a number the screen declines to draw has still disclosed it.
 """
 import pytest
 
-from app.api.dependencies import IDENTITY_HEADER
 from app.core.passwords import hash_password
 from app.db import customer_registry
 from app.db.models import Customer, UserAccount
 from app.ml import worklist
 from app.ml.scorer import example_customer
+from tests.conftest import bearer, ensure_queued_customer
 from tests.test_api import (  # noqa: F401  (fixture imports)
     OFFICER_EMAIL,
     api_session,
@@ -42,19 +42,15 @@ def cardholder_identity(api_session, any_customer_id) -> str:
     api_session.add(account)
     api_session.flush()
 
-    customer_id = any_customer_id
-    registered_as = api_session.get(Customer, customer_id)
-    if registered_as is None:
-        pytest.skip(f"customer {customer_id} is not ingested; run python -m app.db.ingest")
-
-    customer_registry.link_account(api_session, registered_as, account)
+    ensure_queued_customer(api_session, worklist.find(any_customer_id))
+    customer_registry.link_account(
+        api_session, api_session.get(Customer, any_customer_id), account
+    )
     return account.email
 
 
-def _read_account(client, customer_id: str, identity: str):
-    return client.get(
-        f"/cardholders/{customer_id}", headers={IDENTITY_HEADER: identity}
-    )
+def _read_account(client, customer_id: str, email: str):
+    return client.get(f"/cardholders/{customer_id}", headers=bearer(email))
 
 
 # --- landing ------------------------------------------------------------------
@@ -178,9 +174,12 @@ def test_an_officer_can_read_any_account(client, any_customer_id, other_customer
         assert _read_account(client, customer_id, OFFICER_EMAIL).status_code == 200
 
 
-def test_an_account_cannot_be_read_without_an_identity(client, any_customer_id):
-    """The boundary is required, not advisory: no header is not an anonymous read."""
-    assert client.get(f"/cardholders/{any_customer_id}").status_code == 422
+def test_an_account_cannot_be_read_without_signing_in(client, any_customer_id):
+    """The boundary is required, not advisory: no token is not an anonymous read."""
+    response = client.get(f"/cardholders/{any_customer_id}")
+
+    assert response.status_code == 401
+    assert response.headers["WWW-Authenticate"] == "Bearer"
 
 
 # --- ML engineer --------------------------------------------------------------

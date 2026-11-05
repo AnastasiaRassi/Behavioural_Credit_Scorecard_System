@@ -1,4 +1,4 @@
-"""Shared database guards.
+"""Shared database guards, and the headers a signed-in caller sends.
 
 The suite runs against a local Postgres when one is there and skips when it is
 not, so a machine without a database still runs everything else. A database on
@@ -10,6 +10,7 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
+from app.core import sessions
 from app.db.database import engine
 from app.db.models import Customer, MonthlyStatement
 
@@ -46,6 +47,17 @@ def connect_or_skip() -> Connection:
     # caller that opens its own, which is how every API fixture here works.
     connection.rollback()
     return connection
+
+
+def bearer(email: str) -> dict[str, str]:
+    """Headers for a caller already signed in as this account.
+
+    Minted directly rather than through POST /session, so a test about what a
+    caller may reach does not depend on knowing their password. The sign-in
+    itself is covered by test_api_sessions.py.
+    """
+    token, _ = sessions.issue(email)
+    return {"Authorization": f"Bearer {token}"}
 
 
 def ensure_queued_customer(session: Session, row: dict) -> str:

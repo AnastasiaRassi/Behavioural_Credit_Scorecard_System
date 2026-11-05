@@ -3,8 +3,9 @@
 Shows no probability and no threshold, because the API does not send them. That
 enforcement is the backend's (`worklist.cardholder_view`), not this screen's: a
 page that merely declined to draw the number would still have received it. The
-same holds for *whose* account this is: the screen is handed an identity and the
-account it may read, and the API refuses the pairing if it is wrong.
+same holds for *whose* account this is: the screen is handed a session token and
+a customer id, and the API refuses the pairing unless the signed-in caller is
+that cardholder or a member of staff.
 
 Telling someone they are predicted to default is distressing, can be
 self-fulfilling, and commits the lender to specific reasons the moment it acts.
@@ -48,9 +49,9 @@ anything that needs action, and you can ask for a human review of any decision.
 """
 
 
-def render(identity: str, customer_id: str) -> None:
+def render(token: str, customer_id: str) -> None:
     try:
-        account = api.cardholder(customer_id, identity)
+        account = api.cardholder(customer_id, token)
     except api.ServiceUnavailable as exception:
         api.guard(exception)
         return

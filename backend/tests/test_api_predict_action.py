@@ -5,8 +5,8 @@ at the same prediction, while still being sent different payloads.
 """
 import pytest
 
-from app.api.dependencies import IDENTITY_HEADER
 from app.ml import worklist
+from tests.conftest import bearer
 from tests.test_api import (  # noqa: F401  (fixture imports)
     OFFICER_EMAIL,
     api_session,
@@ -27,9 +27,7 @@ def _predict(client, customer_id: str, officer: str = OFFICER_EMAIL):
 
 def _cardholder_view(client, customer_id: str):
     """Read as the officer: these cases are about the payload, not the boundary."""
-    return client.get(
-        f"/cardholders/{customer_id}", headers={IDENTITY_HEADER: OFFICER_EMAIL}
-    )
+    return client.get(f"/cardholders/{customer_id}", headers=bearer(OFFICER_EMAIL))
 
 
 def test_an_officer_can_run_a_prediction(client, customer_id):

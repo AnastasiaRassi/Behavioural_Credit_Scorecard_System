@@ -8,10 +8,12 @@ Routes translate HTTP and nothing else: scoring lives in `ml/scorer.py`,
 explanations in `ml/explainability.py`, drift in `ml/drift.py`, and every
 reported metric is read from artifacts/ rather than recomputed.
 
-No authentication. The role selector is a demo affordance, and the officer email
-on a request identifies who acted rather than proving it. A real deployment would
-put an identity provider in front of this; saying so is more honest than a login
-form that checks nothing.
+`POST /session` verifies a password and returns a signed, expiring token; the
+caller presents it as `Authorization: Bearer <token>` and the role is read from
+the account, never from the request. Reading a cardholder's account is guarded
+by it (`dependencies.account_reader`). The officer's own write paths still name
+the acting officer by email in the request body, which records who acted without
+proving it — the next thing to close.
 """
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
@@ -27,6 +29,7 @@ from app.api import (
     officer,
     predictions,
     roles,
+    sessions,
 )
 from app.db.database import create_all
 from app.ml import artifacts
@@ -51,6 +54,7 @@ app = FastAPI(
     version="1.0.0",
 )
 
+app.include_router(sessions.router)
 app.include_router(roles.router)
 app.include_router(officer.router)
 app.include_router(cardholders.router)

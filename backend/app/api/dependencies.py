@@ -3,12 +3,10 @@
 The scorer and explainer are process-wide and cached, since loading the ensemble
 costs far more than a request should. The session is per request.
 
-Authorization also lives here. The caller's identity arrives as an asserted
-claim on a header rather than from a local login, because credential
-verification belongs at an identity provider in front of this service (§1). What
-that identity is *allowed to read* is still this layer's decision, and is made in
-one place so a real OIDC validator can replace the claim without the rules
-moving.
+Authentication and authorization both live here, and are kept apart:
+`signed_in_user` establishes *who* the caller is from the bearer token
+`POST /session` minted, and `authorise_account_read` decides what that caller
+may read. Each rule is written once, so a route never decides it for itself.
 """
 import uuid
 from functools import lru_cache
@@ -17,14 +15,13 @@ from typing import Iterator
 from fastapi import Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.core import sessions
 from app.db.database import _session_factory
 from app.db.models import ModelVersion, Prediction, UserAccount
 from app.ml.explainability import Explainer
 from app.ml.scorer import ArtifactsMissing, CreditScorer
 
-# Where the gateway puts the upstream claim. Named for what it is so a reader
-# does not mistake it for a credential.
-IDENTITY_HEADER = "X-User-Identity"
+BEARER_PREFIX = "Bearer "
 
 # Staff entitled to read any cardholder's account. A cardholder reads only their
 # own, and no other role reaches the account at all.
@@ -114,37 +111,65 @@ def user_by_email(
     return user
 
 
-def authorise_account_read(
-    session: Session, identity: str, customer_id: str
+def _unauthenticated(detail: str) -> HTTPException:
+    # Declared optional above and refused here, rather than required by FastAPI:
+    # a missing credential is a 401 with a challenge, not a 422 about a header.
+    return HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail=detail,
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
+def signed_in_user(
+    authorization: str | None = Header(default=None, alias="Authorization"),
+    session: Session = Depends(get_session),
 ) -> UserAccount:
+    """The account a presented bearer token belongs to, or 401.
+
+    Authentication only: what the caller may then reach is decided per resource.
+    """
+    if authorization is None or not authorization.startswith(BEARER_PREFIX):
+        raise _unauthenticated('Authorization header must read "Bearer <token>"')
+
+    try:
+        identity = sessions.identity_from(authorization[len(BEARER_PREFIX) :])
+    except sessions.InvalidSession as exception:
+        raise _unauthenticated(str(exception)) from exception
+
+    # The signature proves this service minted the token, so the email in it can
+    # be trusted. The account is still re-read rather than carried in the token,
+    # so a changed role or a deleted account takes effect on the next request
+    # instead of at the next expiry.
+    account = session.query(UserAccount).filter_by(email=identity).one_or_none()
+    if account is None:
+        raise _unauthenticated("This session belongs to an account that no longer exists")
+    return account
+
+
+def authorise_account_read(user: UserAccount, customer_id: str) -> UserAccount:
     """Who may read one cardholder's account: that cardholder, or any staff reader.
 
-    The only place this rule is written, so a route never decides it for itself.
+    The only place this rule is written. Takes the resolved account, so changing
+    how callers are authenticated does not touch the rule.
     """
-    user = user_by_email(session, identity, ACCOUNT_READERS + ("cardholder",))
     if user.role in ACCOUNT_READERS:
         return user
 
-    # A cardholder is identified by email, never by customer id, so the claim is
+    # A cardholder is identified by email, never by customer id, so the caller is
     # matched against the customer this account actually registered as rather
     # than compared to the path.
     registered_as = user.customer
     if registered_as is None or registered_as.customer_id != customer_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"{identity} may only read their own account",
+            detail=f"{user.email} may only read their own account",
         )
     return user
 
 
 def account_reader(
-    customer_id: str,
-    identity: str = Header(alias=IDENTITY_HEADER),
-    session: Session = Depends(get_session),
+    customer_id: str, user: UserAccount = Depends(signed_in_user)
 ) -> UserAccount:
-    """Route guard: the asserted caller, authorised to read this one account."""
-    # The header is an unverified claim injected by the API gateway, not a local
-    # login: nothing here checks a signature, a token or a password. Verifying
-    # who the caller is belongs upstream at the identity provider; this layer
-    # only decides what the asserted identity may read.
-    return authorise_account_read(session, identity, customer_id)
+    """Route guard: the signed-in caller, authorised to read this one account."""
+    return authorise_account_read(user, customer_id)

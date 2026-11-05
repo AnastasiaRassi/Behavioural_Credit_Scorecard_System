@@ -5,9 +5,12 @@ Run from the backend/ directory, after ingestion:
     python -m app.db.ingest
     python -m app.db.seed
 
-Idempotent: rerunning changes nothing, so it is safe after every retrain. The
-model version is read from scoring_config.json rather than typed here, so the
-registered version can never claim to be a model the artifacts do not contain.
+Idempotent: rerunning adds nothing twice, so it is safe after every retrain. The
+one thing it does rewrite is a seeded account's password, and only when
+SEED_PASSWORD is set, so accounts created before it was configured can be signed
+into without deleting them. The model version is read from scoring_config.json
+rather than typed here, so the registered version can never claim to be a model
+the artifacts do not contain.
 
 Seeds accounts and the model only. Customers come from the dataset via
 db/ingest.py, and predictions are written by the API when someone is scored.
@@ -52,14 +55,28 @@ LAST_NAMES = (
 
 
 def demo_password() -> str:
-    """A password for a seeded account: from the environment, else unguessable.
+    """A password for a seeded account: from SEED_PASSWORD, else unguessable.
 
-    The system has no login (docs/code_conventions.md §1), so nothing needs to
-    know this. A random one keeps `password_hash` honest without putting a
-    shared demo credential in version control; set SEED_PASSWORD in .env if a
-    login is ever added and these accounts have to be signed into.
+    A random fallback keeps `password_hash` honest without putting a shared
+    credential in version control, but nothing can then sign in to these
+    accounts. Set SEED_PASSWORD in .env to be able to.
     """
     return os.environ.get("SEED_PASSWORD") or token_urlsafe(32)
+
+
+def _set_credential(account: UserAccount) -> bool:
+    """Bring an existing account to the configured password. True if it changed.
+
+    Rerunning the seed is otherwise a no-op per account, which would leave the
+    accounts created before SEED_PASSWORD was set holding a hash of a random
+    string nobody recorded — unsignable, with no way to repair them short of
+    deleting the rows and the cardholder links hanging off them.
+    """
+    configured = os.environ.get("SEED_PASSWORD")
+    if not configured:
+        return False
+    account.password_hash = hash_password(configured)
+    return True
 
 
 def live_model() -> dict:
@@ -116,10 +133,13 @@ def demo_cardholders(count: int = DEMO_CARDHOLDERS) -> list[tuple[str, str, str]
     return people
 
 
-def _seed_staff(session: Session) -> list[str]:
-    added = []
+def _seed_staff(session: Session) -> tuple[list[str], list[str]]:
+    added, recredentialed = [], []
     for email, display_name, role in STAFF:
-        if session.query(UserAccount).filter_by(email=email).one_or_none():
+        existing = session.query(UserAccount).filter_by(email=email).one_or_none()
+        if existing:
+            if _set_credential(existing):
+                recredentialed.append(email)
             continue
         session.add(
             UserAccount(
@@ -130,19 +150,23 @@ def _seed_staff(session: Session) -> list[str]:
             )
         )
         added.append(email)
-    return added
+    return added, recredentialed
 
 
-def _seed_cardholders(session: Session) -> tuple[list[str], list[str]]:
-    added, not_ingested = [], []
+def _seed_cardholders(session: Session) -> tuple[list[str], list[str], list[str]]:
+    added, not_ingested, recredentialed = [], [], []
     for customer_id, name, email in demo_cardholders():
         customer = session.get(Customer, customer_id)
         if customer is None:
             not_ingested.append(customer_id)
             continue
-        if customer.user_account_id is not None:
+
+        existing = session.query(UserAccount).filter_by(email=email).one_or_none()
+        if existing is not None:
+            if _set_credential(existing):
+                recredentialed.append(f"{customer_id} ({name})")
             continue
-        if session.query(UserAccount).filter_by(email=email).one_or_none():
+        if customer.user_account_id is not None:
             continue
 
         account = UserAccount(
@@ -155,7 +179,7 @@ def _seed_cardholders(session: Session) -> tuple[list[str], list[str]]:
         session.flush()
         link_account(session, customer, account)
         added.append(f"{customer_id} ({name})")
-    return added, not_ingested
+    return added, not_ingested, recredentialed
 
 
 def _seed_model_version(session: Session) -> list[str]:
@@ -180,8 +204,8 @@ def seed() -> dict:
     create_all()
 
     with session_scope() as session:
-        users = _seed_staff(session)
-        cardholders, not_ingested = _seed_cardholders(session)
+        users, staff_recredentialed = _seed_staff(session)
+        cardholders, not_ingested, held_recredentialed = _seed_cardholders(session)
         versions = _seed_model_version(session)
 
     return {
@@ -189,6 +213,7 @@ def seed() -> dict:
         "cardholders": cardholders,
         "model_versions": versions,
         "not_ingested": not_ingested,
+        "recredentialed": staff_recredentialed + held_recredentialed,
     }
 
 
@@ -204,6 +229,8 @@ def main() -> dict:
         print(f"cardholder     {customer_id}")
     for version in added["model_versions"]:
         print(f"model version  {version} (live)")
+    for email in added["recredentialed"]:
+        print(f"password set   {email}")
     if added["not_ingested"]:
         missing = ", ".join(added["not_ingested"])
         # Plain hyphen: a Windows console on cp1252 renders an em dash as mojibake.

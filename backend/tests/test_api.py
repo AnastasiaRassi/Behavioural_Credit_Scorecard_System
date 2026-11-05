@@ -23,6 +23,9 @@ from tests.conftest import connect_or_skip, ensure_queued_customer
 
 OFFICER_EMAIL = "test-officer@example.test"
 
+# The fixture's own credential, so a sign-in test needs no seeded password.
+OFFICER_PASSWORD = "not-a-real-password"
+
 
 @pytest.fixture
 def api_session():
@@ -46,7 +49,7 @@ def api_session():
     session.add(UserAccount(
         email=OFFICER_EMAIL,
         display_name="Test Officer",
-        password_hash=hash_password("not-a-real-password"),
+        password_hash=hash_password(OFFICER_PASSWORD),
         role="officer",
     ))
 

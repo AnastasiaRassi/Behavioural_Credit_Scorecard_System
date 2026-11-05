@@ -9,18 +9,17 @@ Shapes are adapted here rather than in the tabs, so the screens keep one vocabul
 whichever endpoint feeds them.
 """
 import json
+import os
 import urllib.error
 import urllib.parse
 import urllib.request
 
 import streamlit as st
 
-BASE_URL = "http://127.0.0.1:8014"
+# Overridable so the dashboard can be pointed at an API on another port without
+# editing it, which is also what lets two instances run side by side.
+BASE_URL = os.environ.get("API_BASE_URL", "http://127.0.0.1:8014")
 TIMEOUT_SECONDS = 30
-
-# Matches app.api.dependencies.IDENTITY_HEADER. Stands in for the header an API
-# gateway would inject from a verified token; sending it proves nothing.
-IDENTITY_HEADER = "X-User-Identity"
 
 START_COMMAND = "cd backend && uvicorn app.main:app --port 8014"
 
@@ -31,6 +30,14 @@ FOUR_FIFTHS = 0.80
 
 
 class ServiceUnavailable(RuntimeError):
+    def __init__(self, message: str, status: int | None = None):
+        super().__init__(message)
+        # Carried so a caller can tell a rejected credential from a dead service
+        # without parsing the message.
+        self.status = status
+
+
+class SignInRejected(RuntimeError):
     pass
 
 
@@ -38,20 +45,22 @@ def _request(
     path: str,
     payload: dict | None = None,
     method: str | None = None,
-    identity: str | None = None,
+    token: str | None = None,
 ):
     url = BASE_URL + path
     body = json.dumps(payload).encode() if payload is not None else None
     headers = {"Content-Type": "application/json"}
-    if identity is not None:
-        headers[IDENTITY_HEADER] = identity
+    if token is not None:
+        headers["Authorization"] = f"Bearer {token}"
     request = urllib.request.Request(url, data=body, headers=headers, method=method)
     try:
         with urllib.request.urlopen(request, timeout=TIMEOUT_SECONDS) as response:
             return json.load(response)
     except urllib.error.HTTPError as exception:
         detail = exception.read().decode()[:400]
-        raise ServiceUnavailable(f"{exception.code} from {path}: {detail}") from exception
+        raise ServiceUnavailable(
+            f"{exception.code} from {path}: {detail}", status=exception.code
+        ) from exception
     except urllib.error.URLError as exception:
         raise ServiceUnavailable(
             f"Cannot reach the API at {BASE_URL}. Start it with:\n\n`{START_COMMAND}`"
@@ -74,6 +83,23 @@ def guard(exception: ServiceUnavailable) -> None:
     """Show a failure the user can act on, then stop the script."""
     st.error(str(exception))
     st.stop()
+
+
+# --- signing in -----------------------------------------------------------
+
+
+def sign_in(email: str, password: str) -> dict:
+    """Exchange credentials for a session: the token, and who the caller is.
+
+    Never cached. A sign-in is not a read, and caching one would hold a
+    credential answer longer than the attempt it belongs to.
+    """
+    try:
+        return _request("/session", payload={"email": email, "password": password})
+    except ServiceUnavailable as exception:
+        if exception.status == 401:
+            raise SignInRejected("Email or password is incorrect") from exception
+        raise
 
 
 # --- roles ----------------------------------------------------------------
@@ -218,11 +244,11 @@ def decisions(customer_id: str) -> list[dict]:
 
 
 @st.cache_data(ttl=10, show_spinner=False)
-def cardholder(customer_id: str, identity: str) -> dict:
+def cardholder(customer_id: str, token: str) -> dict:
     """Deliberately narrower than the officer's view: no probability is sent."""
-    # The identity is an argument rather than read from session state here, so it
-    # is part of the cache key: two cardholders must never share a response.
-    return _request(f"/cardholders/{customer_id}", identity=identity)
+    # The token is an argument rather than read from session state here, so it is
+    # part of the cache key: two cardholders must never share a response.
+    return _request(f"/cardholders/{customer_id}", token=token)
 
 
 # --- derived --------------------------------------------------------------

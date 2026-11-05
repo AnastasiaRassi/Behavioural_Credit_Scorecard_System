@@ -8,9 +8,9 @@ Run the API first, then this, both from the repo root:
 The frontend reads nothing from disk. Every screen is served by the API, which
 decides what each role is sent rather than trusting the page not to draw it.
 
-Choosing a role is not authentication. It opens a set of screens; it proves
-nothing, and the API says the same. A real deployment would put an identity
-provider in front of both.
+Signing in exchanges a password for a signed token, and the role comes back from
+the account. Which screens open is therefore decided by the database, not by the
+person at the keyboard, and this module never sees a role it was not told.
 """
 import sys
 from pathlib import Path
@@ -27,179 +27,147 @@ import theme  # noqa: E402
 from tabs import drift, explain, fairness, performance, registry, threshold  # noqa: E402
 from views import cardholder, officer  # noqa: E402
 
-ROLE_KEY = "role"
-IDENTITY_KEY = "identity"
+# The signed-in session: the token plus who the API says the caller is.
+SESSION_KEY = "session"
 
 ICONS = {"officer": "🧑‍💼", "engineer": "🔬", "cardholder": "💳"}
 
-# What each role is for, in the second person, since this is the sign-in choice.
-INVITATIONS = {
-    "officer": "Look up a customer, see whether their next payment is at risk, "
-               "and record what you decided.",
-    "engineer": "Audit the model before anything ships: accuracy, fairness, "
-                "explanations, thresholds and monitoring.",
-    "cardholder": "See whether your own next payment looks at risk, and what "
-                  "would help most.",
+LABELS = {
+    "officer": "Loan officer",
+    "engineer": "ML engineer",
+    "cardholder": "Cardholder",
+}
+
+# What each kind of account opens, so the sign-in page still explains the system
+# to someone seeing it for the first time. Descriptive, not a choice to make.
+OPENS = {
+    "officer": "A worklist of scored cardholders, the reasons behind each score, "
+               "and a decision to record.",
+    "engineer": "The model audit: accuracy, fairness, explanations, thresholds "
+                "and monitoring.",
+    "cardholder": "One account — your own — and whether its next payment looks "
+                  "at risk.",
 }
 
 
 def main() -> None:
-    try:
-        roles = {entry["role"]: entry for entry in api.roles()}
-    except api.ServiceUnavailable as exception:
-        st.title("Credit Risk")
-        api.guard(exception)
+    session = st.session_state.get(SESSION_KEY)
+    if session is None:
+        _sign_in()
         return
 
-    chosen = st.session_state.get(ROLE_KEY)
-    if chosen not in roles:
-        _landing(roles)
-        return
+    _signed_in_bar(session)
 
-    _signed_in_bar(roles[chosen])
-
-    if chosen == "officer":
-        _officer()
-    elif chosen == "engineer":
+    if session["role"] == "officer":
+        _officer(session)
+    elif session["role"] == "engineer":
         _engineer()
     else:
-        _cardholder()
+        _cardholder(session)
 
 
-# --- choosing a role ------------------------------------------------------
+# --- signing in -----------------------------------------------------------
 
 
-def _landing(roles: dict) -> None:
-    """The way in. One card per role, because the three are peers.
-
-    Rendered from the API's own role list, so a role cannot be offered here that
-    the database would reject.
-    """
+def _sign_in() -> None:
+    """The way in: an email and a password. The account decides what opens."""
     st.title("Credit Risk")
-    st.subheader("Explainable, fair behavioural scoring")
-    st.caption(
-        "Scores existing cardholders for the risk of missing their next payment, "
-        "explains every score in plain language, and audits itself for fairness."
-    )
-    st.divider()
+    st.caption("Explainable, fair behavioural scoring")
 
-    st.markdown("#### Sign in as")
-    st.caption(
-        "Choosing a role opens that person's screens. It is not authentication "
-        "and proves nothing; a real deployment would sign you in properly."
-    )
+    middle = st.columns([1, 2, 1])[1]
+    with middle:
+        with st.container(border=True):
+            st.markdown("#### Sign in")
+            st.caption("Your account decides which screens open.")
 
-    for column, role in zip(st.columns(len(roles)), roles.values()):
-        with column:
-            _role_card(role)
+            with st.form("sign_in", border=False):
+                email = st.text_input("Email", placeholder="name@example.test")
+                password = st.text_input("Password", type="password")
+                submitted = st.form_submit_button(
+                    "Sign in", type="primary", width="stretch"
+                )
+
+            if submitted:
+                _attempt(email, password)
+
+        _what_accounts_open()
 
 
-def _role_card(role: dict) -> None:
-    with st.container(border=True):
-        st.markdown(f"## {ICONS.get(role['role'], '👤')}")
-        st.markdown(f"### {role['label']}")
-        st.write(INVITATIONS.get(role["role"], role["description"]))
+def _attempt(email: str, password: str) -> None:
+    """Try the credentials, keeping a session only if the API accepted them."""
+    if not email.strip() or not password:
+        st.error("Enter both an email and a password.")
+        return
 
-        accounts = role["users"]
-        st.caption(
-            f"{accounts} account{'s' if accounts != 1 else ''} available"
-            if accounts else "No accounts seeded yet"
+    try:
+        st.session_state[SESSION_KEY] = api.sign_in(email.strip(), password)
+    except api.SignInRejected as exception:
+        # The API's single message, deliberately: saying which half was wrong
+        # would tell someone which accounts exist.
+        st.error(str(exception))
+        return
+    except api.ServiceUnavailable as exception:
+        st.error(str(exception))
+        return
+
+    st.rerun()
+
+
+def _what_accounts_open() -> None:
+    """What each kind of account sees, read from the API's own role list."""
+    try:
+        roles = api.roles()
+    except api.ServiceUnavailable:
+        # Signing in is the point of this page, so a service that cannot describe
+        # its roles must not stop someone trying.
+        return
+
+    st.caption("The system has three kinds of account:")
+    for role in roles:
+        name = LABELS.get(role["role"], role["role"])
+        st.markdown(
+            f"{ICONS.get(role['role'], '👤')} **{name}** — "
+            f"{OPENS.get(role['role'], role['description'])}"
         )
 
-        if st.button(
-            f"Continue as {role['label'].lower()}",
-            key=f"pick_{role['role']}",
-            width="stretch",
-            type="primary",
-            disabled=not accounts,
-        ):
-            st.session_state[ROLE_KEY] = role["role"]
-            st.session_state.pop(IDENTITY_KEY, None)
-            st.rerun()
 
-
-def _signed_in_bar(role: dict) -> None:
+def _signed_in_bar(session: dict) -> None:
     """Who you are, and the way back out, on every screen."""
     title, identity = st.columns([5, 2])
     title.title("Credit Risk")
 
     with identity:
-        st.caption(f"{ICONS.get(role['role'], '👤')} Signed in as **{role['label']}**")
-        if st.button("Switch role", width="stretch"):
-            st.session_state.pop(ROLE_KEY, None)
-            st.session_state.pop(IDENTITY_KEY, None)
+        st.caption(
+            f"{ICONS.get(session['role'], '👤')} **{session['display_name']}** · "
+            f"{LABELS.get(session['role'], session['role'])}"
+        )
+        if st.button("Sign out", width="stretch"):
+            # The token is the whole session, so dropping it is the sign-out.
+            # Cached reads go with it: they were fetched for this caller.
+            st.session_state.pop(SESSION_KEY, None)
+            st.cache_data.clear()
             st.rerun()
-
-
-def _who(role: str, label: str) -> str | None:
-    """Which member of staff is acting, since a decision records who took it."""
-    try:
-        staff = api.users(role=role)
-    except api.ServiceUnavailable as exception:
-        api.guard(exception)
-        return None
-
-    if not staff:
-        st.warning(
-            f"No {label.lower()} accounts exist. Seed them with: "
-            "`cd backend && python -m app.db.seed`"
-        )
-        return None
-
-    by_name = {user["display_name"]: user["email"] for user in staff}
-    chosen = st.sidebar.selectbox(label, list(by_name))
-    st.sidebar.caption(by_name[chosen])
-    return by_name[chosen]
-
-
-def _which_account() -> tuple[str, str] | None:
-    """Which cardholder is asking, and the account they are entitled to read.
-
-    Stands in for a sign-in: the API authorises the chosen identity but cannot
-    verify it, and says so.
-    """
-    st.caption(
-        "A cardholder reaches only their own account — the API refuses any "
-        "other. Picking who you are stands in for authentication, which a real "
-        "deployment would do upstream."
-    )
-
-    try:
-        known = [user for user in api.users(role="cardholder") if user["customer_id"]]
-    except api.ServiceUnavailable as exception:
-        api.guard(exception)
-        return None
-
-    if not known:
-        st.info(
-            "No registered cardholder accounts. Seed them with: "
-            "`cd backend && python -m app.db.seed`"
-        )
-        return None
-
-    by_name = {user["display_name"]: user for user in known}
-    chosen = by_name[st.selectbox("Account", list(by_name))]
-
-    st.session_state[IDENTITY_KEY] = chosen["email"]
-    return chosen["email"], chosen["customer_id"]
 
 
 # --- the three screens ----------------------------------------------------
 
 
-def _officer() -> None:
-    email = _who("officer", "Officer")
-    if email is None:
-        return
-    officer.render(email)
+def _officer(session: dict) -> None:
+    # The acting officer is whoever signed in, not a sidebar choice: a decision
+    # records who took it, and that must not be selectable.
+    officer.render(session["email"])
 
 
-def _cardholder() -> None:
+def _cardholder(session: dict) -> None:
     st.subheader("Your account")
-    account = _which_account()
-    if account is None:
+    if session["customer_id"] is None:
+        st.info(
+            "This account is not registered against a customer yet, so there is "
+            "no scored account to show. Link it with: "
+            "`cd backend && python -m app.db.seed`"
+        )
         return
-    cardholder.render(*account)
+    cardholder.render(session["token"], session["customer_id"])
 
 
 def _engineer() -> None:
