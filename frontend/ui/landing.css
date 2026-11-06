@@ -202,6 +202,82 @@ body:has(.st-key-signin_card) [data-testid="stMain"] {
 .reason-bar--helps { background: var(--helps); }
 .reason-bar--hurts { background: var(--hurts); }
 
+/* --- recourse: two states and the way between them ---------------------- */
+
+.recourse {
+    display: grid;
+    grid-template-columns: minmax(0, 0.72fr) minmax(0, 1.4fr) minmax(0, 0.72fr);
+    gap: 0;
+    align-items: stretch;
+}
+.recourse-state {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+    padding: 18px 14px;
+    background: #FFFFFF;
+    border: 1px solid var(--surface-line);
+    border-radius: 14px;
+    box-shadow: 0 14px 34px rgba(42, 64, 84, 0.09);
+    text-align: center;
+    /* Above the connector, so the join tucks behind the cards. */
+    position: relative;
+    z-index: 1;
+}
+.recourse-state--after { background: #FBFDFE; }
+.recourse-when {
+    font-size: 11.5px;
+    font-weight: 600;
+    color: #8A96A3;
+}
+.recourse-band { font-size: 16px; font-weight: 650; }
+
+/* The connector: a hairline the actions sit on. */
+.recourse-join {
+    position: relative;
+    display: flex;
+    align-items: center;
+    padding: 0 18px;
+    margin: 0 -10px;
+}
+.recourse-join::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    height: 1px;
+    background: var(--slate-line, #C6D1DB);
+}
+.recourse-steps {
+    position: relative;
+    margin: 0;
+    padding: 10px 12px;
+    list-style: none;
+    background: #FFFFFF;
+    border: 1px solid var(--surface-line);
+    border-radius: 10px;
+}
+.recourse-steps li {
+    font-size: 12.5px;
+    line-height: 1.45;
+    color: #2B2724;
+    padding-left: 14px;
+    position: relative;
+}
+.recourse-steps li + li { margin-top: 7px; }
+.recourse-steps li::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 7px;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--helps);
+}
+
 /* --- the fairness plot -------------------------------------------------- */
 
 .fair-head { font-size: 12.5px; color: #5E6B78; margin-bottom: 16px; }
@@ -454,6 +530,9 @@ body:has(.st-key-signin_card) [data-testid="stMain"] {
 }
 
 @media (max-width: 560px) {
+    .recourse { grid-template-columns: minmax(0, 1fr); }
+    .recourse-join { margin: 10px 0; padding: 0; }
+    .recourse-join::before { display: none; }
     .reason-row { grid-template-columns: minmax(0, 1fr) 38%; gap: 10px; }
     .fair-row { grid-template-columns: 84px minmax(0, 1fr); }
     .queue-row { grid-template-columns: 56px 70px 54px minmax(0, 1fr); gap: 8px; }

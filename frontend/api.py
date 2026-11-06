@@ -269,6 +269,16 @@ def cardholder(customer_id: str, token: str) -> dict:
     return _request(f"/cardholders/{customer_id}", token=token)
 
 
+@st.cache_data(ttl=60, show_spinner=False)
+def recourse(customer_id: str, token: str) -> dict:
+    """The smallest change that would move this account to a better band.
+
+    Cached longer than the account itself: the search runs the model dozens of
+    times, and the answer only moves when the account's own figures do.
+    """
+    return _request(f"/cardholders/{customer_id}/recourse", token=token)
+
+
 # --- derived --------------------------------------------------------------
 
 

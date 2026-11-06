@@ -28,6 +28,7 @@ from app.api import (
     monitoring,
     officer,
     predictions,
+    recourse,
     roles,
     sessions,
 )
@@ -58,6 +59,7 @@ app.include_router(sessions.router)
 app.include_router(roles.router)
 app.include_router(officer.router)
 app.include_router(cardholders.router)
+app.include_router(recourse.router)
 app.include_router(predictions.router)
 app.include_router(decisions.router)
 app.include_router(fairness.router)

@@ -94,6 +94,33 @@ def _reason_row(text: str, effect: float, widest: float) -> str:
     )
 
 
+def recourse_cards(
+    *,
+    today: str,
+    steps: list[str],
+    outcome: str,
+) -> str:
+    """Where the account stands, what would move it, and where that lands it.
+
+    Two states joined by a connector, with the actions on the join: the shape
+    of a counterfactual, which is "this, if you do that".
+    """
+    moves = "".join(f"<li>{escape(step)}</li>" for step in steps)
+    return flatten(f"""
+<div class="recourse" aria-hidden="true">
+<div class="recourse-state">
+<span class="recourse-when">Today</span>
+<span class="recourse-band" style="color:{BAND_TONE.get(today, HURTS)}">{escape(today)} risk</span>
+</div>
+<div class="recourse-join"><ul class="recourse-steps">{moves}</ul></div>
+<div class="recourse-state recourse-state--after">
+<span class="recourse-when">After those</span>
+<span class="recourse-band" style="color:{BAND_TONE.get(outcome, HELPS)}">{escape(outcome)} risk</span>
+</div>
+</div>
+""")
+
+
 def fairness_plot(
     *,
     rows: list[tuple[str, float, str]],

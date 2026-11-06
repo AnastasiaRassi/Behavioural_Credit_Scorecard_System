@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from app.core import sessions
 from app.db.database import _session_factory
 from app.db.models import ModelVersion, Prediction, UserAccount
+from app.ml.counterfactuals import CounterfactualExplainer
 from app.ml.explainability import Explainer
 from app.ml.scorer import ArtifactsMissing, CreditScorer
 
@@ -43,6 +44,12 @@ def get_scorer() -> CreditScorer:
 @lru_cache(maxsize=1)
 def get_explainer() -> Explainer:
     return Explainer(get_scorer())
+
+
+@lru_cache(maxsize=1)
+def get_recourse_explainer() -> CounterfactualExplainer:
+    """Shares the scorer: a counterfactual search runs the model many times."""
+    return CounterfactualExplainer(get_scorer())
 
 
 def get_session() -> Iterator[Session]:

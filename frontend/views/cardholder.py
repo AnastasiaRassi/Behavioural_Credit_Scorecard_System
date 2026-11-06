@@ -58,7 +58,7 @@ def render(token: str, customer_id: str) -> None:
 
     st.divider()
     if account["needs_attention"]:
-        _warning(account)
+        _warning(account, _plan(token, customer_id))
     else:
         _reassurance(account)
 
@@ -67,7 +67,7 @@ def render(token: str, customer_id: str) -> None:
     _consent()
 
 
-def _warning(account: dict) -> None:
+def _warning(account: dict, plan: dict | None) -> None:
     st.warning(
         "**Your next payment may be at risk**\n\n"
         "Based on how your account has moved over the last six months, you may "
@@ -76,12 +76,17 @@ def _warning(account: dict) -> None:
         "still time to act."
     )
 
-    advice = _advice(account)
-    if advice:
-        st.markdown("**What would help most**")
-        for because, action in advice:
-            st.markdown(f"- {action}")
-            st.caption(f"Because: {because.lower()}")
+    # The computed plan says the same things with this account's own amounts in
+    # them, so it replaces the written advice rather than repeating it.
+    if plan and plan["steps"]:
+        _recourse(plan)
+    else:
+        advice = _advice(account)
+        if advice:
+            st.markdown("**What would help most**")
+            for because, action in advice:
+                st.markdown(f"- {action}")
+                st.caption(f"Because: {because.lower()}")
 
     st.markdown("**If money is tight this month**")
     st.markdown(
@@ -126,6 +131,38 @@ def _account(account: dict) -> None:
         ],
     ):
         column.metric(label, value)
+
+
+def _plan(token: str, customer_id: str) -> dict | None:
+    """The computed recourse, or None if the search could not be reached.
+
+    A failed search must not take the page down: the written advice below is
+    always true and stands on its own.
+    """
+    try:
+        return api.recourse(customer_id, token)
+    except api.ServiceUnavailable:
+        return None
+
+
+def _recourse(plan: dict) -> None:
+    """The way out, worked out against this account's own figures.
+
+    Amounts rather than suggestions. When nothing the customer can do on their
+    own reaches the next band, that is said: a recourse screen that always
+    finds an answer is promising one.
+    """
+    st.markdown(f"**What would move you to {plan['target_band'].lower()} risk**")
+    for step in plan["steps"]:
+        st.markdown(f"- {step['description']}")
+
+    if plan["reachable"]:
+        st.caption(plan["note"])
+    else:
+        st.caption(
+            f"{plan['note']} Each one still helps, and support can look at "
+            "options this account cannot reach on its own."
+        )
 
 
 def _advice(account: dict) -> list[tuple[str, str]]:

@@ -97,6 +97,38 @@ def feature_meaning(feature: str) -> str:
     return feature.replace("_", " ")
 
 
+def describe_change(feature: str, before: float, after: float) -> str:
+    """What a customer would have to do, in the words they would do it in.
+
+    `describe()` says what a number is; this says what to change it to. Only the
+    features counterfactuals.default_policy lets a customer act on reach here —
+    this month's bill, this month's payment, this month's repayment status, and
+    the limit when a lender is modelling an increase.
+    """
+    moved = after - before
+
+    if feature == "BILL_AMT1":
+        return f"Bring the card balance down to {after:,.0f}, from {before:,.0f}"
+
+    if feature == "PAY_AMT1":
+        if before == 0:
+            return f"Put {after:,.0f} into the card this month, instead of nothing"
+        return f"Pay {after:,.0f} into the card this month, {moved:+,.0f} on now"
+
+    if feature == "PAY_1":
+        if after <= 0 < before:
+            return "Bring the account up to date, so no month is in arrears"
+        months = int(round(before - after))
+        return f"Clear {months} of the months the account is behind"
+
+    if feature == "LIMIT_BAL":
+        return f"Raise the credit limit to {after:,.0f}, from {before:,.0f}"
+
+    # Nothing else is actionable today, so this is a safety net rather than a
+    # branch anyone should hit: say the move plainly instead of guessing at it.
+    return f"{feature_meaning(feature).capitalize()}: {before:,.0f} to {after:,.0f}"
+
+
 def describe(feature: str, value: float) -> str:
     """Readable account of what this feature's value says about the customer.
 

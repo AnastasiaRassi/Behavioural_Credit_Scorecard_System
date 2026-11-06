@@ -5,11 +5,8 @@ the page is built to is that nothing here is mocked up: the scores, the reasons
 and the fairness ratios are this project's own output, and every section whose
 feature is not actually in the app was left out rather than illustrated.
 
-Two were left out for that reason:
+One was left out for that reason:
 
-* Counterfactual recourse. `ml/counterfactuals.py` computes it and is tested,
-  but no endpoint serves it and no screen shows it, so "the product shows you
-  what would change the outcome" is not yet true of the product.
 * An application pipeline. The system scores existing card accounts from their
   payment history; there is no application, no approval step and no repayment
   schedule to track, so there is no Applied → Repaying story to tell.
@@ -37,6 +34,22 @@ SAMPLE_CUSTOMER = {
         ("Share of bill paid, month 3 at 0%", 0.105),
     ],
 }
+
+# One real account, run through GET /cardholders/{id}/recourse. Its limit is
+# 20,000 and it is carrying 18,710, which is why clearing the card is what the
+# search lands on: it is the smallest move that reaches the next band, not a
+# suggestion anyone wrote.
+#
+# Honest about the other half: for roughly half the accounts tried, nothing
+# within the customer's own reach gets them a band better, because six months
+# of repayment history outweighs anything this month can do. The endpoint says
+# so rather than inventing a step, and the section's words say so too.
+RECOURSE_TODAY = "High"
+RECOURSE_OUTCOME = "Medium"
+RECOURSE_STEPS = [
+    "Bring the account up to date, so no month is in arrears",
+    "Pay 19,132 into the card this month, +17,732 on now",
+]
 
 # From the fairness audit train.py writes, read back through GET /fairness.
 # The ratio is the least-approved group's approval rate over the most-approved
@@ -149,12 +162,24 @@ def sections() -> str:
             visual_first=False,
         )
         + _row(
+            "Know what would change the outcome",
+            "For every account, CrediTrait works out the smallest change that "
+            "would move it to a better band — and says so plainly when nothing "
+            "the customer can do on their own would be enough.",
+            components.recourse_cards(
+                today=RECOURSE_TODAY,
+                steps=RECOURSE_STEPS,
+                outcome=RECOURSE_OUTCOME,
+            ),
+            visual_first=True,
+        )
+        + _row(
             "Checked for fairness",
             "Before a model goes live, CrediTrait compares its decisions across "
             "customer groups and flags any gap. The audit runs on four "
             "attributes the model never sees when it scores.",
             components.fairness_plot(rows=FAIRNESS_ROWS, floor=FAIRNESS_FLOOR),
-            visual_first=True,
+            visual_first=False,
         )
         + _row(
             "A person makes the final call",
@@ -168,14 +193,14 @@ def sections() -> str:
                 note=SAMPLE_NOTE,
                 recorded="Recorded by a loan officer at 14:02",
             ),
-            visual_first=False,
+            visual_first=True,
         )
         + _row(
             "Every account in one queue",
             "Accounts are ordered by what needs attention first, each with its "
             "risk band and the one thing driving it.",
             components.worklist(rows=QUEUE_ROWS),
-            visual_first=True,
+            visual_first=False,
         )
         + _views()
         + "</div>"
