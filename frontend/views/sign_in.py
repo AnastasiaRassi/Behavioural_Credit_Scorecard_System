@@ -59,11 +59,20 @@ ERROR_KEY = "signin_error"
 # DEMO_MODE=1 puts a one-click row under the form. The password matches the one
 # `python -m app.db.seed` sets for these accounts in the same mode.
 DEMO_PASSWORD = "demo"
+
+# Only the two roles someone arriving at this page would expect to be. The
+# engineer screens are an internal tool and listing them here read as if the
+# public were being offered the model's own controls.
 DEMO_ACCOUNTS = (
     ("Loan officer", "officer@demo.test"),
-    ("ML engineer", "engineer@demo.test"),
     ("Cardholder", "cardholder@demo.test"),
 )
+
+# Added to the row by the footer link, which sets ?internal=1. Convenience
+# only, never a boundary: what a session may open is decided by the role the
+# API returns for the account, not by how the page was reached.
+INTERNAL_ACCOUNTS = (("ML engineer", "engineer@demo.test"),)
+INTERNAL_PARAM = "internal"
 
 # Four rounded squares around a plus-shaped gap: the view up between the towers.
 _LOGO = """
@@ -78,6 +87,14 @@ fill="rgba(74,107,133,0.10)" stroke="#4A6B85" stroke-width="1.5"/>
 <rect x="16.8" y="16.8" width="10.4" height="10.4" rx="2.6"
 fill="rgba(74,107,133,0.10)" stroke="#4A6B85" stroke-width="1.5"/>
 <circle cx="14" cy="14" r="2.1" fill="#D9A462"/>
+</svg>
+"""
+
+_CHEVRON = """
+<svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"
+     xmlns="http://www.w3.org/2000/svg">
+<path d="M2.6 4.6 L6 8 L9.4 4.6" stroke="currentColor" stroke-width="1.6"
+stroke-linecap="round" stroke-linejoin="round"/>
 </svg>
 """
 
@@ -97,29 +114,29 @@ stroke-linecap="round"/>
 # not have: it scores existing card accounts from their payment history, so
 # there is no application to track and the panel was claiming a feature.
 _TRACK = """
-<svg viewBox="0 0 226 46" fill="none" aria-hidden="true"
+<svg viewBox="0 0 278 50" fill="none" aria-hidden="true"
      xmlns="http://www.w3.org/2000/svg">
-<rect x="12" y="8" width="99" height="11" rx="3" fill="#2F7A52"/>
-<rect x="113" y="8" width="60" height="11" rx="3" fill="#B8742A"/>
-<rect x="175" y="8" width="39" height="11" rx="3" fill="#A6442F"/>
-<text x="12" y="34" text-anchor="start">Low 2,224</text>
-<text x="113" y="34" text-anchor="start">Medium 1,338</text>
-<text x="214" y="34" text-anchor="end">High 938</text>
+<rect x="12" y="8" width="125" height="12" rx="3" fill="#2F7A52"/>
+<rect x="137" y="8" width="75" height="12" rx="3" fill="#B8742A"/>
+<rect x="212" y="8" width="54" height="12" rx="3" fill="#A6442F"/>
+<text x="12" y="39" text-anchor="start">Low 2,224</text>
+<text x="137" y="39" text-anchor="start">Medium 1,338</text>
+<text x="266" y="39" text-anchor="end">High 938</text>
 </svg>
 """
 
 # What moved a score: right of the line helped, left of it hurt. An illustration
 # of the shape of an explanation, so it carries no numbers.
 _REASONS = """
-<svg viewBox="0 0 214 70" fill="none" aria-hidden="true"
+<svg viewBox="0 0 278 78" fill="none" aria-hidden="true"
      xmlns="http://www.w3.org/2000/svg">
-<line x1="107" y1="4" x2="107" y2="66" stroke="#C6D1DB" stroke-width="1"/>
-<rect class="panel-bar" x="107" y="9" width="62" height="7" rx="3.5" fill="#2F6DA3"/>
-<text x="100" y="15.5" text-anchor="end">Payments on time</text>
-<rect class="panel-bar" x="59" y="31" width="48" height="7" rx="3.5" fill="#B8742A"/>
-<text x="114" y="37.5" text-anchor="start">High card balance</text>
-<rect class="panel-bar" x="107" y="53" width="40" height="7" rx="3.5" fill="#2F6DA3"/>
-<text x="100" y="59.5" text-anchor="end">Long account history</text>
+<line x1="139" y1="4" x2="139" y2="74" stroke="#C6D1DB" stroke-width="1"/>
+<rect class="panel-bar" x="139" y="10" width="68" height="9" rx="4.5" fill="#2F6DA3"/>
+<text x="131" y="18.5" text-anchor="end">Paid on time</text>
+<rect class="panel-bar" x="87" y="34" width="52" height="9" rx="4.5" fill="#B8742A"/>
+<text x="147" y="42.5" text-anchor="start">High balance</text>
+<rect class="panel-bar" x="139" y="58" width="44" height="9" rx="4.5" fill="#2F6DA3"/>
+<text x="131" y="66.5" text-anchor="end">Long history</text>
 </svg>
 """
 
@@ -178,10 +195,7 @@ def render(attempt: Callable[[str, str], tuple[str, str] | None]) -> None:
             if demo_mode():
                 _demo_row()
 
-        st.markdown(
-            '<a class="see-how" href="#how-it-works">See how it works</a>',
-            unsafe_allow_html=True,
-        )
+        st.markdown(_see_how(), unsafe_allow_html=True)
 
     st.markdown(landing.sections(), unsafe_allow_html=True)
     _closing_band()
@@ -201,26 +215,49 @@ def render(attempt: Callable[[str, str], tuple[str, str] | None]) -> None:
             st.rerun()
 
 
+def _see_how() -> str:
+    """The way down to the sections: a quiet text button, not a blue link."""
+    return _flatten(f"""
+<div class="see-how-row">
+<a class="see-how" href="#how-it-works">See how it works{_CHEVRON}</a>
+</div>
+""")
+
+
+def _internal() -> bool:
+    """Whether the footer link asked for the internal role."""
+    return st.query_params.get(INTERNAL_PARAM) == "1"
+
+
 def _demo_row(key: str = "demo_row") -> None:
     """One click per role, demo mode only. Hidden entirely when it is off."""
+    accounts = DEMO_ACCOUNTS + (INTERNAL_ACCOUNTS if _internal() else ())
     st.markdown(
         '<p class="demo-label">Try a demo account</p>', unsafe_allow_html=True
     )
     with st.container(key=key):
-        for column, (label, email) in zip(st.columns(3), DEMO_ACCOUNTS):
+        columns = st.columns(len(accounts))
+        for column, (label, email) in zip(columns, accounts):
             if column.button(label, key=f"{key}_{email}", width="stretch"):
                 st.session_state.pop(ERROR_KEY, None)
                 st.session_state[PENDING_KEY] = (email, DEMO_PASSWORD)
                 st.rerun()
 
 
+def _footer() -> str:
+    """The one quiet way to the internal view, under the closing card."""
+    inside = _internal()
+    href, words = ("?", "Leave internal access") if inside else ("?internal=1", "Internal access")
+    return _flatten(f"""
+<p class="page-footer"><a class="footer-link" href="{href}">{words}</a></p>
+""")
+
+
 def _closing_band() -> None:
-    """The last band: back to the card, and the demo accounts once more."""
+    """The last band: one card back to the form, and the footer under it."""
     with st.container(key="closing"):
         st.markdown(landing.closing_band(), unsafe_allow_html=True)
-        if demo_mode():
-            with st.container(key="closing_demo"):
-                _demo_row(key="closing_demo_row")
+        st.markdown(_footer(), unsafe_allow_html=True)
 
 
 def _alert(field: str, message: str) -> str:

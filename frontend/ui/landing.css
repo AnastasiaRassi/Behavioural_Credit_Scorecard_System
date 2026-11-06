@@ -6,7 +6,10 @@
    exists on this page. */
 
 :root {
-    --page: #F6F8FA;
+    /* A soft sky tint rather than white: less glare under the white cards,
+       and the hero fades into --page-top, which eases to --page-bottom. */
+    --page-top: #EBF3F9;
+    --page-bottom: #F0F4F8;
     --surface-line: #E3E8EE;
     --helps: #2F6DA3;
     --hurts: #B8742A;
@@ -14,12 +17,18 @@
 
 /* The photograph belongs to the hero now, so the page behind it is light. */
 body:has(.st-key-signin_card) .stApp {
-    background-color: var(--page);
+    background-color: var(--page-bottom);
 }
 body:has(.st-key-signin_card) [data-testid="stMainBlockContainer"] {
     display: block;
     min-height: 0;
     padding: 0 !important;
+}
+/* The outermost block only. The hero is a vertical block too and keeps its
+   gap, which is what separates the card from the way down. */
+body:has(.st-key-signin_card)
+    [data-testid="stMainBlockContainer"] > [data-testid="stVerticalBlock"] {
+    gap: 0;
 }
 /* Deliberately not smooth: Streamlit reruns on the hash change an in-page
    link makes, and the rerun cut the animation off a third of the way down. A
@@ -38,15 +47,43 @@ body:has(.st-key-signin_card) [data-testid="stMain"] {
     flex-direction: column;
     align-items: center;
     justify-content: center;
+    /* A stacking context of its own, so the two layers below can sit at -1:
+       above the hero's background, under the card without touching it. */
+    isolation: isolate;
+}
+.st-key-hero::before,
+.st-key-hero::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+}
+/* The photograph on its own layer. `filter` on the hero itself would brighten
+   the card and the panels with it. */
+.st-key-hero::before {
+    background-image: var(--login-photo);
+    background-size: cover;
+    background-position: center center;
+    filter: brightness(1.08) saturate(1.05);
+}
+/* Two things at once: the wash that keeps the card readable, kept light enough
+   to leave the sky blue and the glass golden, and the fade over the bottom
+   quarter that hands the photograph to the page colour rather than ending it
+   on a line. */
+.st-key-hero::after {
     background-image:
+        linear-gradient(to bottom,
+            rgba(235, 243, 249, 0) 70%,
+            rgba(235, 243, 249, 0.28) 79%,
+            rgba(235, 243, 249, 0.68) 87%,
+            rgba(235, 243, 249, 0.94) 94%,
+            var(--page-top) 98%),
         radial-gradient(ellipse 48% 38% at 50% 50%,
-            rgba(238, 243, 247, 0.15) 0%,
-            rgba(238, 243, 247, 0.20) 45%,
-            rgba(238, 243, 247, 0.36) 78%,
-            rgba(238, 243, 247, 0.44) 100%),
-        var(--login-photo);
-    background-size: cover, cover;
-    background-position: center center, center center;
+            rgba(238, 243, 247, 0.10) 0%,
+            rgba(238, 243, 247, 0.14) 45%,
+            rgba(238, 243, 247, 0.22) 78%,
+            rgba(238, 243, 247, 0.26) 100%);
 }
 
 /* Inside the hero, so they leave with it rather than following the page down. */
@@ -60,18 +97,28 @@ body:has(.st-key-signin_card) [data-testid="stMain"] {
     position: static;
 }
 
-.see-how {
-    display: block;
-    margin-top: 18px;
+/* A quiet text button. The !important is not decoration: Streamlit styles
+   markdown anchors blue and underlined from a selector this cannot outweigh. */
+.see-how-row {
+    margin-top: 16px;
     text-align: center;
-    font-size: 13px;
+}
+body:has(.st-key-signin_card) a.see-how {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    font-size: 14px;
     font-weight: 500;
-    color: #2B2724;
-    text-decoration: none;
+    color: #2B2724 !important;
+    text-decoration: none !important;
     text-shadow: 0 1px 2px rgba(255, 255, 255, 0.7);
 }
-.see-how:hover { color: var(--helps); }
-.see-how::after { content: " ↓"; }
+body:has(.st-key-signin_card) a.see-how:hover {
+    color: #2B2724 !important;
+    text-decoration: underline !important;
+}
+.see-how svg { display: block; flex: 0 0 12px; }
 
 /* --- the sections ------------------------------------------------------ */
 
@@ -83,6 +130,12 @@ body:has(.st-key-signin_card) [data-testid="stMain"] {
     scroll-margin-top: 0;
 }
 
+.story-page {
+    background-color: var(--page-bottom);
+    background-image:
+        linear-gradient(to bottom, var(--page-top) 0, var(--page-bottom) 1100px);
+    background-repeat: no-repeat;
+}
 .story {
     max-width: 1120px;
     margin: 0 auto;
@@ -119,8 +172,8 @@ body:has(.st-key-signin_card) [data-testid="stMain"] {
     max-width: 44ch;
 }
 
-/* Each visual is a piece of the app floating on the page, nudged past the
-   edge of its column so it reads as a surface rather than an illustration. */
+/* Each visual is a white card on the tinted page: a piece of the app, with
+   nothing behind it. Its column edge lines up with the text's. */
 .surface {
     background: #FFFFFF;
     border: 1px solid var(--surface-line);
@@ -128,8 +181,7 @@ body:has(.st-key-signin_card) [data-testid="stMain"] {
     box-shadow: 0 18px 44px rgba(42, 64, 84, 0.10);
     padding: 20px 22px;
 }
-.story-row .surface { margin-right: -28px; }
-.story-row--flip .surface { margin-right: 0; margin-left: -28px; }
+
 .surface-title {
     font-size: 12.5px;
     font-weight: 600;
@@ -389,7 +441,7 @@ body:has(.st-key-signin_card) [data-testid="stMain"] {
     font-size: 13.5px;
     line-height: 1.55;
     color: #2B2724;
-    background: #F6F8FA;
+    background: #F1F5F9;
     border: 1px solid var(--surface-line);
     border-radius: 10px;
     padding: 11px 13px;
@@ -438,20 +490,20 @@ body:has(.st-key-signin_card) [data-testid="stMain"] {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 24px;
 }
-.preview { margin: 0; }
-.preview-frame {
+.preview {
+    margin: 0;
     background: #FFFFFF;
     border: 1px solid var(--surface-line);
     border-radius: 14px;
     box-shadow: 0 12px 30px rgba(42, 64, 84, 0.08);
-    padding: 10px;
+    padding: 12px 14px 16px;
 }
 .preview-frame svg { display: block; width: 100%; height: auto; }
 .preview figcaption {
     font-size: 13.5px;
     line-height: 1.5;
     color: #5E6B78;
-    margin-top: 14px;
+    margin-top: 12px;
 }
 .preview figcaption strong {
     display: block;
@@ -462,24 +514,29 @@ body:has(.st-key-signin_card) [data-testid="stMain"] {
 
 /* --- the closing band ---------------------------------------------------- */
 
-/* The same photograph, cropped to the golden glass at the foot of the towers
-   and lightened until text sits on it. */
+/* One solid card on the page colour. The band used to carry a blurred crop
+   of the hero photograph, which read as noise under the one thing here that
+   matters: the way back to the form. */
 .st-key-closing {
     position: relative;
-    margin-top: 20px;
-    padding: 76px 24px 84px;
-    background-image:
-        linear-gradient(rgba(246, 248, 250, 0.74), rgba(246, 248, 250, 0.74)),
-        var(--login-photo);
-    background-size: cover, 300%;
-    background-position: center, 16% 97%;
+    padding: 24px 24px 56px;
+    background: var(--page-bottom);
+}
+.closing-card {
+    max-width: 620px;
+    margin: 0 auto;
+    padding: 48px 40px 50px;
+    background: #FFFFFF;
+    border: 1px solid var(--surface-line);
+    border-radius: 20px;
+    box-shadow: 0 18px 44px rgba(42, 64, 84, 0.10);
+    text-align: center;
 }
 /* Streamlit sets its own alignment on a markdown block, so inheriting from the
    band is not enough to centre what is in it. */
 .st-key-closing [data-testid="stMarkdown"],
 .st-key-closing .closing-title,
-.st-key-closing .closing-lead,
-.st-key-closing .demo-label {
+.st-key-closing .closing-lead {
     text-align: center;
 }
 .st-key-closing .closing-title {
@@ -489,24 +546,41 @@ body:has(.st-key-signin_card) [data-testid="stMain"] {
     color: #2B2724;
     margin: 0 0 10px;
 }
-.st-key-closing .closing-lead { font-size: 16px; color: #46525E; margin: 0 0 24px; }
-.closing-button {
+.st-key-closing .closing-lead {
+    font-size: 16px;
+    line-height: 1.6;
+    color: #5E6B78;
+    margin: 0 0 26px;
+}
+/* Same !important as the hero's link, for the same reason: Streamlit
+   underlines every markdown anchor from a selector this cannot outweigh. */
+body:has(.st-key-signin_card) a.closing-button {
     display: inline-block;
-    padding: 11px 26px;
+    padding: 12px 30px;
     background: #4A6B85;
     border-radius: 10px;
     color: #FFFFFF !important;
     font-size: 15px;
     font-weight: 600;
-    text-decoration: none;
+    text-decoration: none !important;
+    transition: background 0.15s ease;
 }
-.closing-button:hover { background: #3C586F; }
+body:has(.st-key-signin_card) a.closing-button:hover { background: #3C586F; }
 
-.st-key-closing_demo {
-    max-width: 420px;
-    margin: 22px auto 0;
+/* The only route to the internal view, kept as quiet as a footer should be. */
+.page-footer {
+    margin: 26px 0 0;
+    text-align: center;
 }
-.st-key-closing_demo .demo-label { border-top: none; padding-top: 0; }
+body:has(.st-key-signin_card) a.footer-link {
+    font-size: 12.5px;
+    color: #8A96A3 !important;
+    text-decoration: none !important;
+}
+body:has(.st-key-signin_card) a.footer-link:hover {
+    color: #5E6B78 !important;
+    text-decoration: underline !important;
+}
 
 /* --- narrow ------------------------------------------------------------- */
 
@@ -520,8 +594,7 @@ body:has(.st-key-signin_card) [data-testid="stMain"] {
     /* Stacked, the words come first whichever side they were on. */
     .story-row--flip .story-text { order: 1; }
     .story-row--flip .story-visual { order: 2; }
-    .story-row .surface,
-    .story-row--flip .surface { margin: 0; }
+    .closing-card { padding: 36px 24px 38px; }
     .story-text h2,
     .story-views h2,
     .st-key-closing .closing-title { font-size: 24px; }

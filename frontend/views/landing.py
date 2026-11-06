@@ -153,7 +153,8 @@ def sections() -> str:
     # container taller than the window only gets scrolled far enough to be
     # partly visible, which left the link stopping halfway.
     return components.flatten(
-        '<span class="anchor" id="how-it-works"></span><div class="story">'
+        '<div class="anchor" id="how-it-works"></div>'
+        '<div class="story-page"><div class="story">'
         + _row(
             "See why, not just what",
             "Every score comes with the reasons behind it, written in plain "
@@ -203,7 +204,7 @@ def sections() -> str:
             visual_first=False,
         )
         + _views()
-        + "</div>"
+        + "</div></div>"
     )
 
 
@@ -230,15 +231,11 @@ def _views() -> str:
 
 
 def closing_band() -> str:
-    """The final band's words.
-
-    Returned without a wrapper: Streamlit puts every markdown call in its own
-    element, so a <section> opened here could not contain the demo buttons.
-    The view wraps this in a keyed container instead, and the stylesheet draws
-    the band on that.
-    """
+    """The final call to action: one solid card, one button back to the form."""
     return components.flatten("""
+<div class="closing-card">
 <h2 class="closing-title">Ready to look inside?</h2>
 <p class="closing-lead">Sign in to see the real screens, on the real model.</p>
 <a class="closing-button" href="#top">Sign in</a>
+</div>
 """)

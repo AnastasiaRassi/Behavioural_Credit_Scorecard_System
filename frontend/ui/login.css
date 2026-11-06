@@ -331,8 +331,8 @@ body:has(.st-key-signin_card) :focus-visible {
     position: fixed;
     top: 50%;
     transform: translateY(-50%);
-    width: 258px;
-    max-height: 150px;
+    width: 310px;
+    max-height: 160px;
     padding: 14px 16px 16px;
     background: rgba(255, 255, 255, 0.82);
     -webkit-backdrop-filter: blur(14px) saturate(1.15);
@@ -357,7 +357,8 @@ body:has(.st-key-signin_card) :focus-visible {
 .sky-panel svg { display: block; width: 100%; height: auto; }
 .sky-panel text {
     font-family: var(--font);
-    font-size: 8.5px;
+    /* The SVG is drawn at panel width, so a viewBox unit is a pixel. */
+    font-size: 12px;
     fill: var(--slate);
 }
 
@@ -366,15 +367,29 @@ body:has(.st-key-signin_card) :focus-visible {
 .panel-bar {
     transform: scaleX(0);
     transform-box: view-box;
-    transform-origin: 107px center;
+    transform-origin: 139px center;
     animation: bar-grow 520ms 260ms ease-out forwards;
 }
 @keyframes bar-grow {
     to { transform: scaleX(1); }
 }
 
-@media (max-width: 1099px) {
+@media (max-width: 1199px) {
     .sky-panel { display: none; }
+}
+
+/* Short windows — 1366x768 among them. Everything above the fold means the
+   card, the way down, and the logo and name at the top of it. */
+@media (max-height: 880px) {
+    .st-key-signin_card { padding: 22px 30px 18px; }
+    .signin-desc { font-size: 14.5px; margin-top: 9px; }
+    .signin-heading { font-size: 23px; margin: 16px 0 0; }
+    .st-key-signin_card [data-testid="stTextInputRootElement"] { height: 40px; }
+    .st-key-signin_card [data-testid="stTextInputRootElement"] input { height: 38px; }
+    .st-key-signin_card [data-testid="stFormSubmitButton"] button { height: 40px; }
+    .signin-helper { margin-top: 10px; }
+    .demo-label { margin: 10px 0 6px; padding-top: 10px; }
+    .see-how-row { margin-top: 10px; }
 }
 
 @media (max-width: 640px) {
