@@ -17,16 +17,11 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import account_reader, get_recourse_explainer, get_session
 from app.db import statements
-from app.ml.counterfactuals import CounterfactualExplainer, RecourseTarget
+from app.ml.counterfactuals import NEXT_BAND_UP, CounterfactualExplainer, RecourseTarget
 from app.ml.explainability import describe_change
 from app.schemas.recourse import RecourseStep, RecourseView
 
 router = APIRouter(prefix="/cardholders", tags=["cardholder"])
-
-# One band better is the target worth offering. Asking a High-risk account to
-# reach Low in a month is advice nobody can act on, and the search would spend
-# its budget proving it.
-NEXT_BAND_UP = {"High": "Medium", "Medium": "Low"}
 
 
 @router.get(

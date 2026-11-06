@@ -64,6 +64,7 @@ def render(token: str, customer_id: str) -> None:
 
     st.divider()
     _account(account)
+    _chat(token, customer_id)
     _consent()
 
 
@@ -75,6 +76,7 @@ def _warning(account: dict, plan: dict | None) -> None:
         "and this is not a decision — it is an early heads-up while there is "
         "still time to act."
     )
+    _coaching(account)
 
     # The computed plan says the same things with this account's own amounts in
     # them, so it replaces the written advice rather than repeating it.
@@ -96,6 +98,15 @@ def _warning(account: dict, plan: dict | None) -> None:
     )
     st.button("Talk to someone about my options", type="primary")
     st.caption("Not yet connected to a support queue.")
+
+
+def _coaching(account: dict) -> None:
+    """The plain-language explanation. Wording comes from the API, never from here."""
+    coaching = account.get("coaching")
+    if not coaching:
+        return
+    st.markdown(coaching["text"])
+    st.caption(coaching["disclaimer"])
 
 
 def _reassurance(account: dict) -> None:
@@ -175,6 +186,52 @@ def _advice(account: dict) -> list[tuple[str, str]]:
         if action:
             advice.append((reason["description"], action))
     return advice[:SHOWN_ADVICE]
+
+
+def _chat(token: str, customer_id: str) -> None:
+    """Questions about this account, answered by the local model from the account's own facts.
+
+    The conversation lives in session state and is sent whole each turn; the API
+    keeps none. Every reply's wording comes from the API.
+    """
+    st.divider()
+    st.markdown("**Ask about your account**")
+
+    key = f"chat_{customer_id}"
+    if key not in st.session_state:
+        try:
+            opening = api.chat(customer_id, token, [])
+        except api.ServiceUnavailable:
+            st.caption("The assistant is unavailable right now.")
+            return
+        st.session_state[key] = {
+            "messages": [{"role": "assistant", "content": opening["reply"], "note": ""}],
+            "disclaimer": opening["disclaimer"],
+        }
+    conversation = st.session_state[key]
+
+    panel = st.container()
+    for message in conversation["messages"]:
+        with panel.chat_message(message["role"]):
+            st.markdown(message["content"])
+            if message.get("note"):
+                st.caption(message["note"])
+
+    question = panel.chat_input("Ask why, or what would help")
+    st.caption(conversation["disclaimer"])
+    if not question:
+        return
+
+    conversation["messages"].append({"role": "user", "content": question, "note": ""})
+    sent = [{"role": m["role"], "content": m["content"]} for m in conversation["messages"]]
+    with st.spinner("Thinking about your account..."):
+        try:
+            turn = api.chat(customer_id, token, sent)
+            reply = {"role": "assistant", "content": turn["reply"], "note": turn["note"]}
+        except api.ServiceUnavailable:
+            reply = {"role": "assistant", "content": "I could not reach the service just now. Please try again.", "note": ""}
+    conversation["messages"].append(reply)
+    st.rerun()
 
 
 def _consent() -> None:

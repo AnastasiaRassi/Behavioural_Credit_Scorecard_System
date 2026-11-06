@@ -15,7 +15,7 @@ the artifacts do not contain.
 With DEMO_MODE=1 it also creates one account per role on the password `demo`,
 so the app can be shown without anyone typing a generated credential.
 
-Seeds accounts and the model only. Customers come from the dataset via
+Seeds accounts, the model and the demo cardholders' coaching cache. Customers come from the dataset via
 db/ingest.py, and predictions are written by the API when someone is scored.
 """
 import json
@@ -252,6 +252,34 @@ def _link_spare_customer(session: Session, account: UserAccount) -> None:
             return
 
 
+def _pregenerate_coaching(session: Session) -> list[str]:
+    """Cache the demo cardholders' coaching, so the demo renders it without running the search."""
+    from app.ai import coaching
+    from app.db import statements
+    from app.ml import worklist
+
+    people = demo_cardholders()
+    customer_ids = [customer_id for customer_id, _, _ in people]
+    if coaching.cache_covers(customer_ids):
+        return []
+
+    entries = {}
+    for customer_id in customer_ids:
+        row = worklist.find(customer_id)
+        if row is None:
+            continue
+        try:
+            record = statements.raw_input_for(session, customer_id)
+        except statements.CustomerNotFound:
+            record = None
+        entries[customer_id] = coaching.cache_entry(
+            customer_id, row["risk_band"], row["reasons"], record
+        )
+
+    coaching.write_cache(entries)
+    return sorted(entries)
+
+
 def _seed_model_version(session: Session) -> list[str]:
     identity = live_model()
     existing = (
@@ -278,6 +306,7 @@ def seed() -> dict:
         cardholders, not_ingested, held_recredentialed = _seed_cardholders(session)
         demo_added, demo_updated = seed_demo_accounts(session)
         versions = _seed_model_version(session)
+        coaching_cached = _pregenerate_coaching(session)
 
     return {
         "users": users,
@@ -285,6 +314,7 @@ def seed() -> dict:
         "demo": demo_added,
         "demo_updated": demo_updated,
         "model_versions": versions,
+        "coaching": coaching_cached,
         "not_ingested": not_ingested,
         "recredentialed": staff_recredentialed + held_recredentialed,
     }
@@ -306,6 +336,8 @@ def main() -> dict:
         print(f"demo reset     {email} / {DEMO_PASSWORD}")
     for version in added["model_versions"]:
         print(f"model version  {version} (live)")
+    if added["coaching"]:
+        print(f"coaching       {len(added['coaching'])} demo cardholders cached to coaching.json")
     for email in added["recredentialed"]:
         print(f"password set   {email}")
     if added["not_ingested"]:

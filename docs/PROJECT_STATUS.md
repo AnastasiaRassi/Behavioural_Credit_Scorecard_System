@@ -364,6 +364,13 @@ python -m app.ml.multiplicity           # multiplicity.json
 python -m app.ml.sequence_models        # sequence_models.json
 ```
 
+The cardholder assistant uses a free local LLM through [Ollama](https://ollama.com).
+Optional: without it the chat answers from templates.
+
+```bash
+ollama pull qwen2.5:3b
+```
+
 Run the system, both from the repo root:
 
 ```bash

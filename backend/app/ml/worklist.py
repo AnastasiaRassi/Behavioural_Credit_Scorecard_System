@@ -8,6 +8,7 @@ returned a cardholder their probability and log-odds effects and the screen
 merely declined to draw them, the numbers would still be in the response, one
 devtools panel away. What a role cannot see, it is not sent.
 """
+from app.ai.coaching import coach
 from app.ml import artifacts
 
 BANDS = ("Low", "Medium", "High")
@@ -180,7 +181,7 @@ def customer_detail(row: dict) -> dict:
     }
 
 
-def cardholder_view(row: dict, stored_prediction=None) -> dict:
+def cardholder_view(row: dict, stored_prediction=None, record=None) -> dict:
     """What a cardholder is told about their own account.
 
     Carries the band, whether the account needs attention, and the reasons in
@@ -195,6 +196,9 @@ def cardholder_view(row: dict, stored_prediction=None) -> dict:
     Its band and reasons replace the queue's, so both sides of a conversation are
     looking at the same prediction. The reduction still applies: a fresher score
     does not mean a cardholder is sent the number.
+
+    `record` is the raw account input, used only for the one-month search behind
+    the coaching text. Without it the text says the search could not run.
     """
     band = row["risk_band"]
     needs_attention = row["flagged"]
@@ -206,6 +210,8 @@ def cardholder_view(row: dict, stored_prediction=None) -> dict:
         stored_reasons = (stored_prediction.explanation or {}).get("reasons")
         if stored_reasons:
             reasons = stored_reasons
+
+    coaching = coach(row["customer_id"], band, reasons, record)
 
     return {
         "customer_id": row["customer_id"],
@@ -225,4 +231,5 @@ def cardholder_view(row: dict, stored_prediction=None) -> dict:
             }
             for reason in reasons
         ],
+        "coaching": coaching.to_dict(),
     }

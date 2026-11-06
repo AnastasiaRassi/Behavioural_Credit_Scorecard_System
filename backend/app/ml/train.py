@@ -78,9 +78,12 @@ WRITES = (
 
 # Written by app.ml.segmentation, which is a separate step with its own run.
 # Without this, a retrain would delete a segmentation that is still correct.
+# coaching.json is written by db/seed.py. It is kept across retrains, and ai/coaching.py
+# ignores it once its model_version no longer matches the live model.
 PRESERVES = (
     "segmenter.joblib",
     "segments.json",
+    "coaching.json",
 )
 
 LOW_QUANTILE = 0.50

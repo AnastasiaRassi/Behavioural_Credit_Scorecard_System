@@ -60,6 +60,11 @@ def officer_queue() -> list[dict]:
     return read("officer_queue.json")
 
 
+def coaching_cache() -> dict:
+    """Pre-generated cardholder coaching, written by db/seed.py. Absent until seeded."""
+    return read("coaching.json")
+
+
 def segments() -> dict:
     """Behavioural segments: the chosen k, the silhouette scores, each profile.
 

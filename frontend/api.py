@@ -61,6 +61,7 @@ def _request(
     payload: dict | None = None,
     method: str | None = None,
     token: str | None = None,
+    timeout: float = TIMEOUT_SECONDS,
 ):
     url = BASE_URL + path
     body = json.dumps(payload).encode() if payload is not None else None
@@ -69,7 +70,7 @@ def _request(
         headers["Authorization"] = f"Bearer {token}"
     request = urllib.request.Request(url, data=body, headers=headers, method=method)
     try:
-        with urllib.request.urlopen(request, timeout=TIMEOUT_SECONDS) as response:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
             return json.load(response)
     except urllib.error.HTTPError as exception:
         detail = exception.read().decode()[:400]
@@ -277,6 +278,20 @@ def recourse(customer_id: str, token: str) -> dict:
     times, and the answer only moves when the account's own figures do.
     """
     return _request(f"/cardholders/{customer_id}/recourse", token=token)
+
+
+# A local model on CPU can take most of a minute; the API gives up on it at 60s.
+CHAT_TIMEOUT_SECONDS = 90
+
+
+def chat(customer_id: str, token: str, messages: list[dict]) -> dict:
+    """The assistant's next turn. Never cached: every turn is a new question."""
+    return _request(
+        f"/cardholders/{customer_id}/chat",
+        payload={"messages": messages},
+        token=token,
+        timeout=CHAT_TIMEOUT_SECONDS,
+    )
 
 
 # --- derived --------------------------------------------------------------

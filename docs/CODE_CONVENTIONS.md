@@ -18,6 +18,10 @@ backend/app/
 │   ├── drift.py                 # population stability index
 │   ├── fairness_audit.py        # empty; the audit is computed in train.py
 │   └── preprocessing.py         # empty, redundant now
+├── ai/
+│   ├── coaching.py              # cardholder coaching text and the counterfactual payload behind it
+│   ├── assistant.py             # cardholder chat: grounded fact sheet, local LLM, template fallback
+│   └── local_llm.py             # Ollama client; every failure returns None
 ├── api/
 │   ├── dependencies.py          # scorer, explainer, session, live model version
 │   ├── predictions.py           # score one, score a CSV, read a stored score
@@ -78,7 +82,8 @@ is nothing to leak across splits.
 
 ## 3. The artifact contract
 
-`train.py` writes, everything else reads. Nothing else writes to `artifacts/`.
+`train.py` writes, everything else reads. Nothing else writes to `artifacts/`, with one
+exception: `coaching.json`, written by `db/seed.py` (see the table below).
 
 | File | Contents |
 |---|---|
@@ -86,6 +91,7 @@ is nothing to leak across splits.
 | `scoring_config.json` | threshold, band edges, 13 metrics, confusion matrix, feature names |
 | `threshold_sweep.json` | 86 threshold points with precision, recall, F1, counts |
 | `feature_importance.json` | permutation importance, all 46 features |
+| `coaching.json` | pre-generated coaching for the demo cardholders, from `db/seed.py`. Kept by `train.py` (`PRESERVES`); ignored once its `model_version` differs from the live model |
 
 **The UI and API must never recompute metrics.** They read these files. That keeps the
 screens fast and guarantees what is displayed matches what was actually evaluated.
@@ -240,6 +246,10 @@ become its first cases. `pytest` is already in `requirements.txt`.
 
 Add to `requirements.txt` when adding an import. Currently added beyond the original list:
 `xlrd` (reads the source `.xls`), `imbalanced-learn` (resampling experiment).
+
+**The assistant's LLM is not a pip dependency.** It runs in Ollama, a separate local
+server (`ollama pull qwen2.5:3b`; `OLLAMA_URL` and `OLLAMA_MODEL` in `.env` override the
+defaults), reached over HTTP with `requests`. No API key, and nothing leaves the machine.
 
 **`shap` is deliberately not a dependency.** LightGBM computes SHAP values natively with
 `predict(X, pred_contrib=True)`, which for tree models is exact rather than sampled, and

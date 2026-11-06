@@ -61,6 +61,11 @@ RULE_STRENGTHS = (0.25, 0.5, 0.75, 1.0)
 # Share of the outstanding bill assumed to be the minimum due per month of arrears.
 MIN_PAYMENT_SHARE = 0.10
 
+# One band better is the target worth offering. Asking a High-risk account to reach
+# Low in a month is advice nobody can act on, and the search would spend its budget
+# proving it.
+NEXT_BAND_UP = {"High": "Medium", "Medium": "Low"}
+
 
 class Direction:
     """Allowed sign of movement for an actionable feature."""

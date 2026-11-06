@@ -32,6 +32,8 @@ services:
       SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET in .env}
       SEED_PASSWORD: ${SEED_PASSWORD:-}
       DEMO_MODE: ${DEMO_MODE:-1}
+      OLLAMA_URL: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:3b}
     volumes:
       - ./data/raw:/app/data/raw:ro
       - ./backend/artifacts:/app/backend/artifacts
@@ -39,6 +41,14 @@ services:
       db:
         condition: service_healthy
     restart: "no"
+
+  # Free local LLM for the cardholder assistant. Pull the model once:
+  #   docker compose exec ollama ollama pull qwen2.5:3b
+  # Without it the assistant still answers, from templates.
+  ollama:
+    image: ollama/ollama:0.33.3
+    volumes:
+      - ollama:/root/.ollama
 
   api:
     <<: *app
@@ -70,3 +80,4 @@ services:
 
 volumes:
   pgdata:
+  ollama:

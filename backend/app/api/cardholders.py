@@ -10,10 +10,11 @@ the payload is pointless if anyone can ask for anyone's.
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.ai import assistant
 from app.api.dependencies import account_reader, get_session
-from app.db import queue_predictions
+from app.db import queue_predictions, statements
 from app.ml import worklist
-from app.schemas.worklist import CardholderView
+from app.schemas.worklist import CardholderView, ChatReply, ChatRequest
 
 router = APIRouter(prefix="/cardholders", tags=["cardholder"])
 
@@ -36,6 +37,30 @@ def read_own_account(
     officer are looking at the same prediction rather than the customer seeing a
     stale overnight one. Falls back to the queue when none has been run.
     """
+    row, stored, record = _account(customer_id, session)
+    return worklist.cardholder_view(row, stored_prediction=stored, record=record)
+
+
+@router.post(
+    "/{customer_id}/chat",
+    response_model=ChatReply,
+    dependencies=[Depends(account_reader)],
+)
+def chat_about_account(
+    customer_id: str, request: ChatRequest, session: Session = Depends(get_session)
+):
+    """The assistant's next turn, answered from this account's own facts.
+
+    Stateless: the client sends the conversation so far. An empty conversation
+    returns the greeting.
+    """
+    row, stored, record = _account(customer_id, session)
+    messages = [message.model_dump() for message in request.messages]
+    return assistant.answer(row, messages, stored_prediction=stored, record=record).to_dict()
+
+
+def _account(customer_id: str, session: Session):
+    """The queue row, the latest officer score if any, and the raw input for the search."""
     row = worklist.find(customer_id)
     if row is None:
         raise HTTPException(
@@ -44,4 +69,8 @@ def read_own_account(
         )
 
     stored = queue_predictions.latest_for_cardholder(session, customer_id)
-    return worklist.cardholder_view(row, stored_prediction=stored)
+    try:
+        record = statements.raw_input_for(session, customer_id)
+    except statements.CustomerNotFound:
+        record = None
+    return row, stored, record

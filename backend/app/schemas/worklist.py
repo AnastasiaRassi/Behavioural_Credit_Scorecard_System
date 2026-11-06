@@ -1,4 +1,6 @@
 """Shapes for the officer worklist and the cardholder's own view."""
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -114,6 +116,29 @@ class CardholderReason(BaseModel):
     raises_risk: bool
 
 
+class CardholderCoaching(BaseModel):
+    text: str
+    disclaimer: str
+
+
+class ChatMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=2000)
+
+
+class ChatRequest(BaseModel):
+    """The conversation so far, oldest first. Empty asks for the greeting."""
+
+    messages: list[ChatMessage] = Field(default_factory=list, max_length=40)
+
+
+class ChatReply(BaseModel):
+    reply: str
+    source: str = Field(description="model, or template when the local LLM was unavailable")
+    note: str = Field(default="", description="Shown under a template reply; empty for model replies")
+    disclaimer: str
+
+
 class CardholderView(BaseModel):
     """Deliberately narrower than QueueRow.
 
@@ -128,6 +153,7 @@ class CardholderView(BaseModel):
     last_payment: float
     months_in_arrears: int
     reasons: list[CardholderReason]
+    coaching: CardholderCoaching
 
 
 class RoleOut(BaseModel):
