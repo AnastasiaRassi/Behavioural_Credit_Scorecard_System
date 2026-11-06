@@ -20,7 +20,7 @@ import streamlit as st
 logger = logging.getLogger(__name__)
 
 # The only thing a screen says when the service fails, whatever the cause.
-UNREACHABLE = "Atrium can't connect right now. Try again in a moment."
+UNREACHABLE = "CrediTrait can't connect right now. Try again in a moment."
 
 # Overridable so the dashboard can be pointed at an API on another port without
 # editing it, which is also what lets two instances run side by side.

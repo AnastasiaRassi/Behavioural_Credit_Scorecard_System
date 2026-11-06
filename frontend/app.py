@@ -1,4 +1,4 @@
-"""Atrium · an explainable, fair credit decision system.
+"""CrediTrait · an explainable, fair credit decision system.
 
 Run the API first, then this, both from the repo root:
 
@@ -91,7 +91,7 @@ def _attempt(email: str, password: str) -> tuple[str, str] | None:
 def _signed_in_bar(session: dict) -> None:
     """Who you are, and the way back out, on every screen."""
     title, identity = st.columns([5, 2])
-    title.title("Atrium")
+    title.title("CrediTrait")
 
     with identity:
         st.caption(
@@ -165,7 +165,7 @@ def _engineer() -> None:
 
 
 st.set_page_config(
-    page_title="Atrium · Explainable Credit Decisions",
+    page_title="CrediTrait · Explainable Credit Decisions",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="collapsed",

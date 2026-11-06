@@ -27,11 +27,16 @@ from pathlib import Path
 import streamlit as st
 from dotenv import load_dotenv
 
+from ui.components import flatten
+from views import landing
+
 HERE = Path(__file__).resolve().parent
-CSS_PATH = HERE.parent / "ui" / "login.css"
+CSS_PATHS = (HERE.parent / "ui" / "login.css", HERE.parent / "ui" / "landing.css")
 PHOTO_PATH = HERE.parent / "assets" / "login-bg.jpg"
 
-PRODUCT_NAME = "Atrium"
+# What both stylesheets write where the inlined photograph goes.
+
+PRODUCT_NAME = "CrediTrait"
 DESCRIPTION = (
     "Track loans and applications, and see the reasons behind every AI decision."
 )
@@ -86,22 +91,20 @@ stroke-linecap="round"/>
 </svg>
 """
 
-# Where an application has got to. Two steps done, the third is where it stands.
+# How today's queue splits by risk band. Real proportions, from the live
+# queue's own summary: 2,224 Low, 1,338 Medium, 938 High of 4,500 accounts.
+# The earlier panel drew an Applied → Repaying pipeline, which this system does
+# not have: it scores existing card accounts from their payment history, so
+# there is no application to track and the panel was claiming a feature.
 _TRACK = """
 <svg viewBox="0 0 226 46" fill="none" aria-hidden="true"
      xmlns="http://www.w3.org/2000/svg">
-<line x1="12" y1="13" x2="214" y2="13" stroke="#C6D1DB" stroke-width="2"
-stroke-linecap="round"/>
-<line x1="12" y1="13" x2="146" y2="13" stroke="#4A6B85" stroke-width="2"
-stroke-linecap="round"/>
-<circle cx="12" cy="13" r="4.5" fill="#4A6B85"/>
-<circle cx="79" cy="13" r="4.5" fill="#4A6B85"/>
-<circle cx="146" cy="13" r="5.5" fill="#D9A462"/>
-<circle cx="214" cy="13" r="4.5" fill="#FFFFFF" stroke="#C6D1DB" stroke-width="2"/>
-<text x="12" y="32" text-anchor="start">Applied</text>
-<text x="79" y="32" text-anchor="middle">Under review</text>
-<text x="146" y="32" text-anchor="middle">Approved</text>
-<text x="214" y="32" text-anchor="end">Repaying</text>
+<rect x="12" y="8" width="99" height="11" rx="3" fill="#2F7A52"/>
+<rect x="113" y="8" width="60" height="11" rx="3" fill="#B8742A"/>
+<rect x="175" y="8" width="39" height="11" rx="3" fill="#A6442F"/>
+<text x="12" y="34" text-anchor="start">Low 2,224</text>
+<text x="113" y="34" text-anchor="start">Medium 1,338</text>
+<text x="214" y="34" text-anchor="end">High 938</text>
 </svg>
 """
 
@@ -111,11 +114,11 @@ _REASONS = """
 <svg viewBox="0 0 214 70" fill="none" aria-hidden="true"
      xmlns="http://www.w3.org/2000/svg">
 <line x1="107" y1="4" x2="107" y2="66" stroke="#C6D1DB" stroke-width="1"/>
-<rect class="reason-bar" x="107" y="9" width="62" height="7" rx="3.5" fill="#D9A462"/>
+<rect class="panel-bar" x="107" y="9" width="62" height="7" rx="3.5" fill="#2F6DA3"/>
 <text x="100" y="15.5" text-anchor="end">Payments on time</text>
-<rect class="reason-bar" x="59" y="31" width="48" height="7" rx="3.5" fill="#5E6B78"/>
+<rect class="panel-bar" x="59" y="31" width="48" height="7" rx="3.5" fill="#B8742A"/>
 <text x="114" y="37.5" text-anchor="start">High card balance</text>
-<rect class="reason-bar" x="107" y="53" width="40" height="7" rx="3.5" fill="#D9A462"/>
+<rect class="panel-bar" x="107" y="53" width="40" height="7" rx="3.5" fill="#2F6DA3"/>
 <text x="100" y="59.5" text-anchor="end">Long account history</text>
 </svg>
 """
@@ -140,36 +143,48 @@ def render(attempt: Callable[[str, str], tuple[str, str] | None]) -> None:
     fault and the one line to show. Nothing here sees a token.
     """
     st.markdown(_stylesheet(), unsafe_allow_html=True)
-    st.markdown(_side_panels(), unsafe_allow_html=True)
 
     # Set on the run before this one, by a submit or a demo button. Popped here
     # so a reload cannot replay it.
     pending = st.session_state.pop(PENDING_KEY, None)
     failure = st.session_state.get(ERROR_KEY)
 
-    # Widgets cannot live inside raw HTML, so the card is a keyed container and
-    # the stylesheet reaches it through the .st-key-signin_card class.
-    with st.container(key="signin_card"):
-        st.markdown(_masthead(), unsafe_allow_html=True)
+    with st.container(key="hero"):
+        st.markdown(_side_panels(), unsafe_allow_html=True)
 
-        with st.form("sign_in", border=False):
-            with st.container(key="field_email"):
-                email = st.text_input("Email", placeholder="you@company.com")
-            with st.container(key="field_password"):
-                password = st.text_input("Password", type="password")
+        # Widgets cannot live inside raw HTML, so the card is a keyed container
+        # and the stylesheet reaches it through the .st-key-signin_card class.
+        with st.container(key="signin_card"):
+            st.markdown(_masthead(), unsafe_allow_html=True)
 
-            if failure:
-                st.markdown(_alert(*failure), unsafe_allow_html=True)
+            with st.form("sign_in", border=False):
+                with st.container(key="field_email"):
+                    email = st.text_input("Email", placeholder="you@company.com")
+                with st.container(key="field_password"):
+                    password = st.text_input("Password", type="password")
 
-            submitted = st.form_submit_button(
-                "Signing in…" if pending else "Sign in",
-                type="primary",
-                disabled=bool(pending),
+                if failure:
+                    st.markdown(_alert(*failure), unsafe_allow_html=True)
+
+                submitted = st.form_submit_button(
+                    "Signing in…" if pending else "Sign in",
+                    type="primary",
+                    disabled=bool(pending),
+                )
+
+            st.markdown(
+                f'<p class="signin-helper">{HELPER}</p>', unsafe_allow_html=True
             )
+            if demo_mode():
+                _demo_row()
 
-        st.markdown(f'<p class="signin-helper">{HELPER}</p>', unsafe_allow_html=True)
-        if demo_mode():
-            _demo_row()
+        st.markdown(
+            '<a class="see-how" href="#how-it-works">See how it works</a>',
+            unsafe_allow_html=True,
+        )
+
+    st.markdown(landing.sections(), unsafe_allow_html=True)
+    _closing_band()
 
     if submitted:
         # Hand the credential to the next run, so the button can repaint as
@@ -186,17 +201,26 @@ def render(attempt: Callable[[str, str], tuple[str, str] | None]) -> None:
             st.rerun()
 
 
-def _demo_row() -> None:
+def _demo_row(key: str = "demo_row") -> None:
     """One click per role, demo mode only. Hidden entirely when it is off."""
     st.markdown(
         '<p class="demo-label">Try a demo account</p>', unsafe_allow_html=True
     )
-    with st.container(key="demo_row"):
+    with st.container(key=key):
         for column, (label, email) in zip(st.columns(3), DEMO_ACCOUNTS):
-            if column.button(label, key=f"demo_{email}", width="stretch"):
+            if column.button(label, key=f"{key}_{email}", width="stretch"):
                 st.session_state.pop(ERROR_KEY, None)
                 st.session_state[PENDING_KEY] = (email, DEMO_PASSWORD)
                 st.rerun()
+
+
+def _closing_band() -> None:
+    """The last band: back to the card, and the demo accounts once more."""
+    with st.container(key="closing"):
+        st.markdown(landing.closing_band(), unsafe_allow_html=True)
+        if demo_mode():
+            with st.container(key="closing_demo"):
+                _demo_row(key="closing_demo_row")
 
 
 def _alert(field: str, message: str) -> str:
@@ -211,7 +235,7 @@ def _alert(field: str, message: str) -> str:
 @lru_cache(maxsize=1)
 def _stylesheet() -> str:
     """The stylesheet with the photograph inlined. Read once per process."""
-    for path in (CSS_PATH, PHOTO_PATH):
+    for path in (*CSS_PATHS, PHOTO_PATH):
         if not path.exists():
             raise FileNotFoundError(
                 f"Missing {path}. The sign-in screen ships with it; restore it "
@@ -219,8 +243,12 @@ def _stylesheet() -> str:
             )
 
     photo = base64.b64encode(PHOTO_PATH.read_bytes()).decode("ascii")
-    css = CSS_PATH.read_text(encoding="utf-8").replace("__LOGIN_BG__", photo)
-    return f"<style>{css}</style>"
+    css = "\n".join(path.read_text(encoding="utf-8") for path in CSS_PATHS)
+    # Declared once and referenced as var(--login-photo): inlining the data URI
+    # at each use put a copy of the photograph in the markup per use, on every
+    # rerun, and the stylesheet went past a megabyte.
+    root = f':root {{ --login-photo: url("data:image/jpeg;base64,{photo}"); }}'
+    return f"<style>{root}\n{css}</style>"
 
 
 def _masthead() -> str:
@@ -235,8 +263,9 @@ def _masthead() -> str:
 def _side_panels() -> str:
     """The two decorative panels in the horizontal arm of the sky gap."""
     return _flatten(f"""
+<span id="top"></span>
 <div class="sky-panel sky-panel--left" aria-hidden="true">
-<p class="sky-panel-title">Loan tracking</p>{_TRACK}
+<p class="sky-panel-title">Today's queue</p>{_TRACK}
 </div>
 <div class="sky-panel sky-panel--right" aria-hidden="true">
 <p class="sky-panel-title">Why this decision</p>{_REASONS}

@@ -1,5 +1,5 @@
-/* Sign-in screen. Loaded and injected by views/sign_in.py, which substitutes
-   __LOGIN_BG__ with the photograph as base64.
+/* The sign-in hero. Loaded with landing.css by views/sign_in.py, which
+   declares the photograph once as --login-photo.
 
    Every rule that touches a Streamlit element is held behind
    `body:has(.st-key-signin_card)`. The card only exists while this screen is
@@ -29,20 +29,9 @@
 
 /* --- the photograph ---------------------------------------------------- */
 
-/* The wash is lightest over the middle so the sky gap stays the brightest
-   part of the frame; the towers keep enough contrast to read as texture. */
+/* The photograph itself is in landing.css, on the hero: the page scrolls past
+   it now, so it is no longer the whole app's background. */
 body:has(.st-key-signin_card) .stApp {
-    background-image:
-        radial-gradient(ellipse 48% 38% at 50% 50%,
-            rgba(238, 243, 247, 0.15) 0%,
-            rgba(238, 243, 247, 0.20) 45%,
-            rgba(238, 243, 247, 0.36) 78%,
-            rgba(238, 243, 247, 0.44) 100%),
-        url("data:image/jpeg;base64,__LOGIN_BG__");
-    background-size: cover, cover;
-    background-position: center center, center center;
-    background-repeat: no-repeat, no-repeat;
-    background-attachment: fixed, fixed;
     font-family: var(--font);
 }
 
@@ -372,8 +361,9 @@ body:has(.st-key-signin_card) :focus-visible {
     fill: var(--slate);
 }
 
-/* The bars grow out from the centre line, once. */
-.reason-bar {
+/* The hero panel's bars grow out from the centre line, once. Named apart
+   from the sections' .reason-bar, which is a different thing. */
+.panel-bar {
     transform: scaleX(0);
     transform-box: view-box;
     transform-origin: 107px center;
@@ -397,8 +387,8 @@ body:has(.st-key-signin_card) :focus-visible {
 
 @media (prefers-reduced-motion: reduce) {
     .st-key-signin_card,
-    .reason-bar {
+    .panel-bar {
         animation: none;
     }
-    .reason-bar { transform: none; }
+    .panel-bar { transform: none; }
 }
