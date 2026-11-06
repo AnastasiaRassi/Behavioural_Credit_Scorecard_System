@@ -1,5 +1,12 @@
-# Environment
+# Environment and credentials: never committed.
 .env
+.env.*
+!.env.example
+# Docker: registry logins, local overrides that may carry secrets, keys.
+.docker/
+docker-compose.override.yml
+*.pem
+*.key
 .venv/
 __pycache__/
 *.py[cod]

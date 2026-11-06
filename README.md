@@ -367,12 +367,17 @@ python -c "from app.db.database import drop_all; drop_all()"
 python -m app.db.ingest && python -m app.db.seed
 ```
 
-Run the API, then the dashboard:
+Run the whole system:
 
 ```bash
-cd backend && uvicorn app.main:app --port 8014
-streamlit run frontend/app.py
+docker compose up --build
 ```
+
+Then open <http://localhost:8502>, always the same port (`WEB_PORT` in `.env`). The code
+is mounted into the containers, so saved changes show up there without a rebuild: the API
+reloads and an open page reruns. Rebuild only after changing `requirements.txt`. The
+stack has its own Postgres, seeded on start; the assistant reaches the Ollama installed
+on the host.
 
 The notebooks run end to end on the **Python (credit-risk)** kernel, in numerical order.
 

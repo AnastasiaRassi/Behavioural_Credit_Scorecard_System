@@ -365,18 +365,24 @@ python -m app.ml.sequence_models        # sequence_models.json
 ```
 
 The cardholder assistant uses a free local LLM through [Ollama](https://ollama.com).
-Optional: without it the chat answers from templates.
+Optional: without it the chat answers from templates. No Ollama on the host? Run the
+stack with `--profile ollama` and set `OLLAMA_URL=http://ollama:11434` in `.env`.
 
 ```bash
 ollama pull qwen2.5:3b
 ```
 
-Run the system, both from the repo root:
+Run the system, from the repo root:
 
 ```bash
-cd backend && uvicorn app.main:app --port 8014
-streamlit run frontend/app.py
+docker compose up --build
 ```
+
+Then open <http://localhost:8502>, always the same port (`WEB_PORT` in `.env`). The code
+is mounted into the containers, so saved changes show up there without a rebuild: the API
+reloads and an open page reruns. Rebuild only after changing `requirements.txt`. The
+stack has its own Postgres, seeded on start; the assistant reaches the Ollama installed
+on the host.
 
 Tests:
 

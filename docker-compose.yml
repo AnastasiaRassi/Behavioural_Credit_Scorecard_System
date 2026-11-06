@@ -1,6 +1,9 @@
-# Whole stack on one command:  docker compose up --build
-# Dashboard on http://localhost:8501 (WEB_PORT in .env changes it). Needs backend/artifacts (run the training
+# The one way to run the project:  docker compose up --build
+# Dashboard on http://localhost:8502 (WEB_PORT in .env changes it). Needs backend/artifacts (run the training
 # once) and data/raw/default of credit card clients.xls for the seeder.
+#
+# backend/ and frontend/ are mounted, so edits show up without a rebuild: the API
+# reloads and open dashboard pages rerun. Rebuild only when requirements.txt changes.
 #
 # Secrets come from the gitignored .env through compose interpolation, so the
 # repo holds none. Postgres is not published, which keeps it clear of any
@@ -13,7 +16,7 @@ services:
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
       POSTGRES_DB: credit
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -28,25 +31,30 @@ services:
     working_dir: /app/backend
     command: sh -c "python -m app.db.ingest && python -m app.db.seed"
     environment: &backend-env
-      DATABASE_URL: postgresql+psycopg://postgres:${DB_PASSWORD:-postgres}@db:5432/credit
+      DATABASE_URL: postgresql+psycopg://postgres:${DB_PASSWORD:?set DB_PASSWORD in .env}@db:5432/credit
       SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET in .env}
       SEED_PASSWORD: ${SEED_PASSWORD:-}
       DEMO_MODE: ${DEMO_MODE:-1}
-      OLLAMA_URL: http://ollama:11434
+      # The host's Ollama by default, so the model already pulled there is reused.
+      # With `--profile ollama`, set OLLAMA_URL=http://ollama:11434 instead.
+      OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:3b}
+    extra_hosts: &host-gateway
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./data/raw:/app/data/raw:ro
-      - ./backend/artifacts:/app/backend/artifacts
+      - ./backend:/app/backend
     depends_on:
       db:
         condition: service_healthy
     restart: "no"
 
-  # Free local LLM for the cardholder assistant. Pull the model once:
-  #   docker compose exec ollama ollama pull qwen2.5:3b
-  # Without it the assistant still answers, from templates.
+  # Only for machines without Ollama installed:  docker compose --profile ollama up
+  # then once:  docker compose exec ollama ollama pull qwen2.5:3b
+  # Without any Ollama the assistant still answers, from templates.
   ollama:
     image: ollama/ollama:0.33.3
+    profiles: ["ollama"]
     volumes:
       - ollama:/root/.ollama
 
@@ -54,10 +62,12 @@ services:
     <<: *app
     build: .
     working_dir: /app/backend
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8014
+    # Polling reload: file events from a Windows bind mount do not reach the container.
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8014 --reload --reload-dir /app/backend/app
     environment: *backend-env
+    extra_hosts: *host-gateway
     volumes:
-      - ./backend/artifacts:/app/backend/artifacts
+      - ./backend:/app/backend
     depends_on:
       seed:
         condition: service_completed_successfully
@@ -68,12 +78,17 @@ services:
 
   web:
     <<: *app
-    command: streamlit run frontend/app.py --server.address 0.0.0.0 --server.port 8501
+    command: >
+      streamlit run frontend/app.py --server.address 0.0.0.0 --server.port 8501
+      --server.runOnSave true --server.fileWatcherType poll
     environment:
       API_BASE_URL: http://api:8014
       DEMO_MODE: ${DEMO_MODE:-1}
+    volumes:
+      - ./frontend:/app/frontend
+      - ./.streamlit:/app/.streamlit
     ports:
-      - "${WEB_PORT:-8501}:8501"
+      - "${WEB_PORT:-8502}:8501"
     depends_on:
       api:
         condition: service_healthy

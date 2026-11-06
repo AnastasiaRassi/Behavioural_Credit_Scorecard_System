@@ -27,7 +27,7 @@ UNREACHABLE = "CrediTrait can't connect right now. Try again in a moment."
 BASE_URL = os.environ.get("API_BASE_URL", "http://127.0.0.1:8014")
 TIMEOUT_SECONDS = 30
 
-START_COMMAND = "cd backend && uvicorn app.main:app --port 8014"
+START_COMMAND = "docker compose up --build"
 
 # Recorded baseline. The status light goes amber if test AUC drifts from this.
 BASELINE_AUC = 0.781
