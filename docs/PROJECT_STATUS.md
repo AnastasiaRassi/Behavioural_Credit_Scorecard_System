@@ -364,9 +364,12 @@ python -m app.ml.multiplicity           # multiplicity.json
 python -m app.ml.sequence_models        # sequence_models.json
 ```
 
-The cardholder assistant uses a free local LLM through [Ollama](https://ollama.com).
-Optional: without it the chat answers from templates. No Ollama on the host? Run the
-stack with `--profile ollama` and set `OLLAMA_URL=http://ollama:11434` in `.env`.
+The cardholder assistant (Loana AI) uses OpenAI `gpt-4o-mini` when `OPENAI_API_KEY` is
+set in `.env`: data leaves the machine, namely the band, reasons, account figures and six
+months of history, never the probability or any protected attribute. Without a key it
+uses a free local LLM through [Ollama](https://ollama.com), and without that it answers
+from templates. No Ollama on the host? Run the stack with `--profile ollama` and set
+`OLLAMA_URL=http://ollama:11434` in `.env`.
 
 ```bash
 ollama pull qwen2.5:3b

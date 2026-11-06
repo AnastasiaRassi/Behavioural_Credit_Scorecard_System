@@ -33,7 +33,7 @@ FEATURE_MEANINGS = {
     "remaining_credit": "limit minus current balance",
     "util_mean": "average share of the limit used",
     "util_max": "highest share of the limit used",
-    "util_trend": "utilisation now versus six months ago",
+    "util_trend": "share of the limit used now versus six months ago",
     "repay_ratio_mean": "average share of the bill paid off",
     "repay_ratio_min": "worst month's share of the bill paid",
     "months_zero_payment": "months where nothing was paid",
@@ -73,6 +73,14 @@ MONTH_LABELS = {
 }
 
 MONTHS_OBSERVED = len(MONTH_LABELS)
+
+# pay_mean is the average of six PAY_x codes (-2 no balance, -1 paid in full, 0
+# revolving, 1+ months in arrears). Printing it ("4.7") reads as a measurement
+# nobody can interpret, so it is banded on that scale: a mean of 1 or more is
+# on average at least a month behind, a mean at or below 0 is on average not
+# behind at all, and anything between is the occasional late month.
+PAY_MEAN_USUALLY_BEHIND = 1.0
+PAY_MEAN_USUALLY_CURRENT = 0.0
 
 
 def month_label(position: int) -> str:
@@ -152,7 +160,11 @@ def describe(feature: str, value: float) -> str:
     if feature == "pay_max":
         return f"Worst month in the six: {describe_pay_status(value)}"
     if feature == "pay_mean":
-        return f"Average repayment status of {value:.1f} across six months"
+        if value >= PAY_MEAN_USUALLY_BEHIND:
+            return "Usually behind on repayments across the six months"
+        if value > PAY_MEAN_USUALLY_CURRENT:
+            return "Sometimes behind on repayments across the six months"
+        return "Usually up to date on repayments across the six months"
     if feature == "pay_months_late":
         if value == 0:
             return "Never in arrears in the last six months"
@@ -184,6 +196,16 @@ def describe(feature: str, value: float) -> str:
     if feature.startswith("BILL_AMT"):
         return f"Bill of {value:,.0f} in month {feature[-1]}"
 
+    # A difference of two shares, so "at 46%" would misstate it: say which way it moved.
+    if feature == "util_trend":
+        if pd.isna(value):
+            return f"{feature_meaning(feature).capitalize()} not available"
+        points = round(abs(value) * 100)
+        if points == 0:
+            return "Share of the limit in use is unchanged since six months ago"
+        direction = "up" if value > 0 else "down"
+        return f"Share of the limit in use is {direction} {points} percentage points since six months ago"
+
     if feature in ("util_mean", "util_max") or feature.startswith("util_"):
         if pd.isna(value):
             return f"{feature_meaning(feature).capitalize()} not available"
@@ -194,7 +216,15 @@ def describe(feature: str, value: float) -> str:
             return f"{feature_meaning(feature).capitalize()} not available"
         return f"{feature_meaning(feature).capitalize()} at {value:.0%}"
 
-    if feature in ("bill_mean", "pay_amt_mean", "pay_to_bill_gap"):
+    # Mean bill minus mean payment, so the sign matters and a bare figure hides it.
+    if feature == "pay_to_bill_gap":
+        if value > 0:
+            return f"Payments fall short of the average bill by {value:,.0f} a month"
+        if value < 0:
+            return f"Payments exceed the average bill by {-value:,.0f} a month"
+        return "Payments match the average bill"
+
+    if feature in ("bill_mean", "pay_amt_mean"):
         return f"{feature_meaning(feature).capitalize()}: {value:,.0f}"
 
     return f"{feature_meaning(feature).capitalize()}: {value:,.2f}"

@@ -76,6 +76,23 @@ def _legacy_columns() -> list[str]:
     return found
 
 
+# Columns added to a table after it first shipped. `create_all` never alters an existing
+# table, so a database created earlier would lack them and every insert would fail.
+# IF NOT EXISTS makes the step safe to repeat; Postgres only, like the rest of the schema.
+ADDED_COLUMNS = (
+    ("chat_turn", "grounding_passed", "boolean"),
+    ("chat_turn", "claim_passed", "boolean"),
+)
+
+
+def _add_missing_columns() -> None:
+    with engine().begin() as connection:
+        for table, column, sql_type in ADDED_COLUMNS:
+            connection.execute(
+                text(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {sql_type}")
+            )
+
+
 def create_all() -> None:
     """Create any missing tables, refusing to run against the pre-separation schema.
 
@@ -95,6 +112,7 @@ def create_all() -> None:
         )
 
     Base.metadata.create_all(engine())
+    _add_missing_columns()
 
 
 def drop_all() -> None:

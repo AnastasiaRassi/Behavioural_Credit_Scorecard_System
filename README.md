@@ -379,6 +379,13 @@ reloads and an open page reruns. Rebuild only after changing `requirements.txt`.
 stack has its own Postgres, seeded on start; the assistant reaches the Ollama installed
 on the host.
 
+**The assistant (Loana AI) and your data.** With `OPENAI_API_KEY` set in `.env` the
+assistant uses OpenAI's `gpt-4o-mini`, so data leaves the machine: the fact sheet it
+sends holds the risk band, the reasons, the account figures and six months of history,
+never the probability or any protected attribute. Without a key it falls back to a local
+[Ollama](https://ollama.com) model (`ollama pull qwen2.5:3b`), and without that to fixed
+templates, so the chat always answers.
+
 The notebooks run end to end on the **Python (credit-risk)** kernel, in numerical order.
 
 ## Method

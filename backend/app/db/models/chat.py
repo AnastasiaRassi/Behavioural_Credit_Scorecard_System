@@ -9,7 +9,7 @@ and a change to any of them can be compared against the rows before it.
 import uuid
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, Index, Integer, Text
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Index, Integer, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -29,8 +29,10 @@ class ChatTurn(Base):
     # Not a foreign key: the chat also serves queue accounts that have no `customer`
     # row, and a log write must never fail because of that.
     customer_id: Mapped[str] = mapped_column(Text, nullable=False)
+    # 0 is the assistant's opening message, which answers no question.
     turn_number: Mapped[int] = mapped_column(Integer, nullable=False)
 
+    # Empty for the opening (turn 0).
     user_message: Mapped[str] = mapped_column(Text, nullable=False)
     reply: Mapped[str] = mapped_column(Text, nullable=False)
 
@@ -40,6 +42,11 @@ class ChatTurn(Base):
     fallback_reason: Mapped[str | None] = mapped_column(Text)
     # The LLM output that was discarded, kept because it is the most useful row to read.
     rejected_reply: Mapped[str | None] = mapped_column(Text)
+
+    # Each guard's verdict on the LLM's text. Null when the LLM produced none (it
+    # failed), so a null means "not checked", never "passed".
+    grounding_passed: Mapped[bool | None] = mapped_column(Boolean)
+    claim_passed: Mapped[bool | None] = mapped_column(Boolean)
 
     llm_model: Mapped[str] = mapped_column(Text, nullable=False)
     prompt_version: Mapped[str] = mapped_column(Text, nullable=False)

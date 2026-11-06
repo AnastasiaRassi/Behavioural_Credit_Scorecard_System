@@ -206,3 +206,14 @@ def test_explain_validates_the_customer(client):
     customer = example_customer()
     customer["LIMIT_BAL"] = 0  # a limit of zero is not a cardholder
     assert client.post("/explain", json=customer).status_code == 422
+
+
+def test_a_cardholder_is_sent_the_repayment_history_without_utilisation_or_the_number(
+    client, any_customer_id  # noqa: F811
+):
+    body = _read_account(client, any_customer_id, OFFICER_EMAIL).json()
+
+    assert len(body["history"]) == 6
+    assert set(body["history"][0]) == {
+        "month", "label", "payment_status", "payment_status_reading", "bill_amount", "amount_paid",
+    }

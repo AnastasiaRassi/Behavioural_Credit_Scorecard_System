@@ -10,6 +10,7 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
+from app.ai import assistant, llm_client
 from app.core import sessions
 from app.db.database import engine
 from app.db.models import Customer, MonthlyStatement
@@ -96,3 +97,18 @@ def ensure_queued_customer(session: Session, row: dict) -> str:
         )
     session.flush()
     return customer_id
+
+
+@pytest.fixture(autouse=True)
+def no_network_llm(monkeypatch):
+    """No test reaches OpenAI or Ollama, whatever .env holds.
+
+    A developer's real key would otherwise make any chat test a live, billed call.
+    Tests that need a reply patch `llm_client.chat` themselves.
+    """
+    monkeypatch.setattr(
+        llm_client, "chat",
+        lambda messages: llm_client.LlmCall(None, "test-model", 0, failure="llm_unreachable"),
+    )
+    # An opening cached by one test would hide the LLM from the next.
+    assistant._opening_memo.clear()

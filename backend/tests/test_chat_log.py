@@ -5,7 +5,7 @@ Each test runs in a transaction that is rolled back. Skipped when no database is
 import pytest
 from sqlalchemy import text
 
-from app.ai import local_llm
+from app.ai import llm_client, local_llm
 from app.db import chat_log
 from app.db.models import ChatTurn
 from tests.conftest import bearer
@@ -69,7 +69,7 @@ def test_a_chat_request_is_logged_and_shows_in_the_summary(
     session, client, cardholder_identity, any_customer_id, monkeypatch  # noqa: F811
 ):
     monkeypatch.setattr(
-        local_llm, "chat",
+        llm_client, "chat",
         lambda messages: local_llm.LlmCall(None, "test-model", 5, failure="llm_unreachable"),
     )
 
@@ -85,3 +85,79 @@ def test_a_chat_request_is_logged_and_shows_in_the_summary(
         any_customer_id, "template", "llm_unreachable",
     )
     assert client.get("/monitoring/assistant").json()["fallback_reasons"] == {"llm_unreachable": 1}
+
+
+def test_both_guard_verdicts_are_stored(session):
+    chat_log.record(session, _turn(grounding_passed=True, claim_passed=False))
+    chat_log.record(session, _turn(source="template", fallback_reason="llm_timeout"))
+
+    passed, unchecked = session.query(ChatTurn).order_by(ChatTurn.source).all()
+    assert (passed.grounding_passed, passed.claim_passed) == (True, False)
+    # No LLM text, so nothing was checked: null, not "passed".
+    assert (unchecked.grounding_passed, unchecked.claim_passed) == (None, None)
+
+
+def test_the_opening_is_stored_as_turn_zero_with_an_empty_message(session):
+    chat_log.record(session, _turn(turn_number=0, user_message=""))
+
+    stored = session.query(ChatTurn).one()
+    assert (stored.turn_number, stored.user_message) == (0, "")
+
+
+def test_summary_reports_guard_rejection_rates_and_a_breakdown_per_provider(session):
+    chat_log.record(session, _turn(llm_model="gpt-4o-mini", grounding_passed=True, claim_passed=True))
+    chat_log.record(
+        session,
+        _turn(llm_model="gpt-4o-mini", source="template", fallback_reason="invented_numbers",
+              rejected_reply="x", grounding_passed=False, claim_passed=True),
+    )
+    chat_log.record(
+        session,
+        _turn(llm_model="gpt-4o-mini", source="template", fallback_reason="unsafe_claim",
+              rejected_reply="y", grounding_passed=True, claim_passed=False),
+    )
+    # No LLM text: not part of the denominator.
+    chat_log.record(
+        session, _turn(llm_model="qwen2.5:3b", source="template", fallback_reason="llm_unreachable"),
+    )
+
+    result = chat_log.summary(session)
+
+    assert result["checked_turns"] == 3
+    assert result["grounding_rejection_rate"] == round(1 / 3, 4)
+    assert result["claim_rejection_rate"] == round(1 / 3, 4)
+    assert result["providers"]["gpt-4o-mini"]["turns"] == 3
+    assert result["providers"]["gpt-4o-mini"]["template_rate"] == round(2 / 3, 4)
+    assert result["providers"]["qwen2.5:3b"] == {
+        "turns": 1, "template_rate": 1.0, "model_latency_ms_p50": None,
+    }
+
+
+def test_summary_rates_are_none_when_nothing_was_checked(session):
+    chat_log.record(session, _turn(source="template", fallback_reason="llm_timeout"))
+
+    result = chat_log.summary(session)
+
+    assert (result["grounding_rejection_rate"], result["claim_rejection_rate"]) == (None, None)
+
+
+def test_a_logged_chat_request_stores_the_guard_verdicts_and_the_opening_as_turn_zero(
+    session, client, cardholder_identity, any_customer_id, monkeypatch  # noqa: F811
+):
+    reply = lambda messages: local_llm.LlmCall("Rated Medium risk.", "gpt-4o-mini", 5)  # noqa: E731
+    monkeypatch.setattr(llm_client, "chat", reply)
+    headers = bearer(cardholder_identity)
+
+    client.post(f"/cardholders/{any_customer_id}/chat", json={"messages": []}, headers=headers)
+    client.post(
+        f"/cardholders/{any_customer_id}/chat",
+        json={"messages": [{"role": "user", "content": "Why?"}]},
+        headers=headers,
+    )
+
+    opening, question = session.query(ChatTurn).order_by(ChatTurn.turn_number).all()
+    assert (opening.turn_number, opening.user_message) == (0, "")
+    assert question.turn_number == 1
+    assert (question.grounding_passed, question.claim_passed, question.llm_model) == (
+        True, True, "gpt-4o-mini",
+    )

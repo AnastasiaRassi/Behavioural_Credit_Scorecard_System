@@ -45,6 +45,9 @@ boto3==1.43.29
 # Also the client for the local Ollama LLM behind the cardholder assistant.
 requests==2.34.2
 
+# Hosted LLM behind the cardholder assistant, used when OPENAI_API_KEY is set.
+openai==3.46.0
+
 # notebooks / dev
 jupyter==1.1.1
 ipykernel==7.3.0

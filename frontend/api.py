@@ -77,6 +77,12 @@ def _request(
         technical = f"{exception.code} from {method or 'GET'} {url}: {detail}"
         logger.warning("%s", technical)
         raise ServiceUnavailable(technical, status=exception.code) from exception
+    except TimeoutError as exception:
+        # A read that outlives the timeout raises this bare, not wrapped in URLError.
+        # The chat turn is the call most likely to, so it must not take the page down.
+        technical = f"no reply from {method or 'GET'} {url} within {timeout}s"
+        logger.warning("%s", technical)
+        raise ServiceUnavailable(technical) from exception
     except urllib.error.URLError as exception:
         technical = (
             f"cannot reach the API at {BASE_URL} ({exception}). "
@@ -280,8 +286,11 @@ def recourse(customer_id: str, token: str) -> dict:
     return _request(f"/cardholders/{customer_id}/recourse", token=token)
 
 
-# A local model on CPU can take most of a minute; the API gives up on it at 60s.
-CHAT_TIMEOUT_SECONDS = 90
+# OpenAI is cut off at 4 s by the API and the one-month search behind a turn takes
+# about a second, so 20 s leaves room for both. A local Ollama model on CPU can
+# take longer; the call then fails here with the usual message while the API goes
+# on to log its own template fallback.
+CHAT_TIMEOUT_SECONDS = 20
 
 
 def chat(customer_id: str, token: str, messages: list[dict]) -> dict:

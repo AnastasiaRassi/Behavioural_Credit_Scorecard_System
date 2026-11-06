@@ -389,3 +389,76 @@ def test_an_outcome_cannot_be_recorded_twice(session, seeded):
         defaulted=False,
     ))
     assert "observed_outcome" in message
+
+
+# ---- the chat log --------------------------------------------------------------
+
+
+def _chat_turn(**overrides):
+    from app.db.models import ChatTurn
+
+    values = dict(
+        customer_id="TEST-chat", turn_number=1, user_message="Why?", reply="Because.",
+        source="model", llm_model="gpt-4o-mini", prompt_version="v2.1-loana",
+        scoring_model_version="m1", latency_ms=900,
+    )
+    return ChatTurn(**{**values, **overrides})
+
+
+@pytest.fixture
+def chat_table(session):
+    """chat_turn inside a savepoint, so a database that never had it still runs these."""
+    from app.db.models import ChatTurn
+
+    savepoint = session.begin_nested()
+    ChatTurn.__table__.create(session.connection(), checkfirst=True)
+    yield session
+    savepoint.rollback()
+
+
+def test_the_guard_columns_are_nullable_booleans(chat_table):
+    from sqlalchemy import Boolean
+
+    from app.db.models import ChatTurn
+
+    for name in ("grounding_passed", "claim_passed"):
+        column = ChatTurn.__table__.c[name]
+        assert isinstance(column.type, Boolean) and column.nullable
+
+    stored = _chat_turn(grounding_passed=True)
+    chat_table.add(stored)
+    chat_table.flush()
+    assert (stored.grounding_passed, stored.claim_passed) == (True, None)
+
+
+def test_every_late_added_column_is_on_the_model():
+    # create_all adds these to a pre-existing table; a typo here would add a stray column.
+    from app.db.database import ADDED_COLUMNS
+    from app.db.models import Base
+
+    for table, column, _ in ADDED_COLUMNS:
+        assert column in Base.metadata.tables[table].c
+
+
+def test_the_live_chat_turn_table_has_the_guard_columns(session):
+    from sqlalchemy import inspect
+
+    inspector = inspect(session.connection())
+    if "chat_turn" not in inspector.get_table_names():
+        pytest.skip("chat_turn not created yet; run: python -m app.db.seed")
+    columns = {column["name"] for column in inspector.get_columns("chat_turn")}
+    assert {"grounding_passed", "claim_passed"} <= columns
+
+
+def test_the_opening_fits_the_table_as_turn_zero_with_an_empty_message(chat_table):
+    opening = _chat_turn(turn_number=0, user_message="")
+    chat_table.add(opening)
+    chat_table.flush()
+
+    assert opening.id is not None
+
+
+def test_a_template_turn_still_needs_its_reason(chat_table):
+    message = _rejected_by(chat_table, _chat_turn(source="template", fallback_reason=None))
+
+    assert "fallback_reason_iff_template" in message

@@ -35,6 +35,9 @@ services:
       SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET in .env}
       SEED_PASSWORD: ${SEED_PASSWORD:-}
       DEMO_MODE: ${DEMO_MODE:-1}
+      # Optional. When set, the assistant uses OpenAI; otherwise Ollama, then templates.
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
       # The host's Ollama by default, so the model already pulled there is reused.
       # With `--profile ollama`, set OLLAMA_URL=http://ollama:11434 instead.
       OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}

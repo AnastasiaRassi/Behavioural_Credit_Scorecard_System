@@ -54,7 +54,7 @@ def chat_about_account(
     """The assistant's next turn, answered from this account's own facts.
 
     Stateless: the client sends the conversation so far. An empty conversation
-    returns the greeting.
+    returns Loana's opening interpretation of the account.
     """
     row, stored, record = _account(customer_id, session)
     messages = [message.model_dump() for message in request.messages]

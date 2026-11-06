@@ -4,8 +4,9 @@ Every number and action in the text comes from a `CoachingPayload` assembled in 
 The same payload is the counterfactual half of the assistant's fact sheet
 (`assistant.py`), so the coaching card and the chat cannot disagree.
 
-The text is a template, deliberately: it renders on every page load, and a local model
-on CPU is too slow for that. The LLM lives in the chat, where a wait is expected.
+The text is a template, deliberately: it renders on every page load, and an LLM call is
+too slow for that. The LLM lives in the chat (`assistant.py`), where a wait is expected;
+this text is also the fallback for Loana's opening interpretation.
 
 The probability is absent: `CardholderView` does not send it, so the text does not
 quote it either.

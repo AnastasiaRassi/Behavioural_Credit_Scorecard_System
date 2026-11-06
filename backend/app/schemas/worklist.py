@@ -116,6 +116,17 @@ class CardholderReason(BaseModel):
     raises_risk: bool
 
 
+class CardholderMonth(BaseModel):
+    """One billed month for the cardholder's chart. No probability, no effect sizes."""
+
+    month: int
+    label: str
+    payment_status: int
+    payment_status_reading: str
+    bill_amount: float
+    amount_paid: float
+
+
 class CardholderCoaching(BaseModel):
     text: str
     disclaimer: str
@@ -127,14 +138,14 @@ class ChatMessage(BaseModel):
 
 
 class ChatRequest(BaseModel):
-    """The conversation so far, oldest first. Empty asks for the greeting."""
+    """The conversation so far, oldest first. Empty asks for the opening interpretation."""
 
     messages: list[ChatMessage] = Field(default_factory=list, max_length=40)
 
 
 class ChatReply(BaseModel):
     reply: str
-    source: str = Field(description="model, or template when the local LLM was unavailable")
+    source: str = Field(description="model, or template when the LLM was unavailable or its reply failed a check")
     note: str = Field(default="", description="Shown under a template reply; empty for model replies")
     disclaimer: str
 
@@ -154,6 +165,7 @@ class CardholderView(BaseModel):
     months_in_arrears: int
     reasons: list[CardholderReason]
     coaching: CardholderCoaching
+    history: list[CardholderMonth]
 
 
 class RoleOut(BaseModel):

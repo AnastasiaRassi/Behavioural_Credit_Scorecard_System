@@ -1,5 +1,7 @@
 """A free, open-source LLM served locally by Ollama. No API key, no data leaves the machine.
 
+This is the assistant's second choice: `llm_client.chat` uses it when OPENAI_API_KEY is unset.
+
 Every failure yields a call with no text rather than raising, so a caller always has
 its template to fall back on: the assistant must keep answering when Ollama is not
 running. The call also carries what the chat log needs: model, latency, token counts

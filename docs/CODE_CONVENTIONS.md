@@ -20,7 +20,8 @@ backend/app/
 │   └── preprocessing.py         # empty, redundant now
 ├── ai/
 │   ├── coaching.py              # cardholder coaching text and the counterfactual payload behind it
-│   ├── assistant.py             # cardholder chat: grounded fact sheet, local LLM, template fallback
+│   ├── assistant.py             # Loana AI chat: fact sheet, guardrails, opening, template fallback
+│   ├── llm_client.py            # OpenAI, else Ollama; returns an LlmCall, with no text on failure
 │   └── local_llm.py             # Ollama client; returns an LlmCall, with no text on failure
 ├── api/
 │   ├── dependencies.py          # scorer, explainer, session, live model version
@@ -249,9 +250,12 @@ become its first cases. `pytest` is already in `requirements.txt`.
 Add to `requirements.txt` when adding an import. Currently added beyond the original list:
 `xlrd` (reads the source `.xls`), `imbalanced-learn` (resampling experiment).
 
-**The assistant's LLM is not a pip dependency.** It runs in Ollama, a separate local
-server (`ollama pull qwen2.5:3b`; `OLLAMA_URL` and `OLLAMA_MODEL` in `.env` override the
-defaults), reached over HTTP with `requests`. No API key, and nothing leaves the machine.
+**The assistant's LLM is chosen by `ai/llm_client.py`.** With `OPENAI_API_KEY` in `.env` it
+is OpenAI `gpt-4o-mini` (the `openai` package, pinned), and data leaves the machine: the
+fact sheet only, never the probability or a protected attribute. Without a key it is
+Ollama, a separate local server (`ollama pull qwen2.5:3b`; `OLLAMA_URL` and `OLLAMA_MODEL`
+override the defaults), reached over HTTP with `requests`, where nothing leaves the
+machine. With neither, templates answer.
 
 **`shap` is deliberately not a dependency.** LightGBM computes SHAP values natively with
 `predict(X, pred_contrib=True)`, which for tree models is exact rather than sampled, and

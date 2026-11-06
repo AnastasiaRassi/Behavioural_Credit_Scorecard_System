@@ -10,10 +10,16 @@ that cardholder or a member of staff.
 Telling someone they are predicted to default is distressing, can be
 self-fulfilling, and commits the lender to specific reasons the moment it acts.
 Pre-delinquency contact is framed as assistance, so this screen says what to do.
+
+Two columns: the account on the left, Loana AI (the chat copilot) on the right. Loana's
+wording, and the repayment history it draws on, come from the API.
 """
+import altair as alt
+import pandas as pd
 import streamlit as st
 
 import api
+import theme
 
 # Features a cardholder can act on this month. A reason they cannot change is
 # not advice, it is an accusation.
@@ -36,6 +42,13 @@ ACTIONABLE = {
 
 SHOWN_ADVICE = 3
 
+# Fixed questions for the two preset buttons. They go through the same chat endpoint,
+# guards and log as anything typed.
+PRESETS = {
+    "💡 Why flagged?": "Why was my account flagged?",
+    "🎯 Next steps": "What can I do this month?",
+}
+
 CONSENT = """
 Your account is checked each month using your billing and repayment history for
 the last six months.
@@ -57,18 +70,30 @@ def render(token: str, customer_id: str) -> None:
         return
 
     st.divider()
-    if account["needs_attention"]:
-        _warning(account, _plan(token, customer_id))
+    main, copilot = st.columns([7, 3], gap="large")
+    with main:
+        _main(account, token, customer_id)
+    with copilot:
+        _copilot(token, customer_id)
+
+
+def _main(account: dict, token: str, customer_id: str) -> None:
+    """The account itself: the banner, the figures, the history and what to do about it."""
+    needs_attention = account["needs_attention"]
+    if needs_attention:
+        _warning()
     else:
         _reassurance(account)
 
-    st.divider()
     _account(account)
-    _chat(token, customer_id)
+    _history(account["history"])
+
+    if needs_attention:
+        _what_to_do(account, _plan(token, customer_id))
     _consent()
 
 
-def _warning(account: dict, plan: dict | None) -> None:
+def _warning() -> None:
     st.warning(
         "**Your next payment may be at risk**\n\n"
         "Based on how your account has moved over the last six months, you may "
@@ -76,8 +101,9 @@ def _warning(account: dict, plan: dict | None) -> None:
         "and this is not a decision — it is an early heads-up while there is "
         "still time to act."
     )
-    _coaching(account)
 
+
+def _what_to_do(account: dict, plan: dict | None) -> None:
     # The computed plan says the same things with this account's own amounts in
     # them, so it replaces the written advice rather than repeating it.
     if plan and plan["steps"]:
@@ -98,15 +124,6 @@ def _warning(account: dict, plan: dict | None) -> None:
     )
     st.button("Talk to someone about my options", type="primary")
     st.caption("Not yet connected to a support queue.")
-
-
-def _coaching(account: dict) -> None:
-    """The plain-language explanation. Wording comes from the API, never from here."""
-    coaching = account.get("coaching")
-    if not coaching:
-        return
-    st.markdown(coaching["text"])
-    st.caption(coaching["disclaimer"])
 
 
 def _reassurance(account: dict) -> None:
@@ -142,6 +159,66 @@ def _account(account: dict) -> None:
         ],
     ):
         column.metric(label, value)
+
+
+def _history(history: list[dict]) -> None:
+    """Bill against payment for each month, with that month's repayment status above it."""
+    if not history:
+        return
+
+    st.markdown("**Your last six months**")
+    # The API sends most recent first; the chart reads oldest to newest.
+    months = sorted(history, key=lambda month: month["month"], reverse=True)
+    order = [month["label"] for month in months]
+
+    status = pd.DataFrame(
+        {
+            "label": month["label"],
+            "reading": month["payment_status_reading"].capitalize(),
+            "behind": month["payment_status"] > 0,
+        }
+        for month in months
+    )
+    amounts = pd.DataFrame(
+        {"label": month["label"], "series": series, "amount": month[field]}
+        for month in months
+        for series, field in (("Bill", "bill_amount"), ("Paid", "amount_paid"))
+    )
+
+    strip = (
+        alt.Chart(status)
+        .mark_text(fontSize=11, fontWeight=600, baseline="middle")
+        .encode(
+            x=alt.X("label:N", sort=order, title=None, axis=None),
+            text="reading:N",
+            color=alt.condition(
+                alt.datum.behind, alt.value(theme.HIGH), alt.value(theme.MUTED)
+            ),
+        )
+        .properties(height=22)
+    )
+    bars = (
+        alt.Chart(amounts)
+        .mark_bar()
+        .encode(
+            x=alt.X("label:N", sort=order, title=None, axis=alt.Axis(labelAngle=0, labelLimit=140)),
+            xOffset=alt.XOffset("series:N", sort=["Bill", "Paid"]),
+            y=alt.Y("amount:Q", title=None, axis=alt.Axis(format="~s")),
+            color=alt.Color(
+                "series:N",
+                scale=alt.Scale(domain=["Bill", "Paid"], range=[theme.ACCENT, theme.MUTED]),
+                legend=alt.Legend(orient="bottom", title=None),
+            ),
+            tooltip=[
+                alt.Tooltip("label:N", title="Month"),
+                alt.Tooltip("series:N", title=""),
+                alt.Tooltip("amount:Q", title="Amount", format=",.0f"),
+            ],
+        )
+        .properties(height=220)
+    )
+    chart = alt.vconcat(strip, bars, spacing=4).resolve_scale(x="shared")
+    st.altair_chart(chart, width="stretch", theme=None)
 
 
 def _plan(token: str, customer_id: str) -> dict | None:
@@ -188,50 +265,70 @@ def _advice(account: dict) -> list[tuple[str, str]]:
     return advice[:SHOWN_ADVICE]
 
 
-def _chat(token: str, customer_id: str) -> None:
-    """Questions about this account, answered by the local model from the account's own facts.
+def _copilot(token: str, customer_id: str) -> None:
+    """Loana AI: questions about this account, answered from the account's own facts.
 
     The conversation lives in session state and is sent whole each turn; the API
-    keeps none. Every reply's wording comes from the API.
+    keeps none. Every reply's wording comes from the API. The opening interpretation
+    is fetched once per session and kept here, because Streamlit reruns this script on
+    every click and each fetch can cost the API an LLM call.
     """
-    st.divider()
-    st.markdown("**Ask about your account**")
+    with st.container(border=True):
+        st.subheader("Loana AI · Financial Health Copilot")
 
-    key = f"chat_{customer_id}"
-    if key not in st.session_state:
-        try:
-            opening = api.chat(customer_id, token, [])
-        except api.ServiceUnavailable:
-            st.caption("The assistant is unavailable right now.")
+        key = f"chat_{customer_id}"
+        if key not in st.session_state:
+            with st.spinner("Loana is reading your account..."):
+                try:
+                    opening = api.chat(customer_id, token, [])
+                except api.ServiceUnavailable:
+                    st.caption("The assistant is unavailable right now.")
+                    return
+            st.session_state[key] = {
+                "messages": [
+                    {"role": "assistant", "content": opening["reply"], "note": opening["note"]}
+                ],
+                "disclaimer": opening["disclaimer"],
+            }
+        conversation = st.session_state[key]
+        first, *rest = conversation["messages"]
+
+        _bubble(first)
+
+        asked = None
+        for column, (label, question) in zip(st.columns(len(PRESETS)), PRESETS.items()):
+            if column.button(label, key=f"preset_{customer_id}_{label}", width="stretch"):
+                asked = question
+
+        for message in rest:
+            _bubble(message)
+
+        asked = st.chat_input("Ask why, or what would help") or asked
+        st.caption(conversation["disclaimer"])
+        if not asked:
             return
-        st.session_state[key] = {
-            "messages": [{"role": "assistant", "content": opening["reply"], "note": ""}],
-            "disclaimer": opening["disclaimer"],
-        }
-    conversation = st.session_state[key]
 
-    panel = st.container()
-    for message in conversation["messages"]:
-        with panel.chat_message(message["role"]):
-            st.markdown(message["content"])
-            if message.get("note"):
-                st.caption(message["note"])
-
-    question = panel.chat_input("Ask why, or what would help")
-    st.caption(conversation["disclaimer"])
-    if not question:
-        return
-
-    conversation["messages"].append({"role": "user", "content": question, "note": ""})
-    sent = [{"role": m["role"], "content": m["content"]} for m in conversation["messages"]]
-    with st.spinner("Thinking about your account..."):
-        try:
-            turn = api.chat(customer_id, token, sent)
-            reply = {"role": "assistant", "content": turn["reply"], "note": turn["note"]}
-        except api.ServiceUnavailable:
-            reply = {"role": "assistant", "content": "I could not reach the service just now. Please try again.", "note": ""}
-    conversation["messages"].append(reply)
+        conversation["messages"].append({"role": "user", "content": asked, "note": ""})
+        sent = [{"role": m["role"], "content": m["content"]} for m in conversation["messages"]]
+        with st.spinner("Thinking about your account..."):
+            try:
+                turn = api.chat(customer_id, token, sent)
+                reply = {"role": "assistant", "content": turn["reply"], "note": turn["note"]}
+            except api.ServiceUnavailable:
+                reply = {
+                    "role": "assistant",
+                    "content": "I could not reach the service just now. Please try again.",
+                    "note": "",
+                }
+        conversation["messages"].append(reply)
     st.rerun()
+
+
+def _bubble(message: dict) -> None:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
+        if message.get("note"):
+            st.caption(message["note"])
 
 
 def _consent() -> None:

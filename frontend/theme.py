@@ -36,12 +36,15 @@ FONT = (
 
 _CSS = f"""
 <style>
-/* Shorter run-in at the top, and a readable measure. Full-width text on a 1440px
-   monitor puts related numbers too far apart to compare. */
+/* Shorter run-in at the top. The page uses the full width: the cardholder screen is
+   two columns, and a 1180px cap left the copilot column too narrow to read. The
+   sign-in page sets its own width (ui/login.css). */
 [data-testid="stMainBlockContainer"] {{
     padding-top: 3rem;
     padding-bottom: 5rem;
-    max-width: 1180px;
+    padding-left: clamp(1.5rem, 4vw, 4rem);
+    padding-right: clamp(1.5rem, 4vw, 4rem);
+    max-width: none;
 }}
 
 /* The page title competes with the metrics underneath it at Streamlit's default

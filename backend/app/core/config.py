@@ -72,3 +72,21 @@ def ollama_url() -> str:
 def ollama_model() -> str:
     load_dotenv(project_root() / ".env")
     return os.environ.get("OLLAMA_MODEL", DEFAULT_OLLAMA_MODEL)
+
+
+# OpenAI is the assistant's first-choice provider when a key is set; without one the
+# assistant falls back to Ollama, then to templates (ai/llm_client.py).
+DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
+
+
+@lru_cache(maxsize=1)
+def openai_api_key() -> str | None:
+    """The key, or None when unset. Never raises: no key just means no OpenAI."""
+    load_dotenv(project_root() / ".env")
+    return os.environ.get("OPENAI_API_KEY", "").strip() or None
+
+
+@lru_cache(maxsize=1)
+def openai_model() -> str:
+    load_dotenv(project_root() / ".env")
+    return os.environ.get("OPENAI_MODEL", DEFAULT_OPENAI_MODEL)

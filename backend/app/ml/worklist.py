@@ -24,6 +24,10 @@ BANDS = ("Low", "Medium", "High")
 QUEUE_ID_PREFIX = "C-"
 QUEUE_ID_OFFSET = 1
 
+CARDHOLDER_MONTH_FIELDS = (
+    "month", "label", "payment_status", "payment_status_reading", "bill_amount", "amount_paid",
+)
+
 # A page of the worklist. The full queue is thousands of rows, which no officer
 # scrolls and no response should carry.
 DEFAULT_PAGE = 50
@@ -232,4 +236,10 @@ def cardholder_view(row: dict, stored_prediction=None, record=None) -> dict:
             for reason in reasons
         ],
         "coaching": coaching.to_dict(),
+        # The same months the officer sees, without utilisation: the chart needs
+        # bills, payments and status, and none of it is the score.
+        "history": [
+            {key: entry[key] for key in CARDHOLDER_MONTH_FIELDS}
+            for entry in row.get("history") or []
+        ],
     }
