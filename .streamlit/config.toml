@@ -1,16 +1,17 @@
-# Interface theme. Colour meaning is defined once in frontend/theme.py; this file
-# only tells Streamlit's own widgets to use the same palette.
+# Interface theme, for Streamlit's own widgets. Risk colour is still defined
+# once in frontend/theme.py.
 #
-# The accent is blue, not red. Red, amber and green mean risk band and audit
-# outcome on this dashboard, so spending them on buttons and active tabs would
-# make the interface argue with the numbers.
+# Light, with the sign-in photograph's palette: the accent is its glass blue.
+# Red, amber and green mean risk band and audit outcome on this dashboard, so
+# spending them on buttons and active tabs would make the interface argue with
+# the numbers.
 
 [theme]
-base = "dark"
-primaryColor = "#4C8DF6"
-backgroundColor = "#0E131B"
-secondaryBackgroundColor = "#172030"
-textColor = "#E4E9F2"
+base = "light"
+primaryColor = "#4A6B85"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#EEF3F7"
+textColor = "#2B2724"
 font = "sans serif"
 
 [server]

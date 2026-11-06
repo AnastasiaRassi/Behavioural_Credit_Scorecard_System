@@ -1,0 +1,404 @@
+/* Sign-in screen. Loaded and injected by views/sign_in.py, which substitutes
+   __LOGIN_BG__ with the photograph as base64.
+
+   Every rule that touches a Streamlit element is held behind
+   `body:has(.st-key-signin_card)`. The card only exists while this screen is
+   drawn, so none of this can follow a signed-in session onto the dashboard.
+
+   Colour is taken from the photograph and nothing else. */
+
+@import url("https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&display=swap");
+
+:root {
+    --mist: #EEF3F7;
+    --frost: #FFFFFF;
+    --ink: #2B2724;
+    --slate: #5E6B78;
+    --glass-blue: #4A6B85;
+    --glass-blue-dark: #3C586F;
+    --golden: #D9A462;
+    /* A lighter tint of slate, for field edges and rules. */
+    --slate-line: #C6D1DB;
+    /* The one failure tone. Still of the photograph: the deepest of the
+       golden-hour reflections, taken down to where it carries text. */
+    --alert-ink: #8A3B2E;
+    --alert-edge: #B4442E;
+    --alert-wash: #FBEFEC;
+    --font: "Archivo", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+/* --- the photograph ---------------------------------------------------- */
+
+/* The wash is lightest over the middle so the sky gap stays the brightest
+   part of the frame; the towers keep enough contrast to read as texture. */
+body:has(.st-key-signin_card) .stApp {
+    background-image:
+        radial-gradient(ellipse 48% 38% at 50% 50%,
+            rgba(238, 243, 247, 0.15) 0%,
+            rgba(238, 243, 247, 0.20) 45%,
+            rgba(238, 243, 247, 0.36) 78%,
+            rgba(238, 243, 247, 0.44) 100%),
+        url("data:image/jpeg;base64,__LOGIN_BG__");
+    background-size: cover, cover;
+    background-position: center center, center center;
+    background-repeat: no-repeat, no-repeat;
+    background-attachment: fixed, fixed;
+    font-family: var(--font);
+}
+
+/* Streamlit paints its own surfaces over the photograph otherwise. */
+body:has(.st-key-signin_card) [data-testid="stMain"],
+body:has(.st-key-signin_card) [data-testid="stMainBlockContainer"],
+body:has(.st-key-signin_card) [data-testid="stBottomBlockContainer"] {
+    background: transparent !important;
+}
+
+/* Nothing of the editor's chrome belongs on a sign-in page. */
+body:has(.st-key-signin_card) [data-testid="stHeader"],
+body:has(.st-key-signin_card) [data-testid="stToolbar"],
+body:has(.st-key-signin_card) [data-testid="stAppDeployButton"],
+body:has(.st-key-signin_card) [data-testid="stMainMenu"],
+body:has(.st-key-signin_card) [data-testid="stStatusWidget"],
+body:has(.st-key-signin_card) [data-testid="stDecoration"],
+body:has(.st-key-signin_card) [data-testid="stSidebar"],
+body:has(.st-key-signin_card) [data-testid="stSidebarCollapsedControl"],
+body:has(.st-key-signin_card) footer {
+    display: none !important;
+}
+
+/* The card sits where the two arms of the gap cross. */
+body:has(.st-key-signin_card) [data-testid="stMainBlockContainer"] {
+    max-width: none !important;
+    padding: 0 !important;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* --- the card ---------------------------------------------------------- */
+
+.st-key-signin_card {
+    width: 390px;
+    max-width: calc(100vw - 32px);
+    /* Streamlit stacks its blocks in a column flex container, so the cross-axis
+       auto margins are what centre the card rather than the parent's rule. */
+    margin: 0 auto;
+    padding: 30px 32px 24px;
+    background: rgba(255, 255, 255, 0.82);
+    -webkit-backdrop-filter: blur(18px) saturate(1.2);
+    backdrop-filter: blur(18px) saturate(1.2);
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    border-radius: 20px;
+    box-shadow: 0 24px 60px rgba(42, 64, 84, 0.18);
+    animation: card-in 300ms ease-out both;
+}
+
+/* Streamlit sets its own family on headings, labels and inputs from the theme,
+   so one family has to be asserted over the whole card rather than per rule. */
+.st-key-signin_card,
+.st-key-signin_card *,
+.sky-panel,
+.sky-panel * {
+    font-family: var(--font) !important;
+}
+/* Except the icon glyphs: Streamlit draws the show/hide control as a ligature,
+   so in any other family it renders the word "visibility". */
+.st-key-signin_card [data-testid="stIconMaterial"] {
+    font-family: "Material Symbols Rounded" !important;
+}
+
+/* Streamlit shrink-wraps the container a button sits in, so the button cannot
+   reach the card's width on its own. */
+.st-key-signin_card [data-testid="stElementContainer"]:has(
+    [data-testid="stFormSubmitButton"]
+) {
+    width: 100% !important;
+}
+
+@keyframes card-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: none; }
+}
+
+.signin-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.signin-name {
+    font-family: var(--font);
+    font-size: 22px;
+    font-weight: 600;
+    /* Expanded, to echo the broad tower fronts. */
+    font-stretch: 120%;
+    font-variation-settings: "wdth" 120;
+    color: var(--ink);
+    line-height: 1.2;
+}
+.signin-desc {
+    font-size: 15px;
+    line-height: 1.5;
+    color: var(--slate);
+    margin: 12px 0 0;
+}
+.signin-heading {
+    font-size: 26px;
+    font-weight: 600;
+    color: var(--ink);
+    line-height: 1.25;
+    margin: 26px 0 2px;
+}
+.signin-helper {
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--slate);
+    margin: 14px 0 0;
+    text-align: center;
+}
+.demo-label {
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--slate);
+    margin: 16px 0 8px;
+    padding-top: 14px;
+    border-top: 1px solid var(--slate-line);
+    text-align: center;
+}
+
+/* --- the one failure line ----------------------------------------------- */
+
+/* Above the button, where the eye already is. One line, no coloured banner. */
+.signin-error {
+    display: flex;
+    align-items: flex-start;
+    gap: 7px;
+    margin: 2px 0 10px;
+    padding: 8px 10px;
+    background: var(--alert-wash);
+    border-radius: 8px;
+    font-size: 14px;
+    line-height: 1.45;
+    color: var(--alert-ink);
+}
+.signin-error svg {
+    flex: 0 0 14px;
+    margin-top: 2px;
+}
+
+/* The field at fault, named by the message's own data-field. */
+.st-key-signin_card:has(.signin-error[data-field="email"]) .st-key-field_email
+    [data-testid="stTextInputRootElement"],
+.st-key-signin_card:has(.signin-error[data-field="password"]) .st-key-field_password
+    [data-testid="stTextInputRootElement"],
+.st-key-signin_card:has(.signin-error[data-field="both"]) .st-key-field_email
+    [data-testid="stTextInputRootElement"],
+.st-key-signin_card:has(.signin-error[data-field="both"]) .st-key-field_password
+    [data-testid="stTextInputRootElement"] {
+    border-color: var(--alert-edge);
+}
+
+/* The keyed field wrappers are structure only. */
+.st-key-field_email,
+.st-key-field_password {
+    gap: 0 !important;
+}
+
+/* --- fields and button -------------------------------------------------- */
+
+.st-key-signin_card [data-testid="stForm"] {
+    border: none;
+    padding: 0;
+}
+.st-key-signin_card .stTextInput label p {
+    font-family: var(--font);
+    font-size: 15px;
+    font-weight: 500;
+    line-height: 1.5;
+    color: var(--ink);
+    text-transform: none;
+    letter-spacing: 0;
+}
+.st-key-signin_card [data-testid="stTextInputRootElement"] {
+    background: var(--mist);
+    border: 1px solid var(--slate-line);
+    border-radius: 10px;
+    height: 44px;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.st-key-signin_card [data-testid="stTextInputRootElement"]:hover {
+    border-color: #AEBECB;
+}
+.st-key-signin_card [data-testid="stTextInputRootElement"]:focus-within {
+    border-color: var(--glass-blue);
+    box-shadow: 0 0 0 3px rgba(74, 107, 133, 0.22);
+}
+.st-key-signin_card [data-testid="stTextInputRootElement"] input {
+    height: 42px;
+    font-family: var(--font);
+    font-size: 15px;
+    color: var(--ink);
+    caret-color: var(--glass-blue);
+    padding: 0 12px;
+}
+.st-key-signin_card [data-testid="stTextInputRootElement"] input::placeholder {
+    color: #93A2AF;
+}
+/* The show/hide control Streamlit gives a password field. */
+.st-key-signin_card [data-testid="stTextInputRootElement"] button {
+    color: var(--slate);
+    background: transparent;
+}
+.st-key-signin_card [data-testid="InputInstructions"] {
+    display: none;
+}
+
+.st-key-signin_card [data-testid="stFormSubmitButton"] {
+    margin-top: 6px;
+    width: 100% !important;
+    display: block !important;
+}
+.st-key-signin_card [data-testid="stFormSubmitButton"] button {
+    width: 100% !important;
+    height: 44px;
+    background: var(--glass-blue);
+    border: 1px solid var(--glass-blue);
+    border-radius: 10px;
+    color: var(--frost);
+    font-family: var(--font);
+    font-size: 15px;
+    font-weight: 600;
+    transition: background 0.15s ease;
+}
+.st-key-signin_card [data-testid="stFormSubmitButton"] button:hover {
+    background: var(--glass-blue-dark);
+    border-color: var(--glass-blue-dark);
+    color: var(--frost);
+}
+.st-key-signin_card [data-testid="stFormSubmitButton"] button:disabled {
+    background: var(--glass-blue);
+    border-color: var(--glass-blue);
+    color: var(--frost);
+    opacity: 0.65;
+    cursor: default;
+}
+
+/* The demo row: three quiet secondary buttons, one per role. */
+.st-key-demo_row [data-testid="stHorizontalBlock"] { gap: 8px; }
+.st-key-demo_row [data-testid="stColumn"] {
+    flex: 1 1 0 !important;
+    min-width: 0 !important;
+}
+.st-key-demo_row button {
+    width: 100% !important;
+    min-height: 32px;
+    padding: 0 6px;
+    background: transparent;
+    border: 1px solid var(--slate-line);
+    border-radius: 8px;
+    color: var(--glass-blue);
+    font-size: 12.5px;
+    font-weight: 500;
+    white-space: nowrap;
+}
+.st-key-demo_row button:hover {
+    background: var(--mist);
+    border-color: var(--glass-blue);
+    color: var(--glass-blue);
+}
+
+/* Keyboard focus has to be visible on every control, not just the fields. */
+body:has(.st-key-signin_card) :focus-visible {
+    outline: 2px solid var(--glass-blue);
+    outline-offset: 2px;
+    border-radius: 10px;
+}
+
+/* The one failure message, in the warm accent rather than an alarm red the
+   photograph does not contain. Text stays ink; the accent is the edge only. */
+.st-key-signin_card [data-testid="stAlertContainer"] {
+    margin-top: 12px;
+    padding: 10px 12px;
+    background: rgba(217, 164, 98, 0.14);
+    border: 1px solid rgba(217, 164, 98, 0.55);
+    border-radius: 10px;
+    color: var(--ink);
+    font-size: 14px;
+    line-height: 1.45;
+    box-shadow: none;
+}
+.st-key-signin_card [data-testid="stAlertContainer"] p {
+    color: var(--ink);
+}
+.st-key-signin_card [data-testid="stAlertContainer"] svg {
+    fill: #B7843F;
+}
+
+/* --- the two panels in the sky band ------------------------------------- */
+
+/* Fixed to the viewport centre so they stay in the horizontal gap whatever
+   the window does. Decoration only: aria-hidden, and never clickable. */
+.sky-panel {
+    position: fixed;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 258px;
+    max-height: 150px;
+    padding: 14px 16px 16px;
+    background: rgba(255, 255, 255, 0.82);
+    -webkit-backdrop-filter: blur(14px) saturate(1.15);
+    backdrop-filter: blur(14px) saturate(1.15);
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    border-radius: 14px;
+    box-shadow: 0 18px 40px rgba(42, 64, 84, 0.14);
+    opacity: 0.7;
+    pointer-events: none;
+    z-index: 1;
+}
+.sky-panel--left { right: calc(50% + 227px); }
+.sky-panel--right { left: calc(50% + 227px); }
+
+.sky-panel-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink);
+    margin: 0 0 10px;
+    line-height: 1.4;
+}
+.sky-panel svg { display: block; width: 100%; height: auto; }
+.sky-panel text {
+    font-family: var(--font);
+    font-size: 8.5px;
+    fill: var(--slate);
+}
+
+/* The bars grow out from the centre line, once. */
+.reason-bar {
+    transform: scaleX(0);
+    transform-box: view-box;
+    transform-origin: 107px center;
+    animation: bar-grow 520ms 260ms ease-out forwards;
+}
+@keyframes bar-grow {
+    to { transform: scaleX(1); }
+}
+
+@media (max-width: 1099px) {
+    .sky-panel { display: none; }
+}
+
+@media (max-width: 640px) {
+    .st-key-signin_card {
+        width: 100%;
+        margin: 0 16px;
+        padding: 26px 22px 22px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .st-key-signin_card,
+    .reason-bar {
+        animation: none;
+    }
+    .reason-bar { transform: none; }
+}

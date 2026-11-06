@@ -1,4 +1,4 @@
-"""Credit Risk · an explainable, fair credit decision system.
+"""Atrium · an explainable, fair credit decision system.
 
 Run the API first, then this, both from the repo root:
 
@@ -25,7 +25,7 @@ if str(HERE) not in sys.path:
 import api  # noqa: E402
 import theme  # noqa: E402
 from tabs import drift, explain, fairness, performance, registry, threshold  # noqa: E402
-from views import cardholder, officer  # noqa: E402
+from views import cardholder, officer, sign_in  # noqa: E402
 
 # The signed-in session: the token plus who the API says the caller is.
 SESSION_KEY = "session"
@@ -37,18 +37,6 @@ LABELS = {
     "engineer": "ML engineer",
     "cardholder": "Cardholder",
 }
-
-# What each kind of account opens, so the sign-in page still explains the system
-# to someone seeing it for the first time. Descriptive, not a choice to make.
-OPENS = {
-    "officer": "A worklist of scored cardholders, the reasons behind each score, "
-               "and a decision to record.",
-    "engineer": "The model audit: accuracy, fairness, explanations, thresholds "
-                "and monitoring.",
-    "cardholder": "One account — your own — and whether its next payment looks "
-                  "at risk.",
-}
-
 
 def main() -> None:
     session = st.session_state.get(SESSION_KEY)
@@ -71,70 +59,39 @@ def main() -> None:
 
 def _sign_in() -> None:
     """The way in: an email and a password. The account decides what opens."""
-    st.title("Credit Risk")
-    st.caption("Explainable, fair behavioural scoring")
-
-    middle = st.columns([1, 2, 1])[1]
-    with middle:
-        with st.container(border=True):
-            st.markdown("#### Sign in")
-            st.caption("Your account decides which screens open.")
-
-            with st.form("sign_in", border=False):
-                email = st.text_input("Email", placeholder="name@example.test")
-                password = st.text_input("Password", type="password")
-                submitted = st.form_submit_button(
-                    "Sign in", type="primary", width="stretch"
-                )
-
-            if submitted:
-                _attempt(email, password)
-
-        _what_accounts_open()
+    # The screen is in views/sign_in.py; the credentials never leave this module.
+    sign_in.render(_attempt)
 
 
-def _attempt(email: str, password: str) -> None:
-    """Try the credentials, keeping a session only if the API accepted them."""
-    if not email.strip() or not password:
-        st.error("Enter both an email and a password.")
-        return
+def _attempt(email: str, password: str) -> tuple[str, str] | None:
+    """Try the credentials, keeping a session only if the API accepted them.
+
+    Returns rather than draws: the screen decides where the message goes and
+    which field to outline. None means it worked, and the rerun below replaces
+    the sign-in page with whatever the account opens.
+    """
+    if not email.strip():
+        return "email", sign_in.EMPTY_EMAIL
+    if not password:
+        return "password", sign_in.EMPTY_PASSWORD
 
     try:
         st.session_state[SESSION_KEY] = api.sign_in(email.strip(), password)
-    except api.SignInRejected as exception:
-        # The API's single message, deliberately: saying which half was wrong
-        # would tell someone which accounts exist.
-        st.error(str(exception))
-        return
+    except api.SignInRejected:
+        return "both", sign_in.REJECTED
     except api.ServiceUnavailable as exception:
-        st.error(str(exception))
-        return
+        # str() is the one sentence meant for a person; the status code and the
+        # body are already in the log (see api.ServiceUnavailable).
+        return "", str(exception)
 
     st.rerun()
-
-
-def _what_accounts_open() -> None:
-    """What each kind of account sees, read from the API's own role list."""
-    try:
-        roles = api.roles()
-    except api.ServiceUnavailable:
-        # Signing in is the point of this page, so a service that cannot describe
-        # its roles must not stop someone trying.
-        return
-
-    st.caption("The system has three kinds of account:")
-    for role in roles:
-        name = LABELS.get(role["role"], role["role"])
-        st.markdown(
-            f"{ICONS.get(role['role'], '👤')} **{name}** — "
-            f"{OPENS.get(role['role'], role['description'])}"
-        )
+    return None
 
 
 def _signed_in_bar(session: dict) -> None:
     """Who you are, and the way back out, on every screen."""
     title, identity = st.columns([5, 2])
-    title.title("Credit Risk")
+    title.title("Atrium")
 
     with identity:
         st.caption(
@@ -208,9 +165,10 @@ def _engineer() -> None:
 
 
 st.set_page_config(
-    page_title="Credit Risk · Explainable Scoring",
+    page_title="Atrium · Explainable Credit Decisions",
     page_icon="📊",
     layout="wide",
+    initial_sidebar_state="collapsed",
 )
 
 theme.apply()

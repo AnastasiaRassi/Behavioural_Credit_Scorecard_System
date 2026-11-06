@@ -12,6 +12,9 @@ into without deleting them. The model version is read from scoring_config.json
 rather than typed here, so the registered version can never claim to be a model
 the artifacts do not contain.
 
+With DEMO_MODE=1 it also creates one account per role on the password `demo`,
+so the app can be shown without anyone typing a generated credential.
+
 Seeds accounts and the model only. Customers come from the dataset via
 db/ingest.py, and predictions are written by the API when someone is scored.
 """
@@ -52,6 +55,21 @@ LAST_NAMES = (
     "Haddad", "Khoury", "Nassar", "Saab", "Gerges", "Mansour", "Aoun",
     "Chalhoub", "Daher", "Fares", "Rizk", "Sleiman",
 )
+
+
+# One account per role on a shared, memorable password, for showing the app.
+# DEMO_MODE=1 only: these are the credentials printed on a slide, so they must
+# never exist in an environment that is not a demo.
+DEMO_PASSWORD = "demo"
+DEMO_ACCOUNTS = [
+    ("officer@demo.test", "Demo Officer", "officer"),
+    ("engineer@demo.test", "Demo Engineer", "engineer"),
+    ("cardholder@demo.test", "Demo Cardholder", "cardholder"),
+]
+
+
+def demo_mode() -> bool:
+    return os.environ.get("DEMO_MODE") == "1"
 
 
 def demo_password() -> str:
@@ -182,6 +200,58 @@ def _seed_cardholders(session: Session) -> tuple[list[str], list[str], list[str]
     return added, not_ingested, recredentialed
 
 
+def seed_demo_accounts(session: Session) -> tuple[list[str], list[str]]:
+    """The one-click demo accounts. Nothing at all outside demo mode.
+
+    `demo` is far too weak for a real credential, which is the point: it is
+    typed in front of an audience. It is hashed with scrypt like every other
+    account, so the stored form is no weaker than the rest — and there is no
+    strength rule anywhere in the system to relax, only this choice of value.
+
+    Rerunnable: an existing demo account is brought back to the known password
+    and role rather than duplicated.
+    """
+    if not demo_mode():
+        return [], []
+
+    added, updated = [], []
+    for email, display_name, role in DEMO_ACCOUNTS:
+        account = session.query(UserAccount).filter_by(email=email).one_or_none()
+        if account is None:
+            account = UserAccount(email=email, display_name=display_name, role=role)
+            session.add(account)
+            added.append(email)
+        else:
+            account.display_name = display_name
+            account.role = role
+            updated.append(email)
+        account.password_hash = hash_password(DEMO_PASSWORD)
+        session.flush()
+
+        if role == "cardholder":
+            _link_spare_customer(session, account)
+
+    return added, updated
+
+
+def _link_spare_customer(session: Session, account: UserAccount) -> None:
+    """Give the demo cardholder a scoring subject, so its screen has content.
+
+    Any customer nobody else is linked to will do; without one the cardholder
+    screen can only say the account is not registered yet.
+    """
+    if account.customer is not None:
+        return
+
+    from app.ml import worklist
+
+    for row in worklist.all_rows()[:200]:
+        customer = session.get(Customer, row["customer_id"])
+        if customer is not None and customer.user_account_id is None:
+            link_account(session, customer, account)
+            return
+
+
 def _seed_model_version(session: Session) -> list[str]:
     identity = live_model()
     existing = (
@@ -206,11 +276,14 @@ def seed() -> dict:
     with session_scope() as session:
         users, staff_recredentialed = _seed_staff(session)
         cardholders, not_ingested, held_recredentialed = _seed_cardholders(session)
+        demo_added, demo_updated = seed_demo_accounts(session)
         versions = _seed_model_version(session)
 
     return {
         "users": users,
         "cardholders": cardholders,
+        "demo": demo_added,
+        "demo_updated": demo_updated,
         "model_versions": versions,
         "not_ingested": not_ingested,
         "recredentialed": staff_recredentialed + held_recredentialed,
@@ -227,6 +300,10 @@ def main() -> dict:
         print(f"user           {email}")
     for customer_id in added["cardholders"]:
         print(f"cardholder     {customer_id}")
+    for email in added["demo"]:
+        print(f"demo account   {email} / {DEMO_PASSWORD}")
+    for email in added["demo_updated"]:
+        print(f"demo reset     {email} / {DEMO_PASSWORD}")
     for version in added["model_versions"]:
         print(f"model version  {version} (live)")
     for email in added["recredentialed"]:

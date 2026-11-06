@@ -9,12 +9,18 @@ Shapes are adapted here rather than in the tabs, so the screens keep one vocabul
 whichever endpoint feeds them.
 """
 import json
+import logging
 import os
 import urllib.error
 import urllib.parse
 import urllib.request
 
 import streamlit as st
+
+logger = logging.getLogger(__name__)
+
+# The only thing a screen says when the service fails, whatever the cause.
+UNREACHABLE = "Atrium can't connect right now. Try again in a moment."
 
 # Overridable so the dashboard can be pointed at an API on another port without
 # editing it, which is also what lets two instances run side by side.
@@ -30,11 +36,20 @@ FOUR_FIFTHS = 0.80
 
 
 class ServiceUnavailable(RuntimeError):
-    def __init__(self, message: str, status: int | None = None):
-        super().__init__(message)
+    """A failure of the service, not of the person using it.
+
+    `str(...)` is the one sentence a screen may show. The status code, the URL
+    and the body stay in `technical`, which goes to the log: a route that moved
+    or a process that died is an operator's problem, and putting FastAPI's JSON
+    in front of a loan officer tells them nothing they can act on.
+    """
+
+    def __init__(self, technical: str, status: int | None = None):
+        super().__init__(UNREACHABLE)
         # Carried so a caller can tell a rejected credential from a dead service
         # without parsing the message.
         self.status = status
+        self.technical = technical
 
 
 class SignInRejected(RuntimeError):
@@ -58,13 +73,16 @@ def _request(
             return json.load(response)
     except urllib.error.HTTPError as exception:
         detail = exception.read().decode()[:400]
-        raise ServiceUnavailable(
-            f"{exception.code} from {path}: {detail}", status=exception.code
-        ) from exception
+        technical = f"{exception.code} from {method or 'GET'} {url}: {detail}"
+        logger.warning("%s", technical)
+        raise ServiceUnavailable(technical, status=exception.code) from exception
     except urllib.error.URLError as exception:
-        raise ServiceUnavailable(
-            f"Cannot reach the API at {BASE_URL}. Start it with:\n\n`{START_COMMAND}`"
-        ) from exception
+        technical = (
+            f"cannot reach the API at {BASE_URL} ({exception}). "
+            f"Start it with: {START_COMMAND}"
+        )
+        logger.warning("%s", technical)
+        raise ServiceUnavailable(technical) from exception
 
 
 def _get(path: str, **params):

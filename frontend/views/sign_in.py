@@ -1,0 +1,254 @@
+"""The sign-in screen: one photograph, one card.
+
+The people who meet this screen are loan officers, product people and customers,
+so it is the one place in the product that reads as a brochure rather than a
+console. A view straight up between four glass towers leaves a plus-shaped gap
+of sky; the card sits where the two arms of that gap cross, and two quiet panels
+sit in the horizontal arm either side of it.
+
+Layout and colour live in `ui/login.css`, which is injected here with the
+photograph inlined as base64 so the page needs no static file server. Every rule
+in it is held behind `body:has(.st-key-signin_card)`, so none of it reaches the
+dashboard once a session exists.
+
+Nothing here touches a credential: `render` is handed the function that does,
+and shows whatever that function says went wrong.
+
+Known limit: the message clears on the next attempt rather than on the first
+keystroke. Enter has to submit the form, that needs `st.form`, and Streamlit
+does not rerun on a widget change inside one, so there is no edit to react to.
+"""
+import base64
+import os
+from collections.abc import Callable
+from functools import lru_cache
+from pathlib import Path
+
+import streamlit as st
+from dotenv import load_dotenv
+
+HERE = Path(__file__).resolve().parent
+CSS_PATH = HERE.parent / "ui" / "login.css"
+PHOTO_PATH = HERE.parent / "assets" / "login-bg.jpg"
+
+PRODUCT_NAME = "Atrium"
+DESCRIPTION = (
+    "Track loans and applications, and see the reasons behind every AI decision."
+)
+HEADING = "Sign in"
+HELPER = "No account yet? Your administrator can set one up."
+
+# What a failure says. Never a status code, a URL or a body: those go to the log
+# in api.py, because nothing here is a problem the person reading it can fix.
+EMPTY_EMAIL = "Enter your email."
+EMPTY_PASSWORD = "Enter your password."
+# One message whichever half was wrong: naming it would tell someone which
+# accounts exist.
+REJECTED = "That email and password don't match. Check both and try again."
+
+# Set by app.py between runs. The pending credential survives exactly one rerun,
+# which is what lets the button repaint as "Signing in…" before the attempt.
+PENDING_KEY = "signin_pending"
+ERROR_KEY = "signin_error"
+
+# DEMO_MODE=1 puts a one-click row under the form. The password matches the one
+# `python -m app.db.seed` sets for these accounts in the same mode.
+DEMO_PASSWORD = "demo"
+DEMO_ACCOUNTS = (
+    ("Loan officer", "officer@demo.test"),
+    ("ML engineer", "engineer@demo.test"),
+    ("Cardholder", "cardholder@demo.test"),
+)
+
+# Four rounded squares around a plus-shaped gap: the view up between the towers.
+_LOGO = """
+<svg width="28" height="28" viewBox="0 0 28 28" fill="none" aria-hidden="true"
+     xmlns="http://www.w3.org/2000/svg">
+<rect x="0.8" y="0.8" width="10.4" height="10.4" rx="2.6"
+fill="rgba(74,107,133,0.10)" stroke="#4A6B85" stroke-width="1.5"/>
+<rect x="16.8" y="0.8" width="10.4" height="10.4" rx="2.6"
+fill="rgba(74,107,133,0.10)" stroke="#4A6B85" stroke-width="1.5"/>
+<rect x="0.8" y="16.8" width="10.4" height="10.4" rx="2.6"
+fill="rgba(74,107,133,0.10)" stroke="#4A6B85" stroke-width="1.5"/>
+<rect x="16.8" y="16.8" width="10.4" height="10.4" rx="2.6"
+fill="rgba(74,107,133,0.10)" stroke="#4A6B85" stroke-width="1.5"/>
+<circle cx="14" cy="14" r="2.1" fill="#D9A462"/>
+</svg>
+"""
+
+_ALERT_ICON = """
+<svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"
+     xmlns="http://www.w3.org/2000/svg">
+<circle cx="7" cy="7" r="6.1" stroke="#8A3B2E" stroke-width="1.3"/>
+<line x1="7" y1="3.7" x2="7" y2="7.8" stroke="#8A3B2E" stroke-width="1.4"
+stroke-linecap="round"/>
+<circle cx="7" cy="10.2" r="0.85" fill="#8A3B2E"/>
+</svg>
+"""
+
+# Where an application has got to. Two steps done, the third is where it stands.
+_TRACK = """
+<svg viewBox="0 0 226 46" fill="none" aria-hidden="true"
+     xmlns="http://www.w3.org/2000/svg">
+<line x1="12" y1="13" x2="214" y2="13" stroke="#C6D1DB" stroke-width="2"
+stroke-linecap="round"/>
+<line x1="12" y1="13" x2="146" y2="13" stroke="#4A6B85" stroke-width="2"
+stroke-linecap="round"/>
+<circle cx="12" cy="13" r="4.5" fill="#4A6B85"/>
+<circle cx="79" cy="13" r="4.5" fill="#4A6B85"/>
+<circle cx="146" cy="13" r="5.5" fill="#D9A462"/>
+<circle cx="214" cy="13" r="4.5" fill="#FFFFFF" stroke="#C6D1DB" stroke-width="2"/>
+<text x="12" y="32" text-anchor="start">Applied</text>
+<text x="79" y="32" text-anchor="middle">Under review</text>
+<text x="146" y="32" text-anchor="middle">Approved</text>
+<text x="214" y="32" text-anchor="end">Repaying</text>
+</svg>
+"""
+
+# What moved a score: right of the line helped, left of it hurt. An illustration
+# of the shape of an explanation, so it carries no numbers.
+_REASONS = """
+<svg viewBox="0 0 214 70" fill="none" aria-hidden="true"
+     xmlns="http://www.w3.org/2000/svg">
+<line x1="107" y1="4" x2="107" y2="66" stroke="#C6D1DB" stroke-width="1"/>
+<rect class="reason-bar" x="107" y="9" width="62" height="7" rx="3.5" fill="#D9A462"/>
+<text x="100" y="15.5" text-anchor="end">Payments on time</text>
+<rect class="reason-bar" x="59" y="31" width="48" height="7" rx="3.5" fill="#5E6B78"/>
+<text x="114" y="37.5" text-anchor="start">High card balance</text>
+<rect class="reason-bar" x="107" y="53" width="40" height="7" rx="3.5" fill="#D9A462"/>
+<text x="100" y="59.5" text-anchor="end">Long account history</text>
+</svg>
+"""
+
+
+@lru_cache(maxsize=1)
+def demo_mode() -> bool:
+    """Whether to offer the one-click accounts.
+
+    Read from .env as well as the environment, so DEMO_MODE=1 in the one file
+    turns it on for the seed and for this page together, rather than needing
+    the variable exported into whatever shell started Streamlit.
+    """
+    load_dotenv(HERE.parents[1] / ".env")
+    return os.environ.get("DEMO_MODE") == "1"
+
+
+def render(attempt: Callable[[str, str], tuple[str, str] | None]) -> None:
+    """Draw the screen.
+
+    `attempt` owns the credentials and returns None on success, or the field at
+    fault and the one line to show. Nothing here sees a token.
+    """
+    st.markdown(_stylesheet(), unsafe_allow_html=True)
+    st.markdown(_side_panels(), unsafe_allow_html=True)
+
+    # Set on the run before this one, by a submit or a demo button. Popped here
+    # so a reload cannot replay it.
+    pending = st.session_state.pop(PENDING_KEY, None)
+    failure = st.session_state.get(ERROR_KEY)
+
+    # Widgets cannot live inside raw HTML, so the card is a keyed container and
+    # the stylesheet reaches it through the .st-key-signin_card class.
+    with st.container(key="signin_card"):
+        st.markdown(_masthead(), unsafe_allow_html=True)
+
+        with st.form("sign_in", border=False):
+            with st.container(key="field_email"):
+                email = st.text_input("Email", placeholder="you@company.com")
+            with st.container(key="field_password"):
+                password = st.text_input("Password", type="password")
+
+            if failure:
+                st.markdown(_alert(*failure), unsafe_allow_html=True)
+
+            submitted = st.form_submit_button(
+                "Signing in…" if pending else "Sign in",
+                type="primary",
+                disabled=bool(pending),
+            )
+
+        st.markdown(f'<p class="signin-helper">{HELPER}</p>', unsafe_allow_html=True)
+        if demo_mode():
+            _demo_row()
+
+    if submitted:
+        # Hand the credential to the next run, so the button can repaint as
+        # "Signing in…" before anything slow happens.
+        st.session_state.pop(ERROR_KEY, None)
+        st.session_state[PENDING_KEY] = (email, password)
+        st.rerun()
+
+    if pending:
+        # A success ends in st.rerun() inside `attempt`, so nothing returns.
+        outcome = attempt(*pending)
+        if outcome is not None:
+            st.session_state[ERROR_KEY] = outcome
+            st.rerun()
+
+
+def _demo_row() -> None:
+    """One click per role, demo mode only. Hidden entirely when it is off."""
+    st.markdown(
+        '<p class="demo-label">Try a demo account</p>', unsafe_allow_html=True
+    )
+    with st.container(key="demo_row"):
+        for column, (label, email) in zip(st.columns(3), DEMO_ACCOUNTS):
+            if column.button(label, key=f"demo_{email}", width="stretch"):
+                st.session_state.pop(ERROR_KEY, None)
+                st.session_state[PENDING_KEY] = (email, DEMO_PASSWORD)
+                st.rerun()
+
+
+def _alert(field: str, message: str) -> str:
+    """The one line above the button. `field` marks which input to outline."""
+    return _flatten(f"""
+<div class="signin-error" data-field="{field}" role="alert">
+{_ALERT_ICON}<span>{message}</span>
+</div>
+""")
+
+
+@lru_cache(maxsize=1)
+def _stylesheet() -> str:
+    """The stylesheet with the photograph inlined. Read once per process."""
+    for path in (CSS_PATH, PHOTO_PATH):
+        if not path.exists():
+            raise FileNotFoundError(
+                f"Missing {path}. The sign-in screen ships with it; restore it "
+                "from version control."
+            )
+
+    photo = base64.b64encode(PHOTO_PATH.read_bytes()).decode("ascii")
+    css = CSS_PATH.read_text(encoding="utf-8").replace("__LOGIN_BG__", photo)
+    return f"<style>{css}</style>"
+
+
+def _masthead() -> str:
+    """Logo, product name, what the product is, and the heading over the form."""
+    return _flatten(f"""
+<div class="signin-brand">{_LOGO}<span class="signin-name">{PRODUCT_NAME}</span></div>
+<p class="signin-desc">{DESCRIPTION}</p>
+<h1 class="signin-heading">{HEADING}</h1>
+""")
+
+
+def _side_panels() -> str:
+    """The two decorative panels in the horizontal arm of the sky gap."""
+    return _flatten(f"""
+<div class="sky-panel sky-panel--left" aria-hidden="true">
+<p class="sky-panel-title">Loan tracking</p>{_TRACK}
+</div>
+<div class="sky-panel sky-panel--right" aria-hidden="true">
+<p class="sky-panel-title">Why this decision</p>{_REASONS}
+</div>
+""")
+
+
+def _flatten(markup: str) -> str:
+    """One line, no indentation.
+
+    Streamlit renders this through Markdown, which ends an HTML block at a blank
+    line and then reads the four-space-indented line after it as a code fence.
+    The SVG would print as source. Whitespace means nothing in the markup here.
+    """
+    return " ".join(line.strip() for line in markup.splitlines() if line.strip())
