@@ -1,0 +1,11 @@
+.git
+.venv
+.env
+.claude
+**/__pycache__
+**/.pytest_cache
+**/.ruff_cache
+# 1.8 GB of raw datasets; the seeder gets data/raw as a mount instead.
+data
+notebooks
+docs
