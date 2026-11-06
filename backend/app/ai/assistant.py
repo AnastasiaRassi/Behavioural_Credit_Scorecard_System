@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import asdict, dataclass
-from typing import Mapping, Sequence
+from typing import Callable, Mapping, Sequence
 
 from app.ai import local_llm
 from app.ai.coaching import (
@@ -31,9 +31,13 @@ from app.ai.coaching import (
     numbers_in,
     render,
 )
-from app.ml import worklist
+from app.ml import artifacts, worklist
 
 logger = logging.getLogger(__name__)
+
+# Recorded with every reply. Bump it whenever SYSTEM_PROMPT changes, so logged
+# answers can be compared before and after.
+PROMPT_VERSION = "v1"
 
 # Turns sent to the model. Older ones add prompt time on CPU and rarely matter.
 MAX_HISTORY = 10
@@ -80,13 +84,36 @@ class ChatReply:
         return asdict(self)
 
 
+@dataclass(frozen=True)
+class TurnRecord:
+    """One answered turn, as the chat log stores it. Field names match `ChatTurn`."""
+
+    customer_id: str
+    turn_number: int
+    user_message: str
+    reply: str
+    source: str
+    fallback_reason: str | None
+    rejected_reply: str | None
+    llm_model: str
+    prompt_version: str
+    scoring_model_version: str
+    latency_ms: int
+    prompt_tokens: int | None
+    completion_tokens: int | None
+
+
 def answer(
     row: dict,
     messages: Sequence[Mapping[str, str]],
     stored_prediction=None,
     record: Mapping[str, float] | None = None,
+    on_turn: Callable[[TurnRecord], None] | None = None,
 ) -> ChatReply:
-    """The assistant's next turn for one account. Always returns a reply."""
+    """The assistant's next turn for one account. Always returns a reply.
+
+    `on_turn` receives each turn that reached the model; the greeting does not.
+    """
     view = worklist.cardholder_view(row, stored_prediction=stored_prediction, record=record)
     if not messages:
         return ChatReply(greeting(view["risk_band"]), "template", "", DISCLAIMER)
@@ -95,18 +122,60 @@ def answer(
     sheet = fact_sheet(view, row.get("history") or [], payload)
     conversation = [{"role": message["role"], "content": message["content"]} for message in messages]
 
-    reply = local_llm.chat(
+    call = local_llm.chat(
         [{"role": "system", "content": SYSTEM_PROMPT.format(facts=json.dumps(sheet, indent=1))}]
         + conversation[-MAX_HISTORY:]
     )
-    if reply is not None:
-        invented = _invented_numbers(reply, sheet, conversation)
+
+    fallback_reason = call.failure
+    rejected = None
+    if call.text is not None:
+        invented = _invented_numbers(call.text, sheet, conversation)
         if not invented:
-            return ChatReply(reply, "model", "", DISCLAIMER)
+            result = ChatReply(call.text, "model", "", DISCLAIMER)
+            _report(on_turn, row, conversation, result, call, None, None)
+            return result
         logger.warning("assistant: reply used numbers %s not in the facts; using template", sorted(invented))
+        fallback_reason, rejected = "invented_numbers", call.text
 
     question = conversation[-1]["content"]
-    return ChatReply(template_reply(question, view, payload), "template", TEMPLATE_NOTE, DISCLAIMER)
+    result = ChatReply(template_reply(question, view, payload), "template", TEMPLATE_NOTE, DISCLAIMER)
+    _report(on_turn, row, conversation, result, call, fallback_reason, rejected)
+    return result
+
+
+def _report(
+    on_turn: Callable[[TurnRecord], None] | None,
+    row: dict,
+    conversation: Sequence[Mapping[str, str]],
+    result: ChatReply,
+    call: local_llm.LlmCall,
+    fallback_reason: str | None,
+    rejected_reply: str | None,
+) -> None:
+    """Hand the finished turn to the caller's log. A failing log never costs the reply."""
+    if on_turn is None:
+        return
+    try:
+        on_turn(
+            TurnRecord(
+                customer_id=row["customer_id"],
+                turn_number=sum(1 for message in conversation if message["role"] == "user"),
+                user_message=conversation[-1]["content"],
+                reply=result.reply,
+                source=result.source,
+                fallback_reason=fallback_reason,
+                rejected_reply=rejected_reply,
+                llm_model=call.model,
+                prompt_version=PROMPT_VERSION,
+                scoring_model_version=artifacts.scoring_config()["model_version"],
+                latency_ms=call.latency_ms,
+                prompt_tokens=call.prompt_tokens,
+                completion_tokens=call.completion_tokens,
+            )
+        )
+    except Exception:
+        logger.exception("assistant: could not record the chat turn")
 
 
 def greeting(band: str) -> str:

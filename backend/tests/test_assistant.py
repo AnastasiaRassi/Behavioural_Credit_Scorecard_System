@@ -30,6 +30,13 @@ def _ask(question):
     return [{"role": "user", "content": question}]
 
 
+def _llm(text=None, failure=None):
+    return local_llm.LlmCall(
+        text=text, model="test-model", latency_ms=12, failure=failure,
+        prompt_tokens=100 if text else None, completion_tokens=20 if text else None,
+    )
+
+
 def _sheet(row):
     view = worklist.cardholder_view(row, record=STRESSED)
     payload = coaching.build_payload(view["risk_band"], view["reasons"], STRESSED)
@@ -44,7 +51,7 @@ def test_empty_conversation_returns_the_greeting(row):
 
 
 def test_answers_without_the_model_and_every_number_is_grounded(row, monkeypatch):
-    monkeypatch.setattr(local_llm, "chat", lambda messages: None)
+    monkeypatch.setattr(local_llm, "chat", lambda messages: _llm(failure="llm_unreachable"))
 
     for question in ("Why am I high risk?", "What can I do?", "What is my balance?",
                      "What is my probability?", "Hello"):
@@ -66,7 +73,7 @@ def test_fact_sheet_carries_counterfactual_reasons_and_history_but_no_probabilit
 
 
 def test_model_reply_with_an_invented_number_is_replaced(row, monkeypatch):
-    monkeypatch.setattr(local_llm, "chat", lambda messages: "Pay 987,654 and you will be Low risk.")
+    monkeypatch.setattr(local_llm, "chat", lambda messages: _llm("Pay 987,654 and you will be Low risk."))
 
     reply = assistant.answer(row, _ask("What can I do?"), record=STRESSED)
 
@@ -79,7 +86,7 @@ def test_grounded_model_reply_is_used(row, monkeypatch):
 
     def fake_chat(messages):
         seen["messages"] = messages
-        return f"Your account is rated {row['risk_band']} risk on this model."
+        return _llm(f"Your account is rated {row['risk_band']} risk on this model.")
 
     monkeypatch.setattr(local_llm, "chat", fake_chat)
 
@@ -92,7 +99,7 @@ def test_grounded_model_reply_is_used(row, monkeypatch):
 
 
 def test_numbers_the_cardholder_typed_may_be_echoed(row, monkeypatch):
-    monkeypatch.setattr(local_llm, "chat", lambda messages: "I cannot estimate what paying 4,321 would do.")
+    monkeypatch.setattr(local_llm, "chat", lambda messages: _llm("I cannot estimate what paying 4,321 would do."))
 
     reply = assistant.answer(row, _ask("What if I pay 4321?"), record=STRESSED)
 
@@ -104,7 +111,7 @@ def test_local_llm_returns_none_when_ollama_is_down(monkeypatch):
         raise requests.ConnectionError("connection refused")
 
     monkeypatch.setattr(requests, "post", refuse)
-    assert local_llm.chat([{"role": "user", "content": "hi"}]) is None
+    assert local_llm.chat([{"role": "user", "content": "hi"}]).text is None
 
 
 def test_local_llm_returns_none_on_timeout(monkeypatch):
@@ -112,4 +119,80 @@ def test_local_llm_returns_none_on_timeout(monkeypatch):
         raise requests.Timeout("too slow")
 
     monkeypatch.setattr(requests, "post", slow)
-    assert local_llm.chat([{"role": "user", "content": "hi"}]) is None
+    assert local_llm.chat([{"role": "user", "content": "hi"}]).text is None
+
+
+def test_local_llm_records_failure_reason_and_latency(monkeypatch):
+    def refuse(*args, **kwargs):
+        raise requests.ConnectionError("connection refused")
+
+    monkeypatch.setattr(requests, "post", refuse)
+    call = local_llm.chat([{"role": "user", "content": "hi"}])
+
+    assert call.failure == "llm_unreachable"
+    assert call.latency_ms >= 0
+    assert call.prompt_tokens is None
+
+
+def test_local_llm_reads_token_counts_from_ollama(monkeypatch):
+    class Reply:
+        status_code = 200
+        ok = True
+
+        def json(self):
+            return {"message": {"content": " Hello. "}, "done_reason": "stop",
+                    "prompt_eval_count": 321, "eval_count": 45}
+
+    monkeypatch.setattr(requests, "post", lambda *args, **kwargs: Reply())
+    call = local_llm.chat([{"role": "user", "content": "hi"}])
+
+    assert (call.text, call.failure) == ("Hello.", None)
+    assert (call.prompt_tokens, call.completion_tokens) == (321, 45)
+
+
+def test_on_turn_receives_a_model_turn(row, monkeypatch):
+    monkeypatch.setattr(local_llm, "chat", lambda messages: _llm(f"Rated {row['risk_band']} risk."))
+    turns = []
+
+    assistant.answer(row, _ask("Why?"), record=STRESSED, on_turn=turns.append)
+
+    (turn,) = turns
+    assert (turn.source, turn.fallback_reason, turn.rejected_reply) == ("model", None, None)
+    assert (turn.customer_id, turn.turn_number, turn.user_message) == (row["customer_id"], 1, "Why?")
+    assert (turn.llm_model, turn.prompt_version) == ("test-model", assistant.PROMPT_VERSION)
+    assert (turn.prompt_tokens, turn.completion_tokens) == (100, 20)
+
+
+def test_on_turn_records_why_the_template_was_used(row, monkeypatch):
+    turns = []
+
+    monkeypatch.setattr(local_llm, "chat", lambda messages: _llm(failure="llm_timeout"))
+    assistant.answer(row, _ask("Why?"), record=STRESSED, on_turn=turns.append)
+
+    monkeypatch.setattr(local_llm, "chat", lambda messages: _llm("Pay 987,654 now."))
+    assistant.answer(row, _ask("What can I do?"), record=STRESSED, on_turn=turns.append)
+
+    assert [(t.source, t.fallback_reason) for t in turns] == [
+        ("template", "llm_timeout"), ("template", "invented_numbers"),
+    ]
+    assert turns[0].rejected_reply is None
+    assert turns[1].rejected_reply == "Pay 987,654 now."
+
+
+def test_greeting_is_not_recorded(row):
+    turns = []
+
+    assistant.answer(row, [], record=STRESSED, on_turn=turns.append)
+
+    assert turns == []
+
+
+def test_a_failing_log_does_not_cost_the_reply(row, monkeypatch):
+    monkeypatch.setattr(local_llm, "chat", lambda messages: _llm(f"Rated {row['risk_band']} risk."))
+
+    def broken(turn):
+        raise RuntimeError("database down")
+
+    reply = assistant.answer(row, _ask("Why?"), record=STRESSED, on_turn=broken)
+
+    assert reply.source == "model"

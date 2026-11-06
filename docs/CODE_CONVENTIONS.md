@@ -21,7 +21,7 @@ backend/app/
 ├── ai/
 │   ├── coaching.py              # cardholder coaching text and the counterfactual payload behind it
 │   ├── assistant.py             # cardholder chat: grounded fact sheet, local LLM, template fallback
-│   └── local_llm.py             # Ollama client; every failure returns None
+│   └── local_llm.py             # Ollama client; returns an LlmCall, with no text on failure
 ├── api/
 │   ├── dependencies.py          # scorer, explainer, session, live model version
 │   ├── predictions.py           # score one, score a CSV, read a stored score
@@ -35,10 +35,12 @@ backend/app/
 │   │   ├── customers.py         #   customer, monthly_statement, credit_outcome
 │   │   ├── scoring.py           #   model_version, prediction
 │   │   ├── decisions.py         #   decision, observed_outcome
+│   │   ├── chat.py              #   chat_turn: every assistant reply, with how it was made
 │   │   └── base.py              #   declarative base and shared defaults
 │   ├── database.py              # engine, session_scope(), create_all()
 │   ├── ingest.py                # load_taiwan(): the dataset into the tables
 │   ├── statements.py            # the stored months pivoted back to a wide frame
+│   ├── chat_log.py              # write a chat turn; summarise the log (GET /monitoring/assistant)
 │   ├── customer_registry.py     # a customer from submitted columns; account links
 │   └── seed.py                  # demo accounts and the live model version
 ├── schemas/                     # pydantic request and response shapes

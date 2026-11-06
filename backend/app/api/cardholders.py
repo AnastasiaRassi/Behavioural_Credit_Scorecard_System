@@ -7,12 +7,14 @@ band and the reasons, not the probability or the threshold.
 Who may read it is decided by `dependencies.account_reader`, not here: narrowing
 the payload is pointless if anyone can ask for anyone's.
 """
+from dataclasses import asdict
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.ai import assistant
 from app.api.dependencies import account_reader, get_session
-from app.db import queue_predictions, statements
+from app.db import chat_log, queue_predictions, statements
 from app.ml import worklist
 from app.schemas.worklist import CardholderView, ChatReply, ChatRequest
 
@@ -56,7 +58,13 @@ def chat_about_account(
     """
     row, stored, record = _account(customer_id, session)
     messages = [message.model_dump() for message in request.messages]
-    return assistant.answer(row, messages, stored_prediction=stored, record=record).to_dict()
+    return assistant.answer(
+        row,
+        messages,
+        stored_prediction=stored,
+        record=record,
+        on_turn=lambda turn: chat_log.record(session, asdict(turn)),
+    ).to_dict()
 
 
 def _account(customer_id: str, session: Session):

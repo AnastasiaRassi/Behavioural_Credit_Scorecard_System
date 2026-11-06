@@ -10,6 +10,7 @@ from sklearn.metrics import brier_score_loss, f1_score, roc_auc_score
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_session
+from app.db import chat_log
 from app.db.models import ObservedOutcome, Prediction
 from app.ml import drift
 
@@ -25,6 +26,12 @@ def population_drift(session: Session = Depends(get_session)) -> dict:
     rows = [prediction.raw_input for prediction in session.query(Prediction).all()]
     live = pd.DataFrame(rows) if rows else pd.DataFrame()
     return drift.compare(live)
+
+
+@router.get("/assistant")
+def assistant_usage(session: Session = Depends(get_session)) -> dict:
+    """How the cardholder chat is behaving: template rate, fallback causes, latency, tokens."""
+    return chat_log.summary(session)
 
 
 @router.get("/performance")
