@@ -262,12 +262,6 @@ def review_requests() -> list[dict]:
     return _get("/officer/review-requests")
 
 
-def chat_before_request(customer_id: str, requested_at: str) -> list[dict]:
-    """The customer's assistant turns before they asked for a review: role, content,
-    at (ISO). Empty until the backend keeps a readable log for staff."""
-    return []
-
-
 def officer_chat(customer_id: str, messages: list[dict]) -> dict:
     """The officer assistant's next turn. Never cached.
 
@@ -281,10 +275,22 @@ def officer_chat(customer_id: str, messages: list[dict]) -> dict:
 
 
 def decide(customer_id: str, decided_by: str, action: str, justification: str) -> dict:
-    return _post(
+    """Record a decision; the backend also closes the customer's open conversation."""
+    decision = _post(
         f"/officer/customers/{customer_id}/decisions",
         {"decided_by": decided_by, "action": action, "justification": justification},
     )
+    decisions.clear()
+    thread.clear()
+    review_requests.clear()
+    return decision
+
+
+@st.cache_data(ttl=5, show_spinner=False)
+def thread(customer_id: str) -> list[dict]:
+    """The account's messages and decisions, oldest first: id, kind (message or
+    decision), at, author, body, action (decisions), status (messages)."""
+    return _get(f"/officer/customers/{customer_id}/thread")
 
 
 @st.cache_data(ttl=5, show_spinner=False)
@@ -309,13 +315,20 @@ def open_review_request(customer_id: str, token: str) -> dict | None:
 
 
 def request_review(customer_id: str, token: str, reason: str) -> dict:
-    """Ask a loan officer for a human review. Never cached."""
-    review_requests.clear()
-    return _request(
+    """Send the loan officer a message; it opens (or reopens) the conversation."""
+    sent = _request(
         f"/cardholders/{customer_id}/review-request",
         payload={"reason": reason},
         token=token,
     )
+    review_requests.clear()
+    thread.clear()
+    return sent
+
+
+def cardholder_thread(customer_id: str, token: str) -> list[dict]:
+    """The same thread the officer reads. Never cached, so a reply shows on the next run."""
+    return _request(f"/cardholders/{customer_id}/thread", token=token)
 
 
 @st.cache_data(ttl=60, show_spinner=False)

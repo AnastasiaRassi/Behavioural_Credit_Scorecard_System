@@ -6,6 +6,12 @@ The shapes here are the ones `api.review_requests()` returns.
 from datetime import datetime, timezone
 
 OPEN_STATUSES = ("pending", "in_review")
+ACTIONS = {
+    "no_action": "No action",
+    "monitor": "Monitor",
+    "contact_customer": "Contact customer",
+    "reduce_limit": "Reduce limit",
+}
 STATUS_LABELS = {"pending": "Pending", "in_review": "In review", "resolved": "Resolved"}
 
 NOTE_PREVIEW_CHARS = 140
@@ -50,6 +56,30 @@ def open_requests(requests: list[dict]) -> list[dict]:
 
 def pending_count(requests: list[dict]) -> int:
     return sum(item["status"] == "pending" for item in requests)
+
+
+def conversations(requests: list[dict]) -> list[dict]:
+    """Open messages grouped per customer, longest-waiting first.
+
+    Each is the customer's oldest open message (what `card_data` reads) with
+    `unread` (how many are open) and `latest` (their newest words).
+    """
+    grouped: dict[str, list[dict]] = {}
+    for item in open_requests(requests):
+        grouped.setdefault(item["customer_id"], []).append(item)
+    return [
+        {**messages[0], "unread": len(messages), "latest": messages[-1]["reason"]}
+        for messages in grouped.values()
+    ]
+
+
+def capped(count: int, cap: int) -> str:
+    """A count for a badge: "99+" rather than a number that breaks the layout."""
+    return f"{cap}+" if count > cap else str(count)
+
+
+def unread_by_customer(requests: list[dict]) -> dict[str, int]:
+    return {item["customer_id"]: item["unread"] for item in conversations(requests)}
 
 
 def request_for(requests: list[dict], customer_id: str | None) -> dict | None:

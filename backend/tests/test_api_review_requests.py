@@ -54,14 +54,46 @@ def test_a_cardholder_can_ask_and_the_officer_sees_the_comment(
     assert ours[0]["full_name"]
 
 
-def test_asking_twice_keeps_the_first_request(client, api_session, quietest_customer_id):
+def test_a_second_message_joins_the_thread(client, api_session, quietest_customer_id):
     headers = _cardholder(api_session, quietest_customer_id, CARDHOLDER_EMAIL)
 
-    first = client.post(_url(quietest_customer_id), json={"reason": "First."}, headers=headers)
-    second = client.post(_url(quietest_customer_id), json={"reason": "Second."}, headers=headers)
+    client.post(_url(quietest_customer_id), json={"reason": "First."}, headers=headers)
+    client.post(_url(quietest_customer_id), json={"reason": "Second."}, headers=headers)
 
-    assert second.json()["request_id"] == first.json()["request_id"]
-    assert second.json()["reason"] == "First."
+    # The oldest unanswered message is still the one an officer reads first.
+    assert client.get(_url(quietest_customer_id), headers=headers).json()["reason"] == "First."
+    thread = client.get(f"/cardholders/{quietest_customer_id}/thread", headers=headers).json()
+    assert [entry["body"] for entry in thread] == ["First.", "Second."]
+    assert {entry["kind"] for entry in thread} == {"message"}
+
+
+def test_a_decision_closes_the_conversation_and_both_sides_see_it(
+    client, api_session, quietest_customer_id
+):
+    headers = _cardholder(api_session, quietest_customer_id, CARDHOLDER_EMAIL)
+    client.post(_url(quietest_customer_id), json={"reason": "Can you look?"}, headers=headers)
+
+    decided = client.post(
+        f"/officer/customers/{quietest_customer_id}/decisions",
+        json={"decided_by": OFFICER_EMAIL, "action": "monitor", "justification": "Looked; monitoring."},
+    )
+    assert decided.status_code == 201
+
+    assert client.get(_url(quietest_customer_id), headers=headers).json() is None
+    listed = client.get("/officer/review-requests").json()
+    assert not [item for item in listed if item["customer_id"] == quietest_customer_id]
+
+    mine = client.get(f"/cardholders/{quietest_customer_id}/thread", headers=headers).json()
+    theirs = client.get(f"/officer/customers/{quietest_customer_id}/thread").json()
+    assert mine == theirs
+    assert [entry["kind"] for entry in mine] == ["message", "decision"]
+    assert mine[0]["status"] == "resolved"
+    assert mine[1]["action"] == "monitor"
+    assert mine[1]["body"] == "Looked; monitoring."
+
+    # Writing again reopens it.
+    client.post(_url(quietest_customer_id), json={"reason": "One more thing."}, headers=headers)
+    assert client.get(_url(quietest_customer_id), headers=headers).json()["reason"] == "One more thing."
 
 
 def test_a_blank_comment_is_refused(client, api_session, quietest_customer_id):

@@ -22,9 +22,8 @@ import plotly.graph_objects as go
 import streamlit as st
 
 import api
-import review
 import theme
-from ui import loana
+from ui import loana, thread
 
 # Features a cardholder can act on this month (read by the officer screen). A reason they cannot change is
 # not advice, it is an accusation.
@@ -91,73 +90,90 @@ def render(
 def _main(account: dict, token: str, customer_id: str) -> None:
     """The account itself: the banner, the figures, the history and what to do about it."""
     needs_attention = account["needs_attention"]
-    if needs_attention:
-        _warning()
-    else:
-        _reassurance()
+    _banner(needs_attention, account["risk_band"])
 
     _account(account)
-    _history(account["history"])
+    history_card(account["history"])
     _ask_loana(needs_attention)
     _human_review(token, customer_id)
     _consent()
 
 
-def _warning() -> None:
-    st.warning(
-        "**Your next payment may be at risk**\n\n"
-        "Based on how your account has moved over the last six months, you may "
-        "find your next payment difficult. This is not a decision, just an early "
-        "heads-up while there is still time to act."
+def _banner(needs_attention: bool, risk_band: str) -> None:
+    """Status callout: rose for a flagged high band, amber for other flags, mint otherwise."""
+    if not needs_attention:
+        tone = "good"
+        title = "Your account looks on track"
+        body = (
+            "Nothing in your recent repayment history suggests you will have "
+            "difficulty with your next payment."
+        )
+    else:
+        tone = "high" if risk_band == "High" else "medium"
+        title = "Your next payment may be at risk"
+        body = (
+            "Based on how your account has moved over the last six months, you may "
+            "find your next payment difficult. This is not a decision, just an early "
+            "heads-up while there is still time to act."
+        )
+    st.markdown(
+        f'<div class="account-alert account-alert--{tone}">'
+        f'<div class="account-alert-title">{title}</div><p>{body}</p></div>',
+        unsafe_allow_html=True,
     )
 
 
 def _human_review(token: str, customer_id: str) -> None:
-    """Ask the loan officer to look at the account. Offered to everyone, flagged or not."""
-    st.markdown("**Talk to someone about your options**")
+    """Messages with the loan officer: the shared thread, then a box to write in.
+
+    Offered to everyone, flagged or not. A decision closes the conversation;
+    writing again reopens it.
+    """
+    st.markdown("**Messages with your loan officer**")
+    st.caption("Your messages and your loan officer's decisions, oldest first.")
     try:
-        open_request = api.open_review_request(customer_id, token)
+        entries = api.cardholder_thread(customer_id, token)
     except api.ServiceUnavailable:
-        st.caption("Requests for a human review are unavailable right now.")
+        st.caption("Messages are unavailable right now.")
         return
 
-    if open_request:
-        st.success(
-            "**Your request has been sent to your loan officer**\n\n"
-            f"Sent {review.format_time(open_request['requested_at'])}. "
-            "Someone will look at your account and get back to you."
+    thread.draw(entries, "cardholder")
+    if entries and entries[-1]["kind"] == "message":
+        st.caption("Sent. Your loan officer will look at your account and reply here.")
+    elif entries:
+        st.caption("This conversation is closed. Write below if you would like to reopen it.")
+
+    with st.container(border=True, key="thread_composer"):
+        st.text_area(
+            "Your message for the loan officer",
+            key=f"review_comment_{customer_id}",
+            placeholder="Tell them what you would like them to look at.",
+            max_chars=REVIEW_COMMENT_MAX,
         )
-        st.caption("Your comment")
-        st.write(open_request["reason"])
+        st.button(
+            "Send to my loan officer", key=f"review_send_{customer_id}", type="primary",
+            on_click=_send, args=(token, customer_id),
+        )
+    problem = st.session_state.pop(f"review_problem_{customer_id}", None)
+    if problem:
+        st.error(problem)
+
+
+def _send(token: str, customer_id: str) -> None:
+    """A callback, so the box can be cleared once the message is sent."""
+    key = f"review_comment_{customer_id}"
+    comment = st.session_state.get(key, "").strip()
+    if not comment:
+        st.session_state[f"review_problem_{customer_id}"] = (
+            "Please write a message so the loan officer knows what to look at."
+        )
         return
-
-    comment = st.text_area(
-        "Your comment for the loan officer",
-        key=f"review_comment_{customer_id}",
-        placeholder="Tell them what you would like them to look at.",
-        max_chars=REVIEW_COMMENT_MAX,
-    )
-    if st.button(
-        "Contact my loan officer for human review",
-        key=f"review_send_{customer_id}", type="primary",
-    ):
-        if not comment.strip():
-            st.error("Please leave a comment so the loan officer knows what to look at.")
-            return
-        try:
-            api.request_review(customer_id, token, comment.strip())
-        except api.ServiceUnavailable as exception:
-            api.guard(exception)
-            return
-        st.rerun()
-
-
-def _reassurance() -> None:
-    st.success(
-        "**Your account looks on track**\n\n"
-        "Nothing in your recent repayment history suggests you will have "
-        "difficulty with your next payment."
-    )
+    try:
+        api.request_review(customer_id, token, comment)
+    except api.ServiceUnavailable as exception:
+        st.session_state[f"review_problem_{customer_id}"] = str(exception)
+        return
+    st.session_state[key] = ""
 
 
 def _account(account: dict) -> None:
@@ -173,8 +189,8 @@ def _account(account: dict) -> None:
         column.metric(label, value)
 
 
-def _history(history: list[dict]) -> None:
-    """The page's centrepiece: billed against paid per month, as two smooth lines."""
+def history_card(history: list[dict], title: str = "Your last six months") -> None:
+    """Billed against paid per month as two smooth lines; shared with the officer screen."""
     if not history:
         return
 
@@ -186,7 +202,7 @@ def _history(history: list[dict]) -> None:
         st.markdown(
             '<div class="history-head">'
             '<span class="history-icon" aria-hidden="true">i</span>'
-            "<div><div class=\"history-title\">Your last six months</div>"
+            f'<div><div class="history-title">{title}</div>'
             '<div class="history-hint">💡 Hover over points on the timeline to inspect '
             "your monthly billing vs. payment history.</div></div></div>",
             unsafe_allow_html=True,

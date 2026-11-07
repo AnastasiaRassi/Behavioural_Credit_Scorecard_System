@@ -1,4 +1,6 @@
 """Request and response shapes for human-review requests."""
+from typing import Literal
+
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -21,3 +23,17 @@ class ReviewRequestOut(BaseModel):
     requested_at: str
     reason: str
     status: str
+
+
+class ThreadEntry(BaseModel):
+    """One card in the shared thread: a cardholder message or an officer decision."""
+
+    id: str
+    kind: Literal["message", "decision"]
+    at: str
+    author: str
+    body: str
+    # Decisions only.
+    action: str | None = None
+    # Messages only: pending, in_review or resolved.
+    status: str | None = None

@@ -16,7 +16,7 @@ from app.db import chat_log, customer_registry, queue_predictions, reviews
 from app.db.models import Customer, Decision, User
 from app.ml import artifacts, worklist
 from app.schemas.decisions import DecisionCreate, DecisionOut
-from app.schemas.reviews import ReviewRequestOut
+from app.schemas.reviews import ReviewRequestOut, ThreadEntry
 from app.schemas.scoring import ScoreResponse
 from app.schemas.worklist import (
     BulkPredictRequest,
@@ -338,7 +338,7 @@ def decide_on_queued_customer(
     number the officer was looking at, and the blind feature set the queue is
     built from could not be re-scored anyway.
     """
-    _, row = queued_account(session, customer_id)
+    customer, row = queued_account(session, customer_id)
     officer = user_by_email(session, request.decided_by, "officer")
     version = live_model_version(session)
 
@@ -353,9 +353,18 @@ def decide_on_queued_customer(
         justification=request.justification.strip(),
     )
     session.add(decision)
+    # The decision is the officer's answer, so it closes the conversation.
+    reviews.resolve_open(session, customer.id)
     session.flush()
 
     return DecisionOut(**decision.to_dict())
+
+
+@router.get("/customers/{customer_id}/thread", response_model=list[ThreadEntry])
+def read_customer_thread(customer_id: str, session: Session = Depends(get_session)):
+    """The same thread the cardholder reads: their messages and every decision."""
+    customer, _ = queued_account(session, customer_id)
+    return reviews.thread(session, customer)
 
 
 @router.get(

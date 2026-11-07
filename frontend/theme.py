@@ -206,6 +206,61 @@ html, body, [data-testid="stApp"], .ct-banner,
 .st-key-loana_panel button:hover,
 .st-key-officer_triage button:hover {{ background: #E9FFF7; color: {LOANA_INK}; }}
 
+/* Cardholder status banner (views/cardholder.py): the tone follows the risk. */
+div.account-alert {{
+    padding: 0.9rem 1.1rem;
+    border-radius: 12px;
+    border: 1px solid;
+    border-left: 4px solid;
+    line-height: 1.5;
+}}
+.account-alert-title {{ font-weight: 700; }}
+div.account-alert p {{ margin: 0.3rem 0 0; color: inherit; }}
+div.account-alert--high {{ background: #FEF2F2; color: #991B1B; border-color: #FECACA; border-left-color: #DC2626; }}
+div.account-alert--medium {{ background: #FFFBEB; color: #92400E; border-color: #FDE68A; border-left-color: #D97706; }}
+div.account-alert--good {{ background: #ECFDF5; color: #065F46; border-color: #A7F3D0; border-left-color: #059669; }}
+
+/* Officer inbox alert (views/officer.py): customers waiting for a reply. */
+div.inbox-alert {{
+    display: flex; align-items: center; gap: 0.8rem;
+    padding: 0.75rem 1rem; margin-bottom: 0.6rem;
+    border-radius: 12px; border: 1px solid #FECACA; border-left: 4px solid {HIGH};
+    background: #FEF2F2; color: #991B1B; line-height: 1.45;
+}}
+div.inbox-alert--clear {{ background: #F5F5F4; color: {MUTED}; border-color: {GRID}; border-left-color: {GRID}; }}
+.inbox-badge {{
+    flex: none; min-width: 1.9rem; height: 1.9rem; padding: 0 0.45rem;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 999px; background: {HIGH}; color: #FFFFFF;
+    font-weight: 800; font-size: 0.95rem;
+    box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.15);
+}}
+
+/* Activity thread (ui/thread.py): the viewer's own cards sit on the right. */
+.thread {{ display: flex; flex-direction: column; gap: 0.6rem; margin: 0.4rem 0 1rem; }}
+.thread-row {{ display: flex; }}
+.thread-row--mine {{ justify-content: flex-end; }}
+.thread-card {{
+    max-width: 78%; padding: 0.7rem 0.95rem; border-radius: 14px;
+    border: 1px solid {GRID}; background: {SURFACE}; color: {TEXT};
+}}
+.thread-row--mine .thread-card {{ border-bottom-right-radius: 4px; }}
+.thread-row--theirs .thread-card {{ border-bottom-left-radius: 4px; }}
+.thread-card--message {{ background: #F5F5F4; }}
+.thread-card--message--open {{ background: #FFFBEB; border-color: #FDE68A; }}
+.thread-card--decision {{ background: #EFF6FF; border-color: #BFDBFE; border-left: 4px solid {ACCENT}; }}
+.thread-meta {{ font-size: 0.8rem; color: {MUTED}; margin-bottom: 0.25rem; }}
+.thread-meta b {{ color: {TEXT}; }}
+.thread-body {{ white-space: pre-wrap; line-height: 1.5; }}
+.thread-tag {{
+    display: inline-block; margin-bottom: 0.35rem; padding: 0.1rem 0.55rem;
+    border-radius: 999px; font-size: 0.75rem; font-weight: 700;
+}}
+.thread-tag--decision {{ background: {ACCENT}; color: #FFFFFF; }}
+.thread-tag--open {{ background: #FDE68A; color: #92400E; }}
+.thread-foot {{ margin-top: 0.4rem; font-size: 0.75rem; color: {MUTED}; font-style: italic; }}
+.thread-empty {{ color: {MUTED}; font-style: italic; margin: 0.4rem 0 0.8rem; }}
+
 /* Cardholder timeline card (views/cardholder.py). */
 .st-key-history_card {{
     background: #FFFFFF;

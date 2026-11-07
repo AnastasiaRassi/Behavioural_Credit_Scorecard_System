@@ -23,31 +23,29 @@ a score would invite the discrimination the audit rules out.
 from collections.abc import Callable
 from datetime import datetime, timezone
 
-import altair as alt
 import pandas as pd
 import streamlit as st
 
 import api
 import review
-import theme
 from components import BAND_ICONS
-from ui import loana
+from ui import loana, thread
 from ui.components import card_head, quote, reason_line, show
-from views.cardholder import ACTIONABLE
+from views.cardholder import ACTIONABLE, history_card
 
-ACTIONS = {
-    "no_action": "No action",
-    "monitor": "Monitor",
-    "contact_customer": "Contact customer",
-    "reduce_limit": "Reduce limit",
-}
+ACTIONS = review.ACTIONS
+# Customers named in the landing alert; the full cards below list the rest.
+INBOX_SHORTCUTS = 4
+# Badges past these read as "99+" / "9+", so a backlog cannot break the layout.
+BADGE_CAP = 99
+UNREAD_CAP = 9
+# Request cards drawn on the landing, longest waiting first; each one costs a lookup.
+REQUEST_CARDS = 10
 # The backend caps "predict selected" at the same number.
 MAX_PREDICT = 10
 
 # No model is certain, so the extremes are shown as bounds.
 CERTAINTY_CAP = 0.99
-
-STATUS_COLOURS = {"arrears": theme.HIGH, "revolving": theme.MEDIUM, "clear": theme.LOW}
 
 CUSTOMER_KEY = "officer_customer_id"
 TRIAGE_CHAT_KEY = "officer_triage_chat"
@@ -99,8 +97,8 @@ QUICK_COHORTS = {
 }
 
 WORKLIST_COLUMNS = (
-    "Select", "Account", "Customer", "In arrears", "Trend", "Used", "No payment",
-    "Balance", "Risk",
+    "Select", "Messages", "Account", "Customer", "In arrears", "Trend", "Used",
+    "No payment", "Balance", "Risk",
 )
 
 ASSISTANT_HELP = (
@@ -149,7 +147,12 @@ def _select(customer_id: str | None) -> None:
 def back_button() -> None:
     """The way out of a customer page; app.py pins it into the header bar."""
     if st.session_state.get(CUSTOMER_KEY):
-        st.button("Back to worklist", key="officer_close", on_click=_close_profile)
+        waiting = len(review.conversations(_all_requests()))
+        label = (
+            f"Back to worklist · 🔔 {review.capped(waiting, BADGE_CAP)}"
+            if waiting else "Back to worklist"
+        )
+        st.button(label, key="officer_close", on_click=_close_profile)
 
 
 def _close_profile() -> None:
@@ -160,26 +163,60 @@ def _close_profile() -> None:
 # --- review requests ------------------------------------------------------
 
 
-def _requests() -> None:
+def _all_requests() -> list[dict]:
+    """Every open cardholder message; empty when the service is down, so the page still draws."""
     try:
-        requests = api.review_requests()
-    except api.ServiceUnavailable as exception:
-        api.guard(exception)
+        return api.review_requests()
+    except api.ServiceUnavailable:
+        return []
+
+
+def _inbox_alert(requests: list[dict]) -> None:
+    """Top of the landing page: who is waiting for a reply, one click from their thread."""
+    waiting = review.conversations(requests)
+    if not waiting:
+        show('<div class="inbox-alert inbox-alert--clear">✓ No customers are waiting '
+             "for a reply.</div>")
         return
 
-    waiting = review.open_requests(requests)
+    unread = sum(item["unread"] for item in waiting)
+    people = "customer is" if len(waiting) == 1 else "customers are"
+    show(
+        f'<div class="inbox-alert"><span class="inbox-badge">'
+        f"{review.capped(len(waiting), BADGE_CAP)}</span>"
+        f"<div><b>🔔 {len(waiting):,} {people} waiting for a reply</b> · {unread:,} unread "
+        f"message{'' if unread == 1 else 's'}. Recording a decision answers them and "
+        "closes the conversation.</div></div>"
+    )
+    for column, item in zip(st.columns(INBOX_SHORTCUTS), waiting[:INBOX_SHORTCUTS]):
+        name = item.get("full_name") or f"Customer {item['account_number']}"
+        column.button(
+            f"🔔 {name} ({review.capped(item['unread'], UNREAD_CAP)})",
+            key=f"inbox_{item['customer_id']}",
+            on_click=_select, args=(item["customer_id"],), width="stretch",
+        )
+
+
+def _requests(requests: list[dict]) -> None:
+    waiting = review.conversations(requests)
     st.subheader("Customers asking for a human review")
     st.caption(
-        f"{review.pending_count(requests)} pending · {len(waiting)} open. A review is "
-        "when a person decides whether the model's rating should stand."
+        f"{len(waiting)} waiting · {review.pending_count(requests)} unread messages. "
+        "A review is when a person decides whether the model's rating should stand."
     )
     if not waiting:
         st.info("No customers are waiting for a review.")
         return
 
     now = datetime.now(timezone.utc)
-    for item in waiting:
+    for item in waiting[:REQUEST_CARDS]:
         _request_card(item, _band(item["customer_id"]), now)
+    hidden = len(waiting) - REQUEST_CARDS
+    if hidden > 0:
+        st.caption(
+            f"Showing the {REQUEST_CARDS} longest waiting. {hidden:,} more are waiting; "
+            "each one is flagged 🔔 in the worklist and opens from search."
+        )
 
 
 def _band(customer_id: str) -> str | None:
@@ -192,11 +229,13 @@ def _band(customer_id: str) -> str | None:
 
 
 def _request_card(item: dict, band: str | None, now: datetime) -> None:
-    card = review.card_data(item, band, now)
+    card = review.card_data({**item, "reason": item["latest"]}, band, now)
+    unread = item["unread"]
     with st.container(border=True):
         show(card_head(
             card["name"],
-            f"Account {card['account']} · waiting {card['waiting']} · {card['status']}",
+            f"Account {card['account']} · waiting {card['waiting']} · "
+            f"{unread} unread message{'' if unread == 1 else 's'}",
             card["band"],
             lift=True,
         ))
@@ -205,7 +244,7 @@ def _request_card(item: dict, band: str | None, now: datetime) -> None:
             with st.expander("Read the full note"):
                 show(quote(card["full_note"]))
         st.button(
-            "Review", key=f"review_{item['request_id']}",
+            "Open conversation", key=f"review_{item['request_id']}",
             on_click=_select, args=(item["customer_id"],),
         )
 
@@ -217,6 +256,9 @@ def _landing(officer_email: str) -> None:
     """Nobody is open: search, the action items, then the worklist beside Loana."""
     # Search and worklist share the wide column and Loana sticks beside it, so the
     # table headers and her input are on screen at load. Review requests follow.
+    requests = _all_requests()
+    _inbox_alert(requests)
+
     worklist, assistant = st.columns([7, 3], gap="large")
     with worklist:
         typed = st.text_input(
@@ -225,12 +267,12 @@ def _landing(officer_email: str) -> None:
         )
         if typed.strip():
             _results(typed.strip())
-        _worklist(officer_email)
+        _worklist(officer_email, review.unread_by_customer(requests))
     with assistant, st.container(border=True, key=TRIAGE_PANEL_KEY):
         _triage()
 
     st.divider()
-    _requests()
+    _requests(requests)
 
 
 def _results(typed: str) -> None:
@@ -254,11 +296,11 @@ def _results(typed: str) -> None:
 
 
 def _open_request_for(customer_id: str) -> dict | None:
-    """This customer's open review request. Without one the page is a plain profile."""
-    try:
-        return review.request_for(api.review_requests(), customer_id)
-    except api.ServiceUnavailable:
-        return None
+    """This customer's open conversation. Without one the page is a plain profile."""
+    for item in review.conversations(_all_requests()):
+        if item["customer_id"] == customer_id:
+            return item
+    return None
 
 
 def _label(match: dict) -> str:
@@ -278,7 +320,7 @@ def _record_page(customer_id: str, officer_email: str, token: str) -> None:
     request = _open_request_for(customer_id)
     _heading(detail)
     if request:
-        _review_banner(request)
+        _unread_alert(request)
         _evidence(detail, request)
         _plan(detail, token)
     _figures(detail)
@@ -287,38 +329,23 @@ def _record_page(customer_id: str, officer_email: str, token: str) -> None:
     st.divider()
     _prediction(detail, officer_email)
     st.divider()
-    _decision(detail, officer_email, request is not None)
+    _activity(detail, officer_email, request is not None)
 
 
 # --- the review itself ----------------------------------------------------
 
 
-def _review_banner(request: dict) -> None:
-    """The request as the customer made it, and what they told the assistant first."""
-    now = datetime.now(timezone.utc)
-    with st.container(border=True):
-        show(card_head(
-            "Review request",
-            f"Received {review.format_time(request['requested_at'])} · "
-            f"waiting {review.waiting_text(request['requested_at'], now)}",
-        ))
-        show(quote(request["reason"].strip()))
-
-        try:
-            turns = api.chat_before_request(
-                request["customer_id"], request["requested_at"]
-            )
-        except api.ServiceUnavailable:
-            st.caption("The earlier assistant conversation could not be loaded.")
-            return
-        if not turns:
-            st.caption("No assistant conversation before this request.")
-            return
-        with st.expander(f"Assistant conversation before the request ({len(turns)} turns)"):
-            for turn in turns:
-                who = "Customer" if turn["role"] == "user" else "Assistant"
-                st.caption(f"{who} · {review.format_time(turn['at'])}")
-                st.write(turn["content"])
+def _unread_alert(request: dict) -> None:
+    """The customer is waiting: say so above everything else on their record."""
+    unread = request["unread"]
+    waited = review.waiting_text(request["requested_at"], datetime.now(timezone.utc))
+    show(
+        f'<div class="inbox-alert"><span class="inbox-badge">'
+        f"{review.capped(unread, UNREAD_CAP)}</span>"
+        f"<div><b>🔔 {unread} unanswered message{'' if unread == 1 else 's'} from this "
+        f"customer</b> · waiting {waited}. Reply by recording a decision in the "
+        "activity history below.</div></div>"
+    )
 
 
 def _evidence(detail: dict, request: dict) -> None:
@@ -330,7 +357,7 @@ def _evidence(detail: dict, request: dict) -> None:
             st.markdown(f"- {sentence}")
     with says:
         st.markdown("**What the customer says**")
-        show(quote(request["reason"].strip()))
+        show(quote(request["latest"].strip()))
 
 
 def _plan(detail: dict, token: str) -> None:
@@ -427,38 +454,7 @@ def _notes(highlights: dict) -> list[str]:
 
 
 def _history(detail: dict) -> None:
-    st.markdown("**Last six months**")
-    st.caption("Most recent first. This is the behaviour the model reads.")
-
-    frame = pd.DataFrame(detail["history"])
-    frame["status"] = frame["payment_status"].map(
-        lambda value: "arrears" if value > 0 else
-        ("revolving" if value == 0 else "clear")
-    )
-
-    bars = (
-        alt.Chart(frame)
-        .mark_bar()
-        .encode(
-            x=alt.X("label:N", sort=list(frame["label"]), title=None),
-            y=alt.Y("bill_amount:Q", title="bill"),
-            color=alt.Color(
-                "status:N",
-                scale=alt.Scale(
-                    domain=list(STATUS_COLOURS), range=list(STATUS_COLOURS.values())
-                ),
-                legend=alt.Legend(title=None, orient="top"),
-            ),
-            tooltip=[
-                alt.Tooltip("label:N", title="month"),
-                alt.Tooltip("payment_status_reading:N", title="status"),
-                alt.Tooltip("bill_amount:Q", format=",.0f", title="bill"),
-                alt.Tooltip("amount_paid:Q", format=",.0f", title="paid"),
-            ],
-        )
-        .properties(height=200)
-    )
-    st.altair_chart(bars, width="stretch", theme=None)
+    history_card(detail["history"], "Last six months")
 
     st.dataframe(
         pd.DataFrame(
@@ -545,54 +541,53 @@ def _show_prediction(result: dict, is_fresh: bool) -> None:
     st.caption("▲ raises the risk, ▼ lowers it, strongest first.")
 
 
-def _decision(detail: dict, officer_email: str, from_request: bool) -> None:
+def _activity(detail: dict, officer_email: str, from_request: bool) -> None:
+    """The account's shared thread, with the decision composer at its foot.
+
+    The cardholder reads the same thread, so the note is written to them too.
+    """
     customer_id = detail["customer_id"]
-    st.markdown(
-        "**Record the outcome of this review**" if from_request else "**Decision**"
+    st.markdown("**Activity & communication history**")
+    st.caption(
+        "Messages from the customer and every decision, oldest first. "
+        "The customer sees this same history."
     )
 
     try:
-        trail = api.decisions(customer_id)
+        entries = api.thread(customer_id)
     except api.ServiceUnavailable as exception:
         api.guard(exception)
         return
+    thread.draw(entries, "officer")
 
-    if trail:
-        st.dataframe(
-            pd.DataFrame(
-                [
-                    {
-                        "When": entry["decided_at"][:16].replace("T", " "),
-                        "Action": ACTIONS.get(entry["action"], entry["action"]),
-                        "Justification": entry["justification"],
-                    }
-                    for entry in trail
-                ]
-            ),
-            hide_index=True, width="stretch",
+    with st.container(border=True, key="thread_composer"):
+        st.markdown("**Reply with a decision**" if from_request else "**Record a decision**")
+        # Widgets rather than a form: a form's unsent text never reaches session
+        # state, so it could not survive a trip to another customer.
+        st.radio(
+            "Action", list(ACTIONS), horizontal=True, key=f"officer_action_{customer_id}",
+            format_func=lambda key: ACTIONS[key],
         )
-
-    # Widgets rather than a form: a form's unsent text never reaches session state,
-    # so it could not survive a trip to another customer.
-    st.radio(
-        "Action", list(ACTIONS), horizontal=True, key=f"officer_action_{customer_id}",
-        format_func=lambda key: ACTIONS[key],
-    )
-    st.text_area(
-        "Justification",
-        key=f"officer_note_{customer_id}",
-        placeholder="Why this action, in your own words.",
-        help="Required on every decision, not only overrides, so the audit "
-             "trail has no holes.",
-    )
-    st.button(
-        "Record decision", type="primary", key=f"officer_record_{customer_id}",
-        on_click=_record,
-        args=(
-            customer_id, officer_email, detail.get("full_name"),
-            detail["account_number"], from_request,
-        ),
-    )
+        st.text_area(
+            "Note to the customer",
+            key=f"officer_note_{customer_id}",
+            placeholder="Why this action, in words the customer will understand.",
+            help="Required on every decision, so the audit trail has no holes. "
+                 "The customer sees it in their message history.",
+        )
+        st.button(
+            "Record decision", type="primary", key=f"officer_record_{customer_id}",
+            on_click=_record,
+            args=(
+                customer_id, officer_email, detail.get("full_name"),
+                detail["account_number"], from_request,
+            ),
+        )
+        if from_request:
+            st.caption(
+                "Recording a decision answers the open messages and closes the "
+                "conversation until the customer writes again."
+            )
 
     notice = st.session_state.get(NOTICE_KEY)
     if notice and notice["customer_id"] == customer_id:
@@ -614,7 +609,7 @@ def _record(
         }
 
     if not justification.strip():
-        notify(False, "A justification is required before a decision can be recorded.")
+        notify(False, "A note is required before a decision can be recorded.")
         return
 
     try:
@@ -623,10 +618,11 @@ def _record(
         notify(False, str(exception))
         return
 
-    api.decisions.clear()
     st.session_state[note_key] = ""
     who = f"**{name}** (account {account_number})" if name else f"account **{account_number}**"
-    outcome = "Review outcome recorded" if from_request else "Decision recorded"
+    outcome = (
+        "Decision recorded and conversation closed" if from_request else "Decision recorded"
+    )
     notify(True, f"{outcome}: **{ACTIONS[action]}** for {who}.")
 
 
@@ -763,7 +759,7 @@ def _triage() -> None:
     st.rerun()
 
 
-def _worklist(officer_email: str) -> None:
+def _worklist(officer_email: str, unread: dict[str, int]) -> None:
     """The cohort Loana or a quick cohort pulled in, to tick, predict and open."""
     st.subheader("Worklist")
     if st.session_state.pop(COHORT_ERROR_KEY, None):
@@ -783,7 +779,9 @@ def _worklist(officer_email: str) -> None:
         return
 
     edited = st.data_editor(
-        pd.DataFrame([_worklist_row(row) for row in rows]),
+        pd.DataFrame(
+            [_worklist_row(row, unread.get(row["customer_id"], 0)) for row in rows]
+        ),
         key=f"{COHORT_EDITOR_KEY}_{st.session_state.get(EDITOR_VERSION_KEY, 0)}",
         hide_index=True, width="stretch",
         disabled=[column for column in WORKLIST_COLUMNS if column != "Select"],
@@ -830,11 +828,13 @@ def _just_scored() -> None:
             )
 
 
-def _worklist_row(row: dict) -> dict:
+def _worklist_row(row: dict, unread: int = 0) -> dict:
     band = row["last_risk_band"]
     utilisation = row["utilisation_now"]
     return {
         "Select": False,
+        # Customers waiting on a reply stand out in whatever cohort they land in.
+        "Messages": f"🔔 {review.capped(unread, UNREAD_CAP)} new" if unread else "",
         "Account": row["account_number"],
         "Customer": row["full_name"],
         "In arrears": f"{row['months_in_arrears']} of 6",

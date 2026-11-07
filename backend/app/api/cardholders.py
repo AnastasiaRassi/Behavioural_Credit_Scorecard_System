@@ -21,7 +21,7 @@ from app.api.dependencies import (
 )
 from app.db import chat_log, queue_predictions, reviews, statements
 from app.ml import worklist
-from app.schemas.reviews import ReviewRequestCreate, ReviewRequestOut
+from app.schemas.reviews import ReviewRequestCreate, ReviewRequestOut, ThreadEntry
 from app.schemas.worklist import CardholderView, ChatReply, ChatRequest
 
 router = APIRouter(prefix="/cardholders", tags=["cardholder"])
@@ -98,10 +98,20 @@ def request_human_review(
     body: ReviewRequestCreate,
     session: Session = Depends(get_session),
 ):
-    """Ask a loan officer to look at this account. Idempotent while one is open."""
+    """Send the loan officer a message; it reopens the conversation if it was closed."""
     customer = customer_or_404(session, customer_id)
     request = reviews.open_request(session, customer.id, body.reason)
     return reviews.to_dict(request, customer, customer.user)
+
+
+@router.get(
+    "/{customer_id}/thread",
+    response_model=list[ThreadEntry],
+    dependencies=[Depends(account_reader)],
+)
+def read_thread(customer_id: str, session: Session = Depends(get_session)):
+    """The account's messages and decisions, oldest first: what the officer sees too."""
+    return reviews.thread(session, customer_or_404(session, customer_id))
 
 
 def account_for(customer_id: str, session: Session):

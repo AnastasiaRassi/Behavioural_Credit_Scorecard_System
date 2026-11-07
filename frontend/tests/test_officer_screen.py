@@ -104,6 +104,13 @@ def faked_api(monkeypatch):
             "filter": {"min_months_in_arrears": 2}, "cohort": _cohort({}),
         },
         "decisions": decisions,
+        "thread": lambda customer_id: [
+            {
+                "id": "r1", "kind": "message",
+                "at": (NOW - timedelta(days=3)).isoformat(), "author": "Maya Haddad",
+                "body": "I paid in full last month.", "action": None, "status": "pending",
+            }
+        ] if customer_id == "id-111" else [],
         "decide": lambda *args: recorded.append(args),
     }
     for name, fake in fakes.items():
@@ -146,6 +153,8 @@ def test_landing_is_search_requests_and_an_empty_worklist_beside_loana(faked_api
     )
     text = _text(app)
     assert "Maya Haddad" in text and "3 days" in text
+    assert "1 customer is waiting for a reply" in text
+    assert app.button(key="inbox_id-111") is not None
     assert "Worklist" in text and "Triage assistant" in text
     assert "No customers pulled in yet" in " ".join(i.value for i in app.info)
     # Loana here pulls cohorts; the per-customer chat only exists on a record.
@@ -229,7 +238,7 @@ def test_a_search_lists_matches_and_opens_nothing_until_one_is_picked(faked_api)
     assert len(app.chat_input) == 0
 
 
-def test_review_opens_the_customer_with_the_request_banner(faked_api):
+def test_review_opens_the_customer_with_the_unread_alert_and_thread(faked_api):
     app = _start()
 
     app.button(key="review_r1").click().run()
@@ -237,11 +246,24 @@ def test_review_opens_the_customer_with_the_request_banner(faked_api):
     assert not app.exception
     assert app.session_state["officer_customer_id"] == "id-111"
     text = _text(app)
-    assert "Review request" in text
+    assert "1 unanswered message from this customer" in text
     assert "What the model saw" in text and "What the customer says" in text
     assert "What would change the rating" in text
     assert "Pay 500 this month" in text
-    assert "Record the outcome of this review" in text
+    assert "Activity &amp; communication history" in text or (
+        "Activity & communication history" in text
+    )
+    assert "Awaiting reply" in text
+    assert "Reply with a decision" in text
+    assert "🔔 1" in app.button(key="officer_close").label
+
+
+def test_the_inbox_shortcut_opens_the_waiting_customer(faked_api):
+    app = _start()
+
+    app.button(key="inbox_id-111").click().run()
+
+    assert app.session_state["officer_customer_id"] == "id-111"
 
 
 def test_a_customer_link_in_the_address_never_opens_a_customer(faked_api):
@@ -260,7 +282,7 @@ def test_recording_a_review_outcome_needs_a_justification_and_names_the_customer
     app.button(key="review_r1").click().run()
 
     app.button(key="officer_record_id-111").click().run()
-    assert "justification is required" in app.error[0].value
+    assert "note is required" in app.error[0].value
     assert faked_api == []
 
     app.text_area(key="officer_note_id-111").set_value("Late transfer, confirmed.").run()
@@ -273,6 +295,7 @@ def test_recording_a_review_outcome_needs_a_justification_and_names_the_customer
     ]
     message = app.success[0].value
     assert "Maya Haddad" in message and "Monitor" in message
+    assert "conversation closed" in message
     assert app.text_area(key="officer_note_id-111").value == ""
 
 
@@ -331,3 +354,24 @@ def test_the_prediction_survives_closing_and_reopening_the_customer(faked_api):
 
     assert app.session_state["officer_customer_id"] == "id-111"
     assert app.session_state["prediction_id-111"] == {"probability": 0.5}
+
+
+def test_a_large_backlog_is_capped_on_the_landing(faked_api, monkeypatch):
+    backlog = [
+        {
+            "request_id": f"r{number}", "customer_id": f"id-{number}",
+            "account_number": str(number), "full_name": f"Customer {number}",
+            "requested_at": (NOW - timedelta(minutes=number)).isoformat(),
+            "reason": "Please look.", "status": "pending",
+        }
+        for number in range(5000)
+    ]
+    monkeypatch.setattr(api, "review_requests", lambda: backlog)
+    monkeypatch.setattr(api, "customer_detail", lambda customer_id: {"latest_prediction": None})
+    app = _start()
+
+    assert not app.exception
+    text = _text(app)
+    assert ">99+</span>" in text and "5,000 customers are waiting" in text
+    assert len([b for b in app.button if b.key.startswith("review_")]) == 10
+    assert "4,990 more are waiting" in " ".join(c.value for c in app.caption)

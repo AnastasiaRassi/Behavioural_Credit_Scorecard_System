@@ -65,6 +65,22 @@ def test_open_requests_are_oldest_first_and_exclude_resolved():
     assert review.pending_count(requests) == 1
 
 
+def test_conversations_group_open_messages_per_customer():
+    requests = [
+        _request("a", "1", "pending", days=3) | {"reason": "First."},
+        _request("b", "1", "pending", days=1) | {"reason": "Second."},
+        _request("c", "2", "pending", days=2),
+        _request("d", "3", "resolved", days=5),
+    ]
+
+    grouped = review.conversations(requests)
+
+    assert [item["customer_id"] for item in grouped] == ["1", "2"]
+    assert grouped[0]["request_id"] == "a"
+    assert grouped[0]["unread"] == 2 and grouped[0]["latest"] == "Second."
+    assert review.unread_by_customer(requests) == {"1": 2, "2": 1}
+
+
 def test_request_for_finds_the_customers_open_request_only():
     requests = [
         _request("a", customer_id="1", status="resolved", days=8),
@@ -154,3 +170,9 @@ def test_unchangeable_reason_is_reported_when_the_top_reason_cannot_be_acted_on(
 def test_unchangeable_reason_is_silent_when_the_top_reason_is_actionable():
     assert review.unchangeable_reason(REASONS[1:], {"PAY_1"}) is None
     assert review.unchangeable_reason(REASONS[2:], {"PAY_1"}) is None
+
+
+def test_capped_counts_stop_at_the_cap():
+    assert review.capped(5, 99) == "5"
+    assert review.capped(99, 99) == "99"
+    assert review.capped(5000, 99) == "99+"
