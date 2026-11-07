@@ -107,6 +107,90 @@ def filter_rows(
     return selected
 
 
+# A cohort is something an officer reads and ticks through, not a table to scroll.
+COHORT_MAX = 25
+
+COHORT_SORTS = {
+    "months_in_arrears": "most months in arrears",
+    "utilisation_now": "highest utilisation",
+    "current_balance": "largest balance",
+    "months_with_no_payment": "most months without a payment",
+}
+
+
+def cohort_row(row: dict) -> dict:
+    """A worklist row as the triage view shows it: account facts, no score.
+
+    The queue's precomputed probability, band and reasons are dropped here. In the
+    triage view a band only ever comes from a prediction an officer ran.
+    """
+    derived = highlights(row)
+    return {
+        "account_number": row["account_number"],
+        "credit_limit": row["credit_limit"],
+        "current_balance": row["current_balance"],
+        "last_payment": row["last_payment"],
+        "months_in_arrears": row["months_in_arrears"],
+        "utilisation_now": derived["utilisation_now"],
+        "trajectory": derived["trajectory"],
+        "months_with_no_payment": derived["months_with_no_payment"],
+    }
+
+
+def select_cohort(rows: list[dict], criteria: dict, scored: set[str]) -> list[dict]:
+    """Cohort rows matching `criteria` (a TriageFilter dump), sorted, uncapped.
+
+    `scored` is the account numbers someone has already run a prediction on, used
+    by `not_scored`; the database knows it, this module does not.
+    """
+    selected = [cohort_row(row) for row in rows]
+
+    def at_least(field: str, minimum) -> None:
+        nonlocal selected
+        if minimum is not None:
+            selected = [r for r in selected if (r[field] or 0) >= minimum]
+
+    at_least("months_in_arrears", criteria.get("min_months_in_arrears"))
+    at_least("utilisation_now", criteria.get("min_utilisation"))
+    at_least("months_with_no_payment", criteria.get("min_months_with_no_payment"))
+    at_least("credit_limit", criteria.get("min_credit_limit"))
+
+    if criteria.get("max_credit_limit") is not None:
+        selected = [r for r in selected if r["credit_limit"] <= criteria["max_credit_limit"]]
+    if criteria.get("trajectory"):
+        selected = [r for r in selected if r["trajectory"] == criteria["trajectory"]]
+    if criteria.get("not_scored"):
+        selected = [r for r in selected if r["account_number"] not in scored]
+
+    sort_by = criteria.get("sort_by") or "months_in_arrears"
+    # Account number breaks ties, so the same question always lists the same people.
+    selected.sort(key=lambda r: (-(r[sort_by] or 0), int(r["account_number"])))
+    return selected
+
+
+def describe_cohort(criteria: dict) -> str:
+    """The filter in plain words. Built from the validated filter, never from LLM text."""
+    parts = []
+    if criteria.get("min_months_in_arrears"):
+        parts.append(f"{criteria['min_months_in_arrears']}+ months in arrears")
+    if criteria.get("trajectory"):
+        parts.append(f"arrears {criteria['trajectory']}")
+    if criteria.get("min_utilisation") is not None:
+        parts.append(f"utilisation at least {criteria['min_utilisation']:.0%}")
+    if criteria.get("min_months_with_no_payment"):
+        parts.append(f"no payment in {criteria['min_months_with_no_payment']}+ months")
+    if criteria.get("min_credit_limit") is not None:
+        parts.append(f"limit at least {criteria['min_credit_limit']:,.0f}")
+    if criteria.get("max_credit_limit") is not None:
+        parts.append(f"limit at most {criteria['max_credit_limit']:,.0f}")
+    if criteria.get("not_scored"):
+        parts.append("not scored yet")
+
+    who = "Customers with " + ", ".join(parts) if parts else "All customers"
+    order = COHORT_SORTS[criteria.get("sort_by") or "months_in_arrears"]
+    return f"{who}, {order} first."
+
+
 def find(account_number: str) -> dict | None:
     return next(
         (row for row in all_rows() if row["account_number"] == account_number), None
@@ -133,8 +217,13 @@ def highlights(row: dict) -> dict:
         ),
         "trajectory": _trajectory(statuses),
         "months_since_full_payment": _months_since_full_payment(history),
+        # Only months with money owed: a zero or credit balance, or a month the
+        # status calls settled (-2, -1), is not a missed payment.
         "months_with_no_payment": sum(
-            1 for entry in history if entry["amount_paid"] <= 0
+            1 for entry in history
+            if entry["amount_paid"] <= 0
+            and entry["bill_amount"] > 0
+            and entry["payment_status"] >= 0
         ),
         "worst_payment_status": max(statuses) if statuses else None,
     }

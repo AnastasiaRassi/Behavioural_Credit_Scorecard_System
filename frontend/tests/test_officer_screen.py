@@ -56,12 +56,19 @@ def _requests() -> list[dict]:
     ]
 
 
-def _queue() -> dict:
+def _cohort(criteria: dict) -> dict:
     return {
-        "threshold": 0.5, "returned": 0, "total": 0, "rows": [],
-        "summary_all": {
-            "in_queue": 10, "flagged": 3, "bands": {"High": 2, "Medium": 3, "Low": 5},
-        },
+        "description": "Customers with 2+ months in arrears, most months in arrears first.",
+        "total": 41,
+        "rows": [
+            {
+                "customer_id": "id-222", "account_number": "222", "full_name": "Omar Fares",
+                "credit_limit": 5000.0, "current_balance": 4000.0, "last_payment": 0.0,
+                "months_in_arrears": 4, "utilisation_now": 0.8,
+                "trajectory": "deteriorating", "months_with_no_payment": 3,
+                "last_risk_band": None, "last_scored_at": None,
+            }
+        ],
     }
 
 
@@ -90,7 +97,12 @@ def faked_api(monkeypatch):
             }
         ],
         "users": lambda role=None: [],
-        "queue": lambda **filters: _queue(),
+        "cohort": _cohort,
+        "triage": lambda messages: {
+            "reply": "Customers with 2+ months in arrears, most months in arrears first.",
+            "source": "model", "note": "",
+            "filter": {"min_months_in_arrears": 2}, "cohort": _cohort({}),
+        },
         "decisions": decisions,
         "decide": lambda *args: recorded.append(args),
     }
@@ -120,19 +132,76 @@ def _text(app: AppTest) -> str:
     )
 
 
-def test_landing_is_search_first_with_no_customer_and_no_assistant(faked_api):
+def _customer_chat(app: AppTest) -> list:
+    return [box for box in app.chat_input if box.key == "officer_ask"]
+
+
+def test_landing_is_search_requests_and_an_empty_worklist_beside_loana(faked_api):
     app = _start()
 
     assert not app.exception
     assert "officer_customer_id" not in app.session_state
     assert app.text_input(key="officer_lookup").placeholder == (
-        "Search by Customer ID or Name..."
+        "Find a customer by ID or name..."
     )
     text = _text(app)
     assert "Maya Haddad" in text and "3 days" in text
-    assert "This month's triage" in text
-    assert "LOANA AI" not in text
-    assert len(app.chat_input) == 0
+    assert "Worklist" in text and "Triage assistant" in text
+    assert "No customers pulled in yet" in " ".join(i.value for i in app.info)
+    # Loana here pulls cohorts; the per-customer chat only exists on a record.
+    assert app.chat_input(key="officer_triage_ask") is not None
+    assert _customer_chat(app) == []
+
+
+def test_a_quick_cohort_fills_the_worklist_unscored(faked_api):
+    app = _start()
+    app.button(key="officer_quick_0").click().run()
+
+    assert not app.exception
+    page = app.session_state["officer_cohort"]
+    assert page["total"] == 41 and page["rows"][0]["account_number"] == "222"
+    assert "Showing 1 of 41" in " ".join(c.value for c in app.caption)
+    assert app.button(key="officer_predict_selected").disabled
+
+
+def test_asking_loana_fills_the_worklist_and_says_how_many_match(faked_api):
+    app = _start()
+    app.chat_input(key="officer_triage_ask").set_value("2+ months behind").run()
+
+    assert not app.exception
+    assert app.session_state["officer_cohort"]["total"] == 41
+    reply = app.session_state["officer_triage_chat"][-1]["content"]
+    assert "41 match" in reply and "first 1" in reply
+
+
+def test_a_just_scored_customer_opens_their_analysis_and_the_worklist_survives(faked_api):
+    app = _start()
+    app.button(key="officer_quick_0").click().run()
+    # What "predict selected" leaves behind; the table's ticks cannot be set in AppTest.
+    app.session_state["officer_just_scored"] = [
+        {"customer_id": "id-222", "label": "Omar Fares · 222", "risk_band": "High",
+         "flagged": True}
+    ]
+    app.run()
+
+    assert "Scored 1" in _text(app)
+    app.button(key="officer_scored_id-222").click().run()
+
+    assert not app.exception
+    assert app.session_state["officer_customer_id"] == "id-222"
+
+    app.button(key="officer_close").click().run()
+
+    assert app.session_state["officer_customer_id"] is None
+    assert app.session_state["officer_cohort"]["total"] == 41
+    assert app.button(key="officer_scored_id-222") is not None
+
+
+def test_view_analysis_waits_for_exactly_one_ticked_customer(faked_api):
+    app = _start()
+    app.button(key="officer_quick_0").click().run()
+
+    assert app.button(key="officer_view_analysis").disabled
 
 
 def test_a_search_lists_matches_and_opens_nothing_until_one_is_picked(faked_api):
@@ -141,7 +210,7 @@ def test_a_search_lists_matches_and_opens_nothing_until_one_is_picked(faked_api)
 
     assert not app.exception
     assert "officer_customer_id" not in app.session_state
-    assert len(app.chat_input) == 0
+    assert _customer_chat(app) == []
 
     app.button(key="officer_pick_id-111").click().run()
 
@@ -181,7 +250,7 @@ def test_a_customer_link_in_the_address_never_opens_a_customer(faked_api):
     app.run()
 
     assert "officer_customer_id" not in app.session_state
-    assert len(app.chat_input) == 0
+    assert _customer_chat(app) == []
 
 
 def test_recording_a_review_outcome_needs_a_justification_and_names_the_customer(
@@ -255,7 +324,7 @@ def test_the_prediction_survives_closing_and_reopening_the_customer(faked_api):
 
     app.button(key="officer_close").click().run()
     assert app.session_state["officer_customer_id"] is None
-    assert "This month's triage" in _text(app)
+    assert "Worklist" in _text(app)
 
     app.text_input(key="officer_lookup").set_value("111").run()
     app.button(key="officer_pick_id-111").click().run()

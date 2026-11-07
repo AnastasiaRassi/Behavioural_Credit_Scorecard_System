@@ -31,7 +31,9 @@ services:
     working_dir: /app/backend
     command: sh -c "python -m app.db.ingest && python -m app.db.seed"
     environment: &backend-env
-      DATABASE_URL: postgresql+psycopg://postgres:${DB_PASSWORD}@db:5432/credit
+      # Set DATABASE_URL_DOCKER in .env to use the Postgres on this machine instead
+      # of the bundled `db` container (reach the host as host.docker.internal).
+      DATABASE_URL: ${DATABASE_URL_DOCKER:-postgresql+psycopg://postgres:${DB_PASSWORD}@db:5432/credit}
       SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET in .env}
       SEED_PASSWORD: ${SEED_PASSWORD:-}
       DEMO_MODE: ${DEMO_MODE:-1}

@@ -81,12 +81,12 @@ body:has(.st-key-signin_card) [data-testid="stMainBlockContainer"] {
 /* --- the card ---------------------------------------------------------- */
 
 .st-key-signin_card {
-    width: 390px;
+    width: 470px;
     max-width: calc(100vw - 32px);
     /* Streamlit stacks its blocks in a column flex container, so the cross-axis
        auto margins are what centre the card rather than the parent's rule. */
     margin: 0 auto;
-    padding: 32px 32px 28px;
+    padding: 44px 44px 40px;
     background: rgba(255, 255, 255, 0.97);
     border: 2px solid var(--green);
     border-radius: 16px;
@@ -233,31 +233,6 @@ body:has(.st-key-signin_card) [data-testid="stMainBlockContainer"] {
     cursor: default;
 }
 
-/* The demo row: quiet secondary buttons, one per role. Demo mode only. */
-.st-key-demo_row { margin-top: 16px; }
-.st-key-demo_row [data-testid="stHorizontalBlock"] { gap: 8px; }
-.st-key-demo_row [data-testid="stColumn"] {
-    flex: 1 1 0 !important;
-    min-width: 0 !important;
-}
-.st-key-demo_row button {
-    width: 100% !important;
-    min-height: 32px;
-    padding: 0 6px;
-    background: transparent;
-    border: 1px solid var(--slate-line);
-    border-radius: 8px;
-    color: var(--green-deep);
-    font-size: 12.5px;
-    font-weight: 500;
-    white-space: nowrap;
-}
-.st-key-demo_row button:hover {
-    background: var(--mist);
-    border-color: var(--green-deep);
-    color: var(--green-deep);
-}
-
 /* Keyboard focus has to be visible on every control, not just the fields. */
 body:has(.st-key-signin_card) :focus-visible {
     outline: 2px solid var(--green-deep);
@@ -284,11 +259,10 @@ body:has(.st-key-signin_card) :focus-visible {
 /* Short windows — 1366x768 among them. Everything above the fold means the
    card and the way down. */
 @media (max-height: 880px) {
-    .st-key-signin_card { padding: 24px 30px 20px; }
+    .st-key-signin_card { padding: 32px 38px 28px; }
     .st-key-signin_card [data-testid="stTextInputRootElement"] { height: 40px; }
     .st-key-signin_card [data-testid="stTextInputRootElement"] input { height: 38px; }
     .st-key-signin_card [data-testid="stFormSubmitButton"] button { height: 40px; }
-    .st-key-demo_row { margin-top: 12px; }
     .see-how-row { margin-top: 10px; }
 }
 

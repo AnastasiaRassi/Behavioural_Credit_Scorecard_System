@@ -1,13 +1,15 @@
-"""Loan officer view: search first, then review requests and this month's triage.
+"""Loan officer view: search, review requests, and a worklist Loana helps fill.
 
 CrediTrait is a behavioural scorecard for existing customers. It raises an early
 warning; it does not approve or deny anyone. A customer who thinks the rating is
 wrong can ask for a human review, and the officer decides whether it should stand.
 
 Two states on one page, no tabs. With nobody selected it is a landing page: a large
-search box, the review requests and this month's triage, and no assistant. Once the
-officer picks a customer, from a search result or a request card, the page becomes
-the customer's record at full width with Loana AI as a floating chat (ui/loana.py).
+search box, the review requests (the action items), and an empty worklist beside
+Loana's triage panel. The officer asks Loana for a cohort, ticks customers and runs
+"predict selected"; no score is shown until someone runs one. Once the officer picks
+a customer, the page becomes the customer's record at full width with Loana AI as
+a floating chat about that customer (ui/loana.py).
 
 Nothing opens by itself: the selected customer (`officer_customer_id`) is only ever
 set by a click, and is deliberately not mirrored in or read from the URL, so a
@@ -20,7 +22,6 @@ a score would invite the discrimination the audit rules out.
 """
 from collections.abc import Callable
 from datetime import datetime, timezone
-from pathlib import Path
 
 import altair as alt
 import pandas as pd
@@ -40,8 +41,8 @@ ACTIONS = {
     "contact_customer": "Contact customer",
     "reduce_limit": "Reduce limit",
 }
-BANDS = ["High", "Medium", "Low"]
-PAGE_SIZE = 25
+# The backend caps "predict selected" at the same number.
+MAX_PREDICT = 10
 
 # No model is certain, so the extremes are shown as bounds.
 CERTAINTY_CAP = 0.99
@@ -49,6 +50,16 @@ CERTAINTY_CAP = 0.99
 STATUS_COLOURS = {"arrears": theme.HIGH, "revolving": theme.MEDIUM, "clear": theme.LOW}
 
 CUSTOMER_KEY = "officer_customer_id"
+TRIAGE_CHAT_KEY = "officer_triage_chat"
+TRIAGE_INPUT_KEY = "officer_triage_ask"
+TRIAGE_PANEL_KEY = "officer_triage"
+COHORT_KEY = "officer_cohort"
+COHORT_FILTER_KEY = "officer_cohort_filter"
+# The table's ticks live in the browser, so clearing them needs a new widget key.
+COHORT_EDITOR_KEY = "officer_cohort_editor"
+EDITOR_VERSION_KEY = "officer_cohort_editor_version"
+COHORT_ERROR_KEY = "officer_cohort_error"
+JUST_SCORED_KEY = "officer_just_scored"
 LOOKUP_KEY = "officer_lookup"
 NOTICE_KEY = "officer_notice"
 
@@ -56,13 +67,42 @@ NOTICE_KEY = "officer_notice"
 # another view). Re-assigned each run so a half-typed note survives the detour.
 KEPT_PREFIXES = ("officer_note_", "officer_action_")
 
-HERO = Path(__file__).resolve().parent.parent / "assets" / "review_hero.png"
-
 PRESETS = (
     "Why is this customer flagged?",
     "What changed recently?",
     "What would lower the rating?",
 )
+TRIAGE_HELP = (
+    "Tell me which customers to pull into the worklist: by months behind, whether "
+    "it is getting worse, utilisation, missed payments, limit, or not scored yet. "
+    "I don't score anyone; you run the prediction."
+)
+TRIAGE_CHAT_HEIGHT = 230
+EMPTY_WORKLIST = (
+    "No customers pulled in yet. Ask Loana for a group, such as *customers three "
+    "months behind and getting worse*, or pick a quick cohort."
+)
+
+# Preset filters, the same shape Loana fills. Unscored only, so working through a
+# cohort empties it.
+QUICK_COHORTS = {
+    "Getting worse, 2+ months behind": {
+        "min_months_in_arrears": 2, "trajectory": "deteriorating", "not_scored": True,
+    },
+    "No payment in 3+ months": {
+        "min_months_with_no_payment": 3, "sort_by": "months_with_no_payment",
+        "not_scored": True,
+    },
+    "Using 90%+ of their limit": {
+        "min_utilisation": 0.9, "sort_by": "utilisation_now", "not_scored": True,
+    },
+}
+
+WORKLIST_COLUMNS = (
+    "Select", "Account", "Customer", "In arrears", "Trend", "Used", "No payment",
+    "Balance", "Risk",
+)
+
 ASSISTANT_HELP = (
     "Answers questions about this customer's account and the model's reasons. "
     "Lending policy questions are not supported yet."
@@ -78,7 +118,7 @@ def render(
     customer_id = st.session_state.get(CUSTOMER_KEY)
     if not customer_id:
         header()
-        _landing()
+        _landing(officer_email)
         return
 
     header()
@@ -109,7 +149,7 @@ def _select(customer_id: str | None) -> None:
 def back_button() -> None:
     """The way out of a customer page; app.py pins it into the header bar."""
     if st.session_state.get(CUSTOMER_KEY):
-        st.button("Back to search", key="officer_close", on_click=_close_profile)
+        st.button("Back to worklist", key="officer_close", on_click=_close_profile)
 
 
 def _close_profile() -> None:
@@ -128,33 +168,27 @@ def _requests() -> None:
         return
 
     waiting = review.open_requests(requests)
-    left, right = st.columns([2, 3], gap="large")
+    st.subheader("Customers asking for a human review")
+    st.caption(
+        f"{review.pending_count(requests)} pending · {len(waiting)} open. A review is "
+        "when a person decides whether the model's rating should stand."
+    )
+    if not waiting:
+        st.info("No customers are waiting for a review.")
+        return
 
-    with left:
-        st.image(str(HERO), width="stretch")
-        st.subheader("Customers asking for a human review")
-        st.write(
-            "A review is when a person looks at the account and decides whether "
-            "the model's rating of the customer should stand."
-        )
-
-    with right:
-        st.markdown(f"**{review.pending_count(requests)} pending** · {len(waiting)} open")
-        if not waiting:
-            st.info("No customers are waiting for a review.")
-            return
-
-        now = datetime.now(timezone.utc)
-        for item in waiting:
-            _request_card(item, _band(item["customer_id"]), now)
+    now = datetime.now(timezone.utc)
+    for item in waiting:
+        _request_card(item, _band(item["customer_id"]), now)
 
 
 def _band(customer_id: str) -> str | None:
-    """The model's current band; a card without one is better than no card."""
+    """The band from the latest prediction an officer ran, or None if nobody has."""
     try:
-        return api.customer_detail(customer_id)["risk_band"]
+        latest = api.customer_detail(customer_id)["latest_prediction"]
     except api.ServiceUnavailable:
         return None
+    return latest["risk_band"] if latest else None
 
 
 def _request_card(item: dict, band: str | None, now: datetime) -> None:
@@ -164,6 +198,7 @@ def _request_card(item: dict, band: str | None, now: datetime) -> None:
             card["name"],
             f"Account {card['account']} · waiting {card['waiting']} · {card['status']}",
             card["band"],
+            lift=True,
         ))
         show(quote(card["note"]))
         if card["is_truncated"]:
@@ -178,27 +213,24 @@ def _request_card(item: dict, band: str | None, now: datetime) -> None:
 # --- the landing page -----------------------------------------------------
 
 
-def _landing() -> None:
-    """Nobody is open: search, then the review requests and this month's triage."""
-    st.subheader("Find a customer")
-    st.caption(
-        "Look up the customer in front of you and check whether their next "
-        "payment is at risk."
-    )
-    typed = st.text_input(
-        "Search", key=LOOKUP_KEY, label_visibility="collapsed",
-        placeholder="Search by Customer ID or Name...",
-    )
-    if typed.strip():
-        _results(typed.strip())
-    else:
-        _suggestions()
+def _landing(officer_email: str) -> None:
+    """Nobody is open: search, the action items, then the worklist beside Loana."""
+    # Search and worklist share the wide column and Loana sticks beside it, so the
+    # table headers and her input are on screen at load. Review requests follow.
+    worklist, assistant = st.columns([7, 3], gap="large")
+    with worklist:
+        typed = st.text_input(
+            "Search", key=LOOKUP_KEY, label_visibility="collapsed",
+            placeholder="Find a customer by ID or name...",
+        )
+        if typed.strip():
+            _results(typed.strip())
+        _worklist(officer_email)
+    with assistant, st.container(border=True, key=TRIAGE_PANEL_KEY):
+        _triage()
 
     st.divider()
     _requests()
-    st.divider()
-    st.subheader("This month's triage")
-    _queue()
 
 
 def _results(typed: str) -> None:
@@ -231,21 +263,6 @@ def _open_request_for(customer_id: str) -> dict | None:
 
 def _label(match: dict) -> str:
     return f"{match['full_name']} · {match['account_number']}"
-
-
-def _suggestions() -> None:
-    """Accounts to open without typing, so the screen is never a dead end."""
-    try:
-        known = api.users(role="cardholder")
-    except api.ServiceUnavailable as exception:
-        api.guard(exception)
-        return
-    registered = [user for user in known if user["customer_id"]]
-    if registered:
-        st.caption("Try: " + ", ".join(
-            f"**{user['display_name']}** (`{user['account_number']}`)"
-            for user in registered
-        ))
 
 
 # --- the customer's record ------------------------------------------------
@@ -667,60 +684,191 @@ def _assistant(customer_id: str) -> None:
     st.rerun()
 
 
-# --- the triage view ------------------------------------------------------
+# --- the worklist and Loana's triage ---------------------------------------
 
 
-def _queue() -> None:
-    st.caption(
-        "Everyone scored in this month's batch, riskiest first. Bands only: the "
-        "precise risk and the reasons come from running the prediction."
-    )
+def _show_cohort(page: dict, criteria: dict) -> None:
+    """Make this cohort the worklist, forgetting the previous one's ticks."""
+    st.session_state[COHORT_KEY] = page
+    st.session_state[COHORT_FILTER_KEY] = criteria
+    st.session_state.pop(JUST_SCORED_KEY, None)
+    _clear_ticks()
 
-    left, middle, right = st.columns([2, 2, 3])
-    band = left.selectbox("Risk band", ["All", *BANDS])
-    flagged_only = middle.checkbox("Needs attention only", value=True)
-    arrears = right.slider("Minimum months in arrears", 0, 6, 0)
 
+def _clear_ticks() -> None:
+    st.session_state[EDITOR_VERSION_KEY] = st.session_state.get(EDITOR_VERSION_KEY, 0) + 1
+
+
+def _quick_cohort(criteria: dict) -> None:
+    """Button callback: pull a preset cohort without asking Loana."""
     try:
-        page = api.queue(
-            band=None if band == "All" else band,
-            flagged=True if flagged_only else None,
-            minimum_months_in_arrears=arrears or None,
-            limit=PAGE_SIZE,
-        )
+        _show_cohort(api.cohort(criteria), criteria)
     except api.ServiceUnavailable as exception:
-        api.guard(exception)
+        st.session_state[COHORT_ERROR_KEY] = str(exception)
+
+
+def _triage() -> None:
+    """Loana on the landing page: the officer describes a group, she pulls it in.
+
+    She only fills a filter; the backend checks it and writes her reply from it,
+    so nothing she says can name a customer or a risk the data does not back.
+    """
+    loana.header("Triage assistant")
+    messages = st.session_state.setdefault(TRIAGE_CHAT_KEY, [])
+
+    chat = st.container(height=TRIAGE_CHAT_HEIGHT)
+    with chat:
+        st.caption(TRIAGE_HELP)
+        for message in messages:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+                if message.get("note"):
+                    st.caption(message["note"])
+
+    st.caption("Quick cohorts")
+    for number, (label, criteria) in enumerate(QUICK_COHORTS.items()):
+        st.button(
+            label, key=f"officer_quick_{number}", width="stretch",
+            on_click=_quick_cohort, args=(criteria,),
+        )
+
+    asked = st.chat_input("Describe who to look at", key=TRIAGE_INPUT_KEY)
+    if not asked:
         return
 
-    everything = page["summary_all"]
-    for column, (label, value, explanation) in zip(
-        st.columns(4),
-        [
-            ("In queue", f"{everything['in_queue']:,}", "Customers scored this month."),
-            ("Needs attention", f"{everything['flagged']:,}",
-             f"At or above the cut-off of {page['threshold']:.4f}."),
-            ("High risk", f"{everything['bands']['High']:,}", "In the top band."),
-            ("Low risk", f"{everything['bands']['Low']:,}", "In the safest band."),
-        ],
-    ):
-        column.metric(label, value, help=explanation)
+    sent = [
+        *({"role": m["role"], "content": m["content"]} for m in messages),
+        {"role": "user", "content": asked},
+    ]
+    with chat:
+        with st.chat_message("user"):
+            st.markdown(asked)
+        with st.spinner("Finding customers..."):
+            try:
+                turn = api.triage(sent)
+            except api.ServiceUnavailable:
+                st.info("Assistant not connected yet.")
+                return
 
-    st.caption(f"Showing {page['returned']} of {page['total']:,} matching customers.")
-    st.dataframe(
-        pd.DataFrame(
-            [
-                {
-                    "Account": row["account_number"],
-                    "Customer": row["full_name"],
-                    "Risk": f"{BAND_ICONS[row['risk_band']]} {row['risk_band']}",
-                    "Credit limit": f"{row['credit_limit']:,.0f}",
-                    "Balance": f"{row['current_balance']:,.0f}",
-                    "In arrears": f"{row['months_in_arrears']} of 6",
-                    "Needs attention": "Yes" if row["flagged"] else "-",
-                }
-                for row in page["rows"]
-            ]
-        ),
+    reply = turn["reply"]
+    cohort = turn.get("cohort")
+    if cohort:
+        _show_cohort(cohort, turn["filter"])
+        reply += (
+            f" {cohort['total']:,} match; the worklist shows the first "
+            f"{len(cohort['rows'])}."
+        )
+    messages.append({"role": "user", "content": asked})
+    messages.append({"role": "assistant", "content": reply, "note": turn.get("note", "")})
+    st.rerun()
+
+
+def _worklist(officer_email: str) -> None:
+    """The cohort Loana or a quick cohort pulled in, to tick, predict and open."""
+    st.subheader("Worklist")
+    if st.session_state.pop(COHORT_ERROR_KEY, None):
+        st.warning("Could not load that cohort. Is the API running?")
+
+    page = st.session_state.get(COHORT_KEY)
+    if not page:
+        st.info(EMPTY_WORKLIST)
+        return
+
+    _just_scored()
+
+    st.caption(f"{page['description']} Showing {len(page['rows'])} of {page['total']:,}.")
+    rows = page["rows"]
+    if not rows:
+        st.info("Nobody matches. Try a wider group.")
+        return
+
+    edited = st.data_editor(
+        pd.DataFrame([_worklist_row(row) for row in rows]),
+        key=f"{COHORT_EDITOR_KEY}_{st.session_state.get(EDITOR_VERSION_KEY, 0)}",
         hide_index=True, width="stretch",
+        disabled=[column for column in WORKLIST_COLUMNS if column != "Select"],
+        column_config={"Select": st.column_config.CheckboxColumn(width="small")},
     )
-    st.caption("Copy an account number into the search box above to open it.")
+    chosen = [row for row, ticked in zip(rows, edited["Select"]) if ticked]
+
+    predict, view = st.columns(2)
+    too_many = len(chosen) > MAX_PREDICT
+    if predict.button(
+        f"Predict selected ({len(chosen)})", type="primary", width="stretch",
+        disabled=not chosen or too_many, key="officer_predict_selected",
+    ):
+        _predict_selected(chosen, officer_email)
+    if too_many:
+        predict.caption(f"Up to {MAX_PREDICT} at a time.")
+
+    only = chosen[0] if len(chosen) == 1 else None
+    view.button(
+        f"View analysis: {only['full_name']}" if only else "View analysis",
+        width="stretch", disabled=only is None, key="officer_view_analysis",
+        on_click=_select, args=(only["customer_id"] if only else None,),
+    )
+    if len(chosen) > 1:
+        view.caption("Tick one customer to open their analysis.")
+
+
+def _just_scored() -> None:
+    """The customers the last "predict selected" scored, each one click from its analysis."""
+    scored = st.session_state.get(JUST_SCORED_KEY)
+    if not scored:
+        return
+    flagged = sum(1 for item in scored if item["flagged"])
+    with st.container(border=True):
+        st.markdown(
+            f"**Scored {len(scored)}** · {flagged} "
+            f"{'needs' if flagged == 1 else 'need'} attention. Open one to see why."
+        )
+        for item in scored:
+            st.button(
+                f"{BAND_ICONS[item['risk_band']]} {item['risk_band']} · {item['label']}",
+                key=f"officer_scored_{item['customer_id']}", width="stretch",
+                on_click=_select, args=(item["customer_id"],),
+            )
+
+
+def _worklist_row(row: dict) -> dict:
+    band = row["last_risk_band"]
+    utilisation = row["utilisation_now"]
+    return {
+        "Select": False,
+        "Account": row["account_number"],
+        "Customer": row["full_name"],
+        "In arrears": f"{row['months_in_arrears']} of 6",
+        "Trend": (row["trajectory"] or "-").capitalize(),
+        "Used": "-" if utilisation is None else f"{utilisation:.0%}",
+        "No payment": f"{row['months_with_no_payment']} of 6",
+        "Balance": f"{row['current_balance']:,.0f}",
+        "Risk": f"{BAND_ICONS[band]} {band}" if band else "Not scored",
+    }
+
+
+def _predict_selected(chosen: list[dict], officer_email: str) -> None:
+    """Score the ticked customers and write each band into the worklist."""
+    with st.spinner(f"Predicting for {len(chosen)} customers..."):
+        try:
+            scores = api.predict_selected(
+                [row["customer_id"] for row in chosen], scored_by=officer_email
+            )
+        except api.ServiceUnavailable as exception:
+            api.guard(exception)
+            return
+
+    by_id = {row["customer_id"]: score for row, score in zip(chosen, scores)}
+    for row in st.session_state[COHORT_KEY]["rows"]:
+        if row["customer_id"] in by_id:
+            row["last_risk_band"] = by_id[row["customer_id"]]["risk_band"]
+    _clear_ticks()
+    st.session_state[JUST_SCORED_KEY] = [
+        {
+            "customer_id": row["customer_id"],
+            "label": _label(row),
+            "risk_band": score["risk_band"],
+            "flagged": score["flagged"],
+        }
+        for row, score in zip(chosen, scores)
+    ]
+    st.rerun()

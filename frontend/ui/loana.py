@@ -79,13 +79,18 @@ def panel():
             on_click=_set_open,
             args=(False,),
         )
-        st.markdown(
-            f'<div class="loana-head"><img src="{_avatar_uri()}" alt="Loana AI">'
-            '<div><div class="loana-name">LOANA AI</div>'
-            '<div class="loana-sub">Financial Health Copilot</div></div></div>',
-            unsafe_allow_html=True,
-        )
+        header()
         yield
+
+
+def header(subtitle: str = "Financial Health Copilot") -> None:
+    """Loana's avatar, name and role line."""
+    st.markdown(
+        f'<div class="loana-head"><img src="{_avatar_uri()}" alt="Loana AI">'
+        f'<div><div class="loana-name">LOANA AI</div>'
+        f'<div class="loana-sub">{subtitle}</div></div></div>',
+        unsafe_allow_html=True,
+    )
 
 
 def chat_area():

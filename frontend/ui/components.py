@@ -40,10 +40,16 @@ def band_badge(band: str | None) -> str:
     )
 
 
-def card_head(title: str, meta: str, band: str | None = None) -> str:
-    """A card's heading: who it is about, a line of detail, and the model's band."""
+def card_head(
+    title: str, meta: str, band: str | None = None, lift: bool = False
+) -> str:
+    """A card's heading: who it is about, a line of detail, and the model's band.
+
+    `lift` marks a card that hover-raises (theme.py), for the ones with an action.
+    """
+    modifier = " officer-card-head--lift" if lift else ""
     return flatten(f"""
-<div class="officer-card-head">
+<div class="officer-card-head{modifier}">
 <div>
 <div class="officer-card-title">{escape(title)}</div>
 <div class="officer-card-meta">{escape(meta)}</div>

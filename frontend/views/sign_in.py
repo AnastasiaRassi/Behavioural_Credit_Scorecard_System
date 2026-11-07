@@ -17,15 +17,12 @@ keystroke. Enter has to submit the form, that needs `st.form`, and Streamlit
 does not rerun on a widget change inside one, so there is no edit to react to.
 """
 import base64
-import os
 from collections.abc import Callable
 from functools import lru_cache
 from pathlib import Path
 
 import streamlit as st
-from dotenv import load_dotenv
 
-from views import landing
 
 HERE = Path(__file__).resolve().parent
 CSS_PATHS = (HERE.parent / "ui" / "login.css", HERE.parent / "ui" / "landing.css")
@@ -47,24 +44,6 @@ REJECTED = "That email and password don't match. Check both and try again."
 PENDING_KEY = "signin_pending"
 ERROR_KEY = "signin_error"
 
-# DEMO_MODE=1 puts a one-click row under the form. The password matches the one
-# `python -m app.db.seed` sets for these accounts in the same mode.
-DEMO_PASSWORD = "demo"
-
-# Only the two roles someone arriving at this page would expect to be. The
-# engineer screens are an internal tool and listing them here read as if the
-# public were being offered the model's own controls.
-DEMO_ACCOUNTS = (
-    ("Loan officer", "officer@demo.test"),
-    ("Cardholder", "cardholder@demo.test"),
-)
-
-# Added to the row by the footer link, which sets ?internal=1. Convenience
-# only, never a boundary: what a session may open is decided by the role the
-# API returns for the account, not by how the page was reached.
-INTERNAL_ACCOUNTS = (("ML engineer", "engineer@demo.test"),)
-INTERNAL_PARAM = "internal"
-
 _CHEVRON = """
 <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"
      xmlns="http://www.w3.org/2000/svg">
@@ -84,18 +63,6 @@ stroke-linecap="round"/>
 """
 
 
-@lru_cache(maxsize=1)
-def demo_mode() -> bool:
-    """Whether to offer the one-click accounts.
-
-    Read from .env as well as the environment, so DEMO_MODE=1 in the one file
-    turns it on for the seed and for this page together, rather than needing
-    the variable exported into whatever shell started Streamlit.
-    """
-    load_dotenv(HERE.parents[1] / ".env")
-    return os.environ.get("DEMO_MODE") == "1"
-
-
 def render(attempt: Callable[[str, str], tuple[str, str] | None]) -> None:
     """Draw the screen.
 
@@ -104,7 +71,7 @@ def render(attempt: Callable[[str, str], tuple[str, str] | None]) -> None:
     """
     st.markdown(_stylesheet(), unsafe_allow_html=True)
 
-    # Set on the run before this one, by a submit or a demo button. Popped here
+    # Set on the run before this one, by a submit. Popped here
     # so a reload cannot replay it.
     pending = st.session_state.pop(PENDING_KEY, None)
     failure = st.session_state.get(ERROR_KEY)
@@ -130,13 +97,6 @@ def render(attempt: Callable[[str, str], tuple[str, str] | None]) -> None:
                     disabled=bool(pending),
                 )
 
-            if demo_mode():
-                _demo_row()
-
-        st.markdown(_see_how(), unsafe_allow_html=True)
-
-    st.markdown(landing.sections(), unsafe_allow_html=True)
-    _closing_band()
 
     if submitted:
         # Hand the credential to the next run, so the button can repaint as
@@ -151,48 +111,6 @@ def render(attempt: Callable[[str, str], tuple[str, str] | None]) -> None:
         if outcome is not None:
             st.session_state[ERROR_KEY] = outcome
             st.rerun()
-
-
-def _see_how() -> str:
-    """The way down to the sections: a quiet text button, not a blue link."""
-    return _flatten(f"""
-<div class="see-how-row">
-<a class="see-how" href="#how-it-works">See how it works{_CHEVRON}</a>
-</div>
-""")
-
-
-def _internal() -> bool:
-    """Whether the footer link asked for the internal role."""
-    return st.query_params.get(INTERNAL_PARAM) == "1"
-
-
-def _demo_row(key: str = "demo_row") -> None:
-    """One click per role, demo mode only. Hidden entirely when it is off."""
-    accounts = DEMO_ACCOUNTS + (INTERNAL_ACCOUNTS if _internal() else ())
-    with st.container(key=key):
-        columns = st.columns(len(accounts))
-        for column, (label, email) in zip(columns, accounts):
-            if column.button(label, key=f"{key}_{email}", width="stretch"):
-                st.session_state.pop(ERROR_KEY, None)
-                st.session_state[PENDING_KEY] = (email, DEMO_PASSWORD)
-                st.rerun()
-
-
-def _footer() -> str:
-    """The one quiet way to the internal view, under the closing card."""
-    inside = _internal()
-    href, words = ("?", "Leave internal access") if inside else ("?internal=1", "Internal access")
-    return _flatten(f"""
-<p class="page-footer"><a class="footer-link" href="{href}">{words}</a></p>
-""")
-
-
-def _closing_band() -> None:
-    """The last band: one card back to the form, and the footer under it."""
-    with st.container(key="closing"):
-        st.markdown(landing.closing_band(), unsafe_allow_html=True)
-        st.markdown(_footer(), unsafe_allow_html=True)
 
 
 def _alert(field: str, message: str) -> str:

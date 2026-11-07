@@ -217,26 +217,6 @@ def explain(customer: dict) -> dict:
 # --- officer --------------------------------------------------------------
 
 
-@st.cache_data(ttl=30, show_spinner="Loading the queue…")
-def queue(
-    band: str | None = None,
-    flagged: bool | None = None,
-    search: str | None = None,
-    minimum_months_in_arrears: int | None = None,
-    limit: int = 50,
-    offset: int = 0,
-) -> dict:
-    return _get(
-        "/officer/queue",
-        band=band,
-        flagged=flagged,
-        search=search,
-        minimum_months_in_arrears=minimum_months_in_arrears,
-        limit=limit,
-        offset=offset,
-    )
-
-
 @st.cache_data(ttl=30, show_spinner=False)
 def search_customers(q: str, limit: int = 25) -> list[dict]:
     """Find a customer by name, email or account number."""
@@ -251,6 +231,28 @@ def customer_detail(customer_id: str) -> dict:
 def predict(customer_id: str, scored_by: str) -> dict:
     """The officer's predict action. Stores a prediction, so never cached."""
     return _post(f"/officer/customers/{customer_id}/predict", scored_by=scored_by)
+
+
+def predict_selected(customer_ids: list[str], scored_by: str) -> list[dict]:
+    """Predict for up to ten ticked customers. Stores each score, so never cached."""
+    return _request(
+        "/officer/predictions",
+        payload={"customer_ids": customer_ids, "scored_by": scored_by},
+        timeout=CHAT_TIMEOUT_SECONDS,
+    )
+
+
+def cohort(criteria: dict) -> dict:
+    """The customers a triage filter selects: description, total, rows. Not cached:
+    a row's latest band changes as soon as anyone predicts."""
+    return _request("/officer/cohort", payload=criteria)
+
+
+def triage(messages: list[dict]) -> dict:
+    """Loana's triage turn: reply, source, note, filter and the cohort it selects."""
+    return _request(
+        "/officer/triage", payload={"messages": messages}, timeout=CHAT_TIMEOUT_SECONDS
+    )
 
 
 @st.cache_data(ttl=5, show_spinner=False)

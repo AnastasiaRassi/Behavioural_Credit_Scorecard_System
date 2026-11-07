@@ -1,7 +1,7 @@
 """Shapes for the officer worklist and the cardholder's own view."""
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class QueueReason(BaseModel):
@@ -106,6 +106,70 @@ class QueuePage(BaseModel):
     summary: QueueSummary
     summary_all: QueueSummary
     rows: list[QueueRow]
+
+
+class TriageFilter(BaseModel):
+    """Which customers to pull into view. Unset fields do not filter.
+
+    The only shape Loana's triage output is trusted in: anything the LLM writes
+    outside these fields is discarded.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    min_months_in_arrears: int | None = Field(default=None, ge=0, le=6)
+    trajectory: Literal["improving", "steady", "deteriorating"] | None = None
+    min_utilisation: float | None = Field(default=None, ge=0, le=2, description="0.9 is 90%")
+    min_months_with_no_payment: int | None = Field(default=None, ge=0, le=6)
+    min_credit_limit: float | None = Field(default=None, ge=0)
+    max_credit_limit: float | None = Field(default=None, ge=0)
+    not_scored: bool | None = Field(default=None, description="Only customers nobody has predicted yet")
+    sort_by: Literal[
+        "months_in_arrears", "utilisation_now", "current_balance", "months_with_no_payment"
+    ] = "months_in_arrears"
+    limit: int = Field(default=10, ge=1, le=25)
+
+
+class CohortRow(BaseModel):
+    """A customer in a triage cohort. No score unless an officer has run one."""
+
+    customer_id: str
+    account_number: str
+    full_name: str | None = None
+    credit_limit: float
+    current_balance: float
+    last_payment: float
+    months_in_arrears: int
+    utilisation_now: float | None = None
+    trajectory: str | None = None
+    months_with_no_payment: int
+    last_risk_band: str | None = Field(default=None, description="From the latest prediction, if any")
+    last_scored_at: str | None = None
+
+
+class CohortPage(BaseModel):
+    description: str = Field(description="The filter in plain words")
+    total: int = Field(description="Matching customers before the limit")
+    rows: list[CohortRow]
+
+
+class TriageRequest(BaseModel):
+    """The triage conversation so far, ending with the officer's request."""
+
+    messages: list["ChatMessage"] = Field(min_length=1, max_length=40)
+
+
+class TriageReply(BaseModel):
+    reply: str
+    source: str = Field(description="model, or template when no usable filter came back")
+    note: str = ""
+    filter: TriageFilter | None = None
+    cohort: CohortPage | None = None
+
+
+class BulkPredictRequest(BaseModel):
+    customer_ids: list[str] = Field(min_length=1, max_length=10)
+    scored_by: str = Field(description="Email of the officer running the predictions")
 
 
 class CardholderReason(BaseModel):

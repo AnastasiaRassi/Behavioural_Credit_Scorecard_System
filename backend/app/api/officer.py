@@ -1,7 +1,8 @@
 """The loan officer's surface: a worklist, one customer in detail, a decision."""
+import uuid
 from dataclasses import asdict
 
-from app.ai import officer_assistant
+from app.ai import officer_assistant, triage_assistant
 from app.api.cardholders import account_for
 from app.api.dependencies import (
     get_explainer,
@@ -18,11 +19,16 @@ from app.schemas.decisions import DecisionCreate, DecisionOut
 from app.schemas.reviews import ReviewRequestOut
 from app.schemas.scoring import ScoreResponse
 from app.schemas.worklist import (
+    BulkPredictRequest,
     ChatReply,
     ChatRequest,
+    CohortPage,
     CustomerDetail,
     QueuePage,
     QueueRow,
+    TriageFilter,
+    TriageReply,
+    TriageRequest,
 )
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import case
@@ -208,9 +214,13 @@ def predict_default(
     The inputs are the nineteen columns the queue carries. The four protected
     attributes are not among them and are not needed: they never reach the model.
     """
-    _, row = queued_account(session, customer_id)
     user_by_email(session, scored_by, "officer")
-    version = live_model_version(session)
+    return _predict(session, customer_id, live_model_version(session))
+
+
+def _predict(session: Session, customer_id: str, version) -> ScoreResponse:
+    """Score one worklist customer through the live model and store the result."""
+    _, row = queued_account(session, customer_id)
 
     customer = queue_predictions.scored_columns(row)
     result = get_scorer().score_one(customer)
@@ -239,6 +249,74 @@ def predict_default(
         band_default_rate=result.band_default_rate,
         model_version=version.version,
         reasons=reason_dicts,
+    )
+
+
+@router.post(
+    "/predictions", response_model=list[ScoreResponse], status_code=status.HTTP_201_CREATED
+)
+def predict_selected(request: BulkPredictRequest, session: Session = Depends(get_session)):
+    """The officer's "predict selected": the single predict, once per ticked customer.
+
+    Not batch scoring: capped at ten, every score is stored against the officer who
+    asked for it, and any unknown customer fails the whole request.
+    """
+    user_by_email(session, request.scored_by, "officer")
+    version = live_model_version(session)
+    return [_predict(session, customer_id, version) for customer_id in request.customer_ids]
+
+
+def _cohort(session: Session, criteria: TriageFilter) -> CohortPage:
+    """The customers a filter selects, with their latest officer-run score if any."""
+    dumped = criteria.model_dump()
+    matching = worklist.select_cohort(
+        worklist.all_rows(), dumped, queue_predictions.scored_account_numbers(session)
+    )
+    page = _with_customer_ids(session, matching[: criteria.limit])
+    latest = queue_predictions.latest_by_customer(
+        session, [uuid.UUID(row["customer_id"]) for row in page]
+    )
+    rows = []
+    for row in page:
+        scored = latest.get(uuid.UUID(row["customer_id"]))
+        rows.append(
+            {
+                **row,
+                "last_risk_band": scored.risk_band if scored else None,
+                "last_scored_at": scored.created_at.isoformat() if scored else None,
+            }
+        )
+    return CohortPage(
+        description=worklist.describe_cohort(dumped), total=len(matching), rows=rows
+    )
+
+
+@router.post("/cohort", response_model=CohortPage)
+def read_cohort(criteria: TriageFilter, session: Session = Depends(get_session)):
+    """A cohort from an explicit filter: the quick cohorts, or a filter Loana proposed."""
+    return _cohort(session, criteria)
+
+
+@router.post("/triage", response_model=TriageReply)
+def triage(request: TriageRequest, session: Session = Depends(get_session)):
+    """Loana's triage turn: the officer's request becomes a filter, then a cohort.
+
+    Not written to the chat log yet: chat_turn rows belong to one customer, and a
+    triage request is about none.
+    """
+    if request.messages[-1].role != "user":
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="messages must end with the officer's request",
+        )
+
+    turn = triage_assistant.interpret([m.model_dump() for m in request.messages])
+    return TriageReply(
+        reply=turn.reply,
+        source=turn.source,
+        note=turn.note,
+        filter=turn.filter,
+        cohort=_cohort(session, turn.filter) if turn.filter else None,
     )
 
 

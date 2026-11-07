@@ -92,6 +92,33 @@ def latest_for_cardholder(session: Session, customer_id: uuid.UUID) -> Predictio
     ).first()
 
 
+def latest_by_customer(
+    session: Session, customer_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, Prediction]:
+    """The newest stored score per customer, for those that have one."""
+    if not customer_ids:
+        return {}
+    latest: dict[uuid.UUID, Prediction] = {}
+    for prediction in session.scalars(
+        select(Prediction)
+        .where(Prediction.subject_customer_id.in_(customer_ids))
+        .order_by(Prediction.created_at.desc())
+    ):
+        latest.setdefault(prediction.subject_customer_id, prediction)
+    return latest
+
+
+def scored_account_numbers(session: Session) -> set[str]:
+    """Account numbers with at least one stored prediction."""
+    return set(
+        session.scalars(
+            select(Customer.account_number)
+            .join(Prediction, Prediction.subject_customer_id == Customer.id)
+            .distinct()
+        )
+    )
+
+
 def _verify_same_account(row: dict, customer: Customer, session: Session) -> None:
     recent = session.get(MonthlyStatement, (customer.id, 1))
     stored = (

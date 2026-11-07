@@ -208,9 +208,36 @@ html, body, [data-testid="stApp"], .ct-banner,
 
 /* The page title competes with the metrics underneath it at Streamlit's default
    size, and this screen is about the numbers. */
-h1 {{ font-size: 2.1rem !important; letter-spacing: -0.02em; }}
-h2 {{ font-size: 1.45rem !important; letter-spacing: -0.01em; }}
-h3 {{ font-size: 1.12rem !important; }}
+h1 {{ font-size: 2.1rem !important; }}
+h2 {{ font-size: 1.5rem !important; }}
+h3 {{ font-size: 1.25rem !important; }}
+/* One type scale for every screen: bold tight headings, medium muted subtext,
+   semibold labels. Streamlit's own heading and caption styles are weaker. */
+[data-testid="stApp"] {{
+    line-height: 1.55;
+    letter-spacing: -0.003em;
+    -webkit-font-smoothing: antialiased;
+}}
+[data-testid="stApp"] :is(h1, h2, h3, h4) {{
+    font-weight: 700;
+    line-height: 1.25;
+    letter-spacing: -0.02em;
+    color: {TEXT};
+}}
+[data-testid="stHeading"] {{ margin-bottom: 0.15rem; }}
+[data-testid="stCaptionContainer"] {{ opacity: 1; }}
+[data-testid="stCaptionContainer"] p {{
+    font-size: 0.9rem;
+    font-weight: 500;
+    line-height: 1.5;
+}}
+[data-testid="stWidgetLabel"] p {{
+    font-size: 0.85rem;
+    font-weight: 600;
+    letter-spacing: 0;
+    color: {TEXT};
+}}
+[data-testid="stMarkdownContainer"] strong {{ font-weight: 600; }}
 
 /* Metric tiles: the number is the content, the label is the furniture. */
 [data-testid="stMetricValue"] {{
@@ -259,9 +286,19 @@ h3 {{ font-size: 1.12rem !important; }}
     background: {SURFACE};
     border: 1px solid {GRID};
     border-radius: 12px;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 12px rgba(0, 0, 0, 0.04);
 }}
 [data-testid="stMetric"] {{ padding: 0.9rem 1.1rem; }}
+[data-testid="stVerticalBlockBorderWrapper"] {{
+    padding: 0.35rem 0.5rem;
+    transition: box-shadow 0.2s ease, transform 0.2s ease, border-color 0.2s ease;
+}}
+/* Only the review-request cards lift: they are the ones with a Review button. */
+[data-testid="stVerticalBlockBorderWrapper"]:has(.officer-card-head--lift):hover {{
+    transform: translateY(-2px);
+    border-color: #D6D0CA;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04), 0 10px 24px rgba(0, 0, 0, 0.08);
+}}
 /* The Loana card and its chat are not white cards. */
 .st-key-loana_panel [data-testid="stVerticalBlockBorderWrapper"] {{
     background: transparent; border: none; box-shadow: none;
@@ -275,8 +312,13 @@ h3 {{ font-size: 1.12rem !important; }}
     align-items: flex-start;
     gap: 0.75rem;
 }}
-.officer-card-title {{ font-size: 1.05rem; font-weight: 650; line-height: 1.3; }}
-.officer-card-meta {{ font-size: 0.85rem; color: {MUTED}; margin-top: 0.1rem; }}
+.officer-card-title {{
+    font-size: 1.05rem;
+    font-weight: 700;
+    letter-spacing: -0.015em;
+    line-height: 1.3;
+}}
+.officer-card-meta {{ font-size: 0.85rem; font-weight: 500; color: {MUTED}; margin-top: 0.15rem; }}
 .officer-badge {{
     flex: none;
     font-size: 0.78rem;
@@ -302,13 +344,48 @@ h3 {{ font-size: 1.12rem !important; }}
 hr {{ border-color: {GRID} !important; opacity: 1; }}
 [data-testid="stDataFrame"] {{ border-radius: 8px; overflow: hidden; }}
 
-/* The officer's search is the way in, so it is the biggest thing on the page. */
-.st-key-officer_lookup input {{
-    font-size: 1.15rem;
-    padding: 0.9rem 1.1rem;
+/* The officer's search is the way in, so it is the biggest thing on the page.
+   The border lives on Streamlit's root wrapper, not the <input>, so focus is
+   styled on the wrapper too. */
+.st-key-officer_lookup [data-testid="stTextInputRootElement"] {{
+    background: #F5F2EE;
+    border: 1px solid {GRID};
+    border-radius: 12px;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}}
+.st-key-officer_lookup [data-testid="stTextInputRootElement"]:hover {{ border-color: #CFC8C1; }}
+.st-key-officer_lookup [data-testid="stTextInputRootElement"]:focus-within {{
     background: #FFFFFF;
-    border-radius: 14px;
-    box-shadow: 0 6px 20px rgba(41, 98, 160, 0.14);
+    border-color: {ACCENT};
+    box-shadow: 0 0 0 3px rgba(76, 141, 246, 0.18);
+}}
+.st-key-officer_lookup input {{
+    font-size: 1.05rem;
+    font-weight: 500;
+    padding: 0.85rem 1.1rem;
+    background: transparent;
+}}
+.st-key-officer_lookup input::placeholder {{ color: {MUTED}; font-weight: 400; }}
+
+/* Landing hero: room between the sections, and the illustration as a soft card. */
+[data-testid="stHorizontalBlock"]:has([data-testid="stImage"]) {{ gap: 3.5rem; }}
+[data-testid="stImage"] img {{
+    border-radius: 16px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 12px rgba(0, 0, 0, 0.04);
+}}
+[data-testid="stMainBlockContainer"] hr {{ margin: 1.75rem 0; }}
+
+/* Officer landing: the search box is compact, and Loana's card sticks under the
+   page bar. Sticky needs the column to span the row, hence align-items: stretch. */
+.st-key-officer_lookup input {{ padding: 0.55rem 1rem; font-size: 1rem; }}
+[data-testid="stHorizontalBlock"]:has(> [data-testid="stColumn"] .st-key-officer_triage) {{
+    align-items: stretch;
+}}
+.st-key-officer_triage {{
+    position: sticky;
+    top: 7.5rem;
+    max-height: calc(100vh - 8.5rem);
+    overflow-y: auto;
 }}
 </style>
 """
