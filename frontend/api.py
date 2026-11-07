@@ -14,9 +14,7 @@ import os
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import datetime, timezone
 
-import review
 import streamlit as st
 
 logger = logging.getLogger(__name__)
@@ -255,33 +253,11 @@ def predict(customer_id: str, scored_by: str) -> dict:
     return _post(f"/officer/customers/{customer_id}/predict", scored_by=scored_by)
 
 
-DEMO_REQUESTS = 4
-
-
+@st.cache_data(ttl=5, show_spinner=False)
 def review_requests() -> list[dict]:
-    """Customers asking for a human review: request_id, customer_id, account_number,
-    full_name, requested_at, reason, status (pending, in_review or resolved).
-
-    DEMO DATA until the backend has the endpoint. Replacing this body with a `_get`
-    is the whole change; the officer screen reads only this shape.
-    """
-    # Cardholders who can sign in first, then the flagged queue.
-    registered = [
-        {
-            "customer_id": user["customer_id"],
-            "account_number": user["account_number"],
-            "full_name": user["display_name"],
-        }
-        for user in users(role="cardholder")
-        if user["customer_id"]
-    ]
-    flagged = queue(flagged=True, limit=DEMO_REQUESTS)["rows"]
-    chosen = {
-        customer["customer_id"]: customer for customer in [*registered, *flagged]
-    }
-    return review.demo_requests(
-        list(chosen.values())[:DEMO_REQUESTS], datetime.now(timezone.utc)
-    )
+    """Customers waiting for a human review: request_id, customer_id, account_number,
+    full_name, requested_at, reason, status (pending or in_review)."""
+    return _get("/officer/review-requests")
 
 
 def chat_before_request(customer_id: str, requested_at: str) -> list[dict]:
@@ -323,6 +299,21 @@ def cardholder(customer_id: str, token: str) -> dict:
     # The token is an argument rather than read from session state here, so it is
     # part of the cache key: two cardholders must never share a response.
     return _request(f"/cardholders/{customer_id}", token=token)
+
+
+def open_review_request(customer_id: str, token: str) -> dict | None:
+    """This cardholder's open request for a human review, or None. Never cached."""
+    return _request(f"/cardholders/{customer_id}/review-request", token=token)
+
+
+def request_review(customer_id: str, token: str, reason: str) -> dict:
+    """Ask a loan officer for a human review. Never cached."""
+    review_requests.clear()
+    return _request(
+        f"/cardholders/{customer_id}/review-request",
+        payload={"reason": reason},
+        token=token,
+    )
 
 
 @st.cache_data(ttl=60, show_spinner=False)

@@ -9,13 +9,19 @@ the payload is pointless if anyone can ask for anyone's.
 """
 from dataclasses import asdict
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
 from app.ai import assistant
-from app.api.dependencies import account_reader, get_session, queued_account
-from app.db import chat_log, queue_predictions, statements
+from app.api.dependencies import (
+    account_reader,
+    customer_or_404,
+    get_session,
+    queued_account,
+)
+from app.db import chat_log, queue_predictions, reviews, statements
 from app.ml import worklist
+from app.schemas.reviews import ReviewRequestCreate, ReviewRequestOut
 from app.schemas.worklist import CardholderView, ChatReply, ChatRequest
 
 router = APIRouter(prefix="/cardholders", tags=["cardholder"])
@@ -65,6 +71,37 @@ def chat_aboutaccount_for(
         record=record,
         on_turn=lambda turn: chat_log.record(session, asdict(turn)),
     ).to_dict()
+
+
+@router.get(
+    "/{customer_id}/review-request",
+    response_model=ReviewRequestOut | None,
+    dependencies=[Depends(account_reader)],
+)
+def read_open_review_request(
+    customer_id: str, session: Session = Depends(get_session)
+):
+    """The cardholder's open request for a human review, or null."""
+    customer = customer_or_404(session, customer_id)
+    request = reviews.open_for(session, customer.id)
+    return None if request is None else reviews.to_dict(request, customer, customer.user)
+
+
+@router.post(
+    "/{customer_id}/review-request",
+    response_model=ReviewRequestOut,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(account_reader)],
+)
+def request_human_review(
+    customer_id: str,
+    body: ReviewRequestCreate,
+    session: Session = Depends(get_session),
+):
+    """Ask a loan officer to look at this account. Idempotent while one is open."""
+    customer = customer_or_404(session, customer_id)
+    request = reviews.open_request(session, customer.id, body.reason)
+    return reviews.to_dict(request, customer, customer.user)
 
 
 def account_for(customer_id: str, session: Session):

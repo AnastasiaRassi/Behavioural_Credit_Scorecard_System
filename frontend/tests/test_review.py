@@ -102,34 +102,6 @@ def test_card_data_leaves_a_short_note_whole():
     assert not card["is_truncated"]
 
 
-def _customers(count: int) -> list[dict]:
-    return [
-        {
-            "customer_id": f"uuid-{number}",
-            "account_number": str(number),
-            "full_name": "Maya Haddad" if number == 2 else None,
-        }
-        for number in range(1, count + 1)
-    ]
-
-
-def test_demo_requests_are_deterministic_and_use_the_given_customers():
-    first = review.demo_requests(_customers(3), NOW)
-    again = review.demo_requests(_customers(3), NOW)
-
-    assert first == again
-    assert [item["customer_id"] for item in first] == ["uuid-1", "uuid-2", "uuid-3"]
-    assert [item["account_number"] for item in first] == ["1", "2", "3"]
-    assert first[1]["full_name"] == "Maya Haddad" and first[0]["full_name"] is None
-    assert {item["status"] for item in first} <= {"pending", "in_review", "resolved"}
-    assert len({item["request_id"] for item in first}) == 3
-
-
-def test_demo_requests_never_outnumber_the_customers():
-    assert review.demo_requests([], NOW) == []
-    assert len(review.demo_requests(_customers(1), NOW)) == 1
-
-
 def _detail(**overrides) -> dict:
     history = [
         {"bill_amount": 1000.0, "amount_paid": 400.0},

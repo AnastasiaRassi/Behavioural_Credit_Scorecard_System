@@ -11,10 +11,11 @@ from app.api.dependencies import (
     queued_account,
     user_by_email,
 )
-from app.db import chat_log, customer_registry, queue_predictions
+from app.db import chat_log, customer_registry, queue_predictions, reviews
 from app.db.models import Customer, Decision, User
 from app.ml import artifacts, worklist
 from app.schemas.decisions import DecisionCreate, DecisionOut
+from app.schemas.reviews import ReviewRequestOut
 from app.schemas.scoring import ScoreResponse
 from app.schemas.worklist import (
     ChatReply,
@@ -144,6 +145,15 @@ def search_customers(
             "known": user.can_sign_in,
         }
         for customer, user in matches
+    ]
+
+
+@router.get("/review-requests", response_model=list[ReviewRequestOut])
+def read_review_requests(session: Session = Depends(get_session)):
+    """Customers waiting for a person to look at their account, oldest first."""
+    return [
+        reviews.to_dict(request, customer, user)
+        for request, customer, user in reviews.all_open(session)
     ]
 
 

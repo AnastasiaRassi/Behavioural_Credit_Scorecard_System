@@ -22,6 +22,7 @@ import pandas as pd
 import streamlit as st
 
 import api
+import review
 import theme
 from ui import loana
 
@@ -45,6 +46,7 @@ ACTIONABLE = {
 }
 
 SHOWN_ADVICE = 3
+REVIEW_COMMENT_MAX = 2000
 
 # Fixed questions for the two preset buttons. They go through the same chat endpoint,
 # guards and log as anything typed.
@@ -98,6 +100,7 @@ def _main(account: dict, token: str, customer_id: str) -> None:
 
     if needs_attention:
         _what_to_do(account, _plan(token, customer_id))
+    _human_review(token, customer_id)
     _consent()
 
 
@@ -130,8 +133,46 @@ def _what_to_do(account: dict, plan: dict | None) -> None:
         "- Ask about a payment plan before the due date, not after\n"
         "- Contact support and the account can be put on hold while you arrange things"
     )
-    st.button("Talk to someone about my options", type="primary")
-    st.caption("Not yet connected to a support queue.")
+
+
+def _human_review(token: str, customer_id: str) -> None:
+    """Ask the loan officer to look at the account. Offered to everyone, flagged or not."""
+    st.markdown("**Talk to someone about your options**")
+    try:
+        open_request = api.open_review_request(customer_id, token)
+    except api.ServiceUnavailable:
+        st.caption("Requests for a human review are unavailable right now.")
+        return
+
+    if open_request:
+        st.success(
+            "**Your request has been sent to your loan officer**\n\n"
+            f"Sent {review.format_time(open_request['requested_at'])}. "
+            "Someone will look at your account and get back to you."
+        )
+        st.caption("Your comment")
+        st.write(open_request["reason"])
+        return
+
+    comment = st.text_area(
+        "Your comment for the loan officer",
+        key=f"review_comment_{customer_id}",
+        placeholder="Tell them what you would like them to look at.",
+        max_chars=REVIEW_COMMENT_MAX,
+    )
+    if st.button(
+        "Contact my loan officer for human review",
+        key=f"review_send_{customer_id}", type="primary",
+    ):
+        if not comment.strip():
+            st.error("Please leave a comment so the loan officer knows what to look at.")
+            return
+        try:
+            api.request_review(customer_id, token, comment.strip())
+        except api.ServiceUnavailable as exception:
+            api.guard(exception)
+            return
+        st.rerun()
 
 
 def _reassurance(account: dict) -> None:

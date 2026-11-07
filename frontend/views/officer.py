@@ -137,7 +137,6 @@ def _requests() -> None:
 
     with right:
         st.markdown(f"**{review.pending_count(requests)} pending** · {len(waiting)} open")
-        st.caption("Demo requests: not yet connected")
         if not waiting:
             st.info("No customers are waiting for a review.")
             return

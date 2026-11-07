@@ -1,30 +1,14 @@
 """Pure logic behind the officer's review screen: no Streamlit, so it is unit-tested.
 
 A review request is a customer asking a person to look again at the model's rating.
-The shapes here are the ones `api.review_requests()` returns, so the screen does not
-change when the demo list is replaced by the real endpoint.
+The shapes here are the ones `api.review_requests()` returns.
 """
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 OPEN_STATUSES = ("pending", "in_review")
 STATUS_LABELS = {"pending": "Pending", "in_review": "In review", "resolved": "Resolved"}
 
 NOTE_PREVIEW_CHARS = 140
-
-# Demo only: (how long ago, status, the customer's note).
-_DEMO = (
-    (timedelta(days=5), "pending",
-     "I was told my next payment looks at risk, but I paid in full last month. "
-     "I think a late bank transfer was counted as a miss."),
-    (timedelta(days=3), "in_review",
-     "My balance went up because of one large medical bill that I am paying off "
-     "in instalments. Please look at it as a one-off."),
-    (timedelta(days=1), "pending",
-     "I changed jobs in the spring and my payments moved to a new date. "
-     "I have not missed anything since."),
-    (timedelta(hours=2), "pending",
-     "I do not understand why I am flagged. Can someone check my account?"),
-)
 
 
 def parse_time(value: str) -> datetime:
@@ -90,27 +74,6 @@ def card_data(request: dict, band: str | None, now: datetime) -> dict:
         "status": STATUS_LABELS.get(request["status"], request["status"]),
         "band": band,
     }
-
-
-def demo_requests(customers: list[dict], now: datetime) -> list[dict]:
-    """A fixed demo list over real customers. Replaced by the endpoint, not extended.
-
-    Each customer carries customer_id, account_number and full_name.
-    """
-    return [
-        {
-            "request_id": f"demo-{number}",
-            "customer_id": customer["customer_id"],
-            "account_number": customer["account_number"],
-            "full_name": customer.get("full_name"),
-            "requested_at": (now - age).isoformat(),
-            "reason": note,
-            "status": status,
-        }
-        for number, (customer, (age, status, note)) in enumerate(
-            zip(customers, _DEMO), start=1
-        )
-    ]
 
 
 def model_saw(detail: dict) -> list[str]:

@@ -28,6 +28,7 @@ from secrets import token_urlsafe
 from sqlalchemy.orm import Session
 
 from app.core.passwords import hash_password
+from app.db import reviews
 from app.db.customer_registry import (
     find_by_account_number,
     give_login,
@@ -48,6 +49,11 @@ STAFF = [
 # an officer having scored anyone first. Each one is a customer whose user is
 # given a login, which is how a login reaches a scoring subject at all.
 DEMO_CARDHOLDERS = 5
+
+SEED_REVIEW_NOTE = (
+    "I have fallen behind because my income dropped this year. "
+    "Could someone talk me through my options?"
+)
 
 # One account per role on a shared, memorable password, for showing the app.
 # DEMO_MODE=1 only: these are the credentials printed on a slide, so they must
@@ -231,6 +237,25 @@ def _spare_customer_user(session: Session) -> User | None:
     return None
 
 
+def _seed_review_request(session: Session) -> list[str]:
+    """One request from the riskiest demo cardholder, so the officer's list is never empty.
+
+    A flagged customer asking for help is the case the feature exists for. Anyone else
+    makes theirs from the cardholder screen.
+    """
+    people = demo_cardholders()
+    if not people:
+        return []
+
+    account_number, name, _ = people[0]
+    customer = find_by_account_number(session, account_number)
+    if customer is None or reviews.open_for(session, customer.id) is not None:
+        return []
+
+    reviews.open_request(session, customer.id, SEED_REVIEW_NOTE)
+    return [f"{account_number} ({name})"]
+
+
 def _pregenerate_coaching(session: Session) -> list[str]:
     """Cache the demo cardholders' coaching, so the demo renders it without running the search."""
     from app.ai import coaching
@@ -292,9 +317,11 @@ def seed() -> dict:
         cardholders, not_ingested, held_recredentialed = _seed_cardholders(session)
         demo_added, demo_updated = seed_demo_accounts(session)
         versions = _seed_model_version(session)
+        reviews_added = _seed_review_request(session)
         coaching_cached = _pregenerate_coaching(session)
 
     return {
+        "review_requests": reviews_added,
         "users": users,
         "cardholders": cardholders,
         "demo": demo_added,
@@ -320,6 +347,8 @@ def main() -> dict:
         print(f"demo account   {email} / {DEMO_PASSWORD}")
     for email in added["demo_updated"]:
         print(f"demo reset     {email} / {DEMO_PASSWORD}")
+    for account_number in added["review_requests"]:
+        print(f"review request {account_number}")
     for version in added["model_versions"]:
         print(f"model version  {version} (live)")
     if added["coaching"]:
