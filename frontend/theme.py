@@ -24,7 +24,11 @@ ACCENT = "#4C8DF6"
 LOANA = "#00C588"
 LOANA_INK = "#073B2D"
 
-BAND_COLOURS = {"Low": LOW, "Medium": MEDIUM, "High": HIGH}
+# Cardholder timeline: neon mint for what was paid, slate for what was billed.
+PAID = "#00E699"
+BILLED = "#64748B"
+
+BAND_COLOURS ={"Low": LOW, "Medium": MEDIUM, "High": HIGH}
 BAND_ICONS = {"Low": "🟢", "Medium": "🟡", "High": "🔴"}
 
 # Chart furniture: espresso text and warm stone on white cards.
@@ -194,6 +198,39 @@ html, body, [data-testid="stApp"], .ct-banner,
     border-radius: 999px;
 }}
 .st-key-loana_panel button:hover {{ background: #E9FFF7; color: {LOANA_INK}; }}
+
+/* Cardholder timeline card (views/cardholder.py). */
+.st-key-history_card {{
+    background: #FFFFFF;
+    border-radius: 18px;
+    box-shadow: 0 6px 24px rgba(28, 25, 23, 0.06);
+    padding: 0.6rem 0.9rem;
+}}
+.history-head {{ display: flex; align-items: center; gap: 0.9rem; }}
+.history-icon {{
+    flex: none;
+    width: 2.6rem;
+    height: 2.6rem;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font: italic 700 1.35rem Georgia, serif;
+    color: #00754F;
+    background: #E3FFF4;
+    border: 2px solid {PAID};
+    box-shadow: 0 0 12px rgba(0, 230, 153, 0.45);
+}}
+.history-title {{ font-size: 1.35rem; font-weight: 700; letter-spacing: -0.02em; }}
+.history-hint {{ font-size: 0.95rem; color: {MUTED}; }}
+.loana-hint {{
+    margin: 0.4rem 0 1.2rem;
+    padding: 0.75rem 1rem;
+    border-radius: 12px;
+    background: #F0FFF9;
+    border-left: 4px solid {LOANA};
+    color: {LOANA_INK};
+}}
 
 /* Shorter run-in at the top. The page uses the full width: the cardholder screen is
    two columns, and a 1180px cap left the copilot column too narrow to read. The

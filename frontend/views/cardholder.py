@@ -9,16 +9,16 @@ that cardholder or a member of staff.
 
 Telling someone they are predicted to default is distressing, can be
 self-fulfilling, and commits the lender to specific reasons the moment it acts.
-Pre-delinquency contact is framed as assistance, so this screen says what to do.
+Pre-delinquency contact is framed as assistance.
 
-The account at full width, with Loana AI (the chat copilot) as a floating chat in the
+The page stays visual: the figures and the bill-against-payment timeline. Reasons
+and what would help are Loana's to explain, on request. The account at full width, with Loana AI (the chat copilot) as a floating chat in the
 corner (ui/loana.py). Loana's wording, and the repayment history it draws on, come
 from the API.
 """
 from collections.abc import Callable
 
-import altair as alt
-import pandas as pd
+import plotly.graph_objects as go
 import streamlit as st
 
 import api
@@ -26,7 +26,7 @@ import review
 import theme
 from ui import loana
 
-# Features a cardholder can act on this month. A reason they cannot change is
+# Features a cardholder can act on this month (read by the officer screen). A reason they cannot change is
 # not advice, it is an accusation.
 ACTIONABLE = {
     "PAY_1": "Bring the account up to date before the next statement.",
@@ -45,7 +45,6 @@ ACTIONABLE = {
     "pay_to_bill_gap": "Closing the gap between what you spend and what you repay helps.",
 }
 
-SHOWN_ADVICE = 3
 REVIEW_COMMENT_MAX = 2000
 
 # Fixed questions for the two preset buttons. They go through the same chat endpoint,
@@ -95,13 +94,11 @@ def _main(account: dict, token: str, customer_id: str) -> None:
     if needs_attention:
         _warning()
     else:
-        _reassurance(account)
+        _reassurance()
 
     _account(account)
     _history(account["history"])
-
-    if needs_attention:
-        _what_to_do(account, _plan(token, customer_id))
+    _ask_loana(needs_attention)
     _human_review(token, customer_id)
     _consent()
 
@@ -110,30 +107,8 @@ def _warning() -> None:
     st.warning(
         "**Your next payment may be at risk**\n\n"
         "Based on how your account has moved over the last six months, you may "
-        "find your next payment difficult. Nothing has changed on your account, "
-        "and this is not a decision — it is an early heads-up while there is "
-        "still time to act."
-    )
-
-
-def _what_to_do(account: dict, plan: dict | None) -> None:
-    # The computed plan says the same things with this account's own amounts in
-    # them, so it replaces the written advice rather than repeating it.
-    if plan and plan["steps"]:
-        _recourse(plan)
-    else:
-        advice = _advice(account)
-        if advice:
-            st.markdown("**What would help most**")
-            for because, action in advice:
-                st.markdown(f"- {action}")
-                st.caption(f"Because: {because.lower()}")
-
-    st.markdown("**If money is tight this month**")
-    st.markdown(
-        "- Paying **any** amount is better than missing the payment entirely\n"
-        "- Ask about a payment plan before the due date, not after\n"
-        "- Contact support and the account can be put on hold while you arrange things"
+        "find your next payment difficult. This is not a decision, just an early "
+        "heads-up while there is still time to act."
     )
 
 
@@ -177,25 +152,11 @@ def _human_review(token: str, customer_id: str) -> None:
         st.rerun()
 
 
-def _reassurance(account: dict) -> None:
+def _reassurance() -> None:
     st.success(
         "**Your account looks on track**\n\n"
         "Nothing in your recent repayment history suggests you will have "
         "difficulty with your next payment."
-    )
-
-    helping = [
-        reason["description"] for reason in account["reasons"]
-        if not reason["raises_risk"]
-    ]
-    if helping:
-        st.markdown("**What is working in your favour**")
-        for description in helping[:SHOWN_ADVICE]:
-            st.markdown(f"- {description}")
-
-    st.caption(
-        "This is a monthly check, so it can change as your account changes. "
-        "You will be told if it does."
     )
 
 
@@ -204,7 +165,7 @@ def _account(account: dict) -> None:
         st.columns(4),
         [
             ("Credit limit", f"{account['credit_limit']:,.0f}"),
-            ("Latest statement balance (BILL_AMT1)", f"{account['current_balance']:,.0f}"),
+            ("Latest statement balance", f"{account['current_balance']:,.0f}"),
             ("Last payment", f"{account['last_payment']:,.0f}"),
             ("Months behind", f"{account['months_in_arrears']} of 6"),
         ],
@@ -213,107 +174,85 @@ def _account(account: dict) -> None:
 
 
 def _history(history: list[dict]) -> None:
-    """Bill against payment for each month, with that month's repayment status above it."""
+    """The page's centrepiece: billed against paid per month, as two smooth lines."""
     if not history:
         return
 
-    st.markdown("**Your last six months**")
-    # The API sends most recent first; the chart reads oldest to newest.
+    # The API sends most recent first; the timeline reads oldest to newest.
     months = sorted(history, key=lambda month: month["month"], reverse=True)
-    order = [month["label"] for month in months]
+    labels = [month["label"] for month in months]
 
-    status = pd.DataFrame(
-        {
-            "label": month["label"],
-            "reading": month["payment_status_reading"].capitalize(),
-            "behind": month["payment_status"] > 0,
-        }
-        for month in months
-    )
-    amounts = pd.DataFrame(
-        {"label": month["label"], "series": series, "amount": month[field]}
-        for month in months
-        for series, field in (("Bill", "bill_amount"), ("Paid", "amount_paid"))
-    )
-
-    strip = (
-        alt.Chart(status)
-        .mark_text(fontSize=11, fontWeight=600, baseline="middle")
-        .encode(
-            x=alt.X("label:N", sort=order, title=None, axis=None),
-            text="reading:N",
-            color=alt.condition(
-                alt.datum.behind, alt.value(theme.HIGH), alt.value(theme.MUTED)
+    with st.container(border=True, key="history_card"):
+        st.markdown(
+            '<div class="history-head">'
+            '<span class="history-icon" aria-hidden="true">i</span>'
+            "<div><div class=\"history-title\">Your last six months</div>"
+            '<div class="history-hint">💡 Hover over points on the timeline to inspect '
+            "your monthly billing vs. payment history.</div></div></div>",
+            unsafe_allow_html=True,
+        )
+        figure = go.Figure(
+            [
+                *_series(labels, [m["bill_amount"] for m in months], "Billed", theme.BILLED),
+                *_series(labels, [m["amount_paid"] for m in months], "Paid", theme.PAID),
+            ]
+        )
+        figure.update_layout(
+            height=340,
+            margin=dict(l=56, r=40, t=8, b=44),
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            font=dict(family=theme.FONT, color=theme.TEXT, size=13),
+            hovermode="x unified",
+            hoverlabel=dict(bgcolor="#FFFFFF", bordercolor=theme.GRID, font_size=13),
+            legend=dict(orientation="h", x=0, y=1.08, bgcolor="rgba(0,0,0,0)"),
+            xaxis=dict(showgrid=False, showline=False, tickfont=dict(color=theme.MUTED)),
+            yaxis=dict(
+                gridcolor=theme.GRID, zeroline=False, tickprefix="$", tickformat="~s",
+                tickfont=dict(color=theme.MUTED),
             ),
         )
-        .properties(height=22)
-    )
-    bars = (
-        alt.Chart(amounts)
-        .mark_bar()
-        .encode(
-            x=alt.X("label:N", sort=order, title=None, axis=alt.Axis(labelAngle=0, labelLimit=140)),
-            xOffset=alt.XOffset("series:N", sort=["Bill", "Paid"]),
-            y=alt.Y("amount:Q", title=None, axis=alt.Axis(format="~s")),
-            color=alt.Color(
-                "series:N",
-                scale=alt.Scale(domain=["Bill", "Paid"], range=[theme.ACCENT, theme.MUTED]),
-                legend=alt.Legend(orient="bottom", title=None),
-            ),
-            tooltip=[
-                alt.Tooltip("label:N", title="Month"),
-                alt.Tooltip("series:N", title=""),
-                alt.Tooltip("amount:Q", title="Amount", format=",.0f"),
-            ],
-        )
-        .properties(height=220)
-    )
-    chart = alt.vconcat(strip, bars, spacing=4).resolve_scale(x="shared")
-    st.altair_chart(chart, width="stretch", theme=None)
-
-
-def _plan(token: str, customer_id: str) -> dict | None:
-    """The computed recourse, or None if the search could not be reached.
-
-    A failed search must not take the page down: the written advice below is
-    always true and stands on its own.
-    """
-    try:
-        return api.recourse(customer_id, token)
-    except api.ServiceUnavailable:
-        return None
-
-
-def _recourse(plan: dict) -> None:
-    """The way out, worked out against this account's own figures.
-
-    Amounts rather than suggestions. When nothing the customer can do on their
-    own reaches the next band, that is said: a recourse screen that always
-    finds an answer is promising one.
-    """
-    st.markdown(f"**What would move you to {plan['target_band'].lower()} risk**")
-    for step in plan["steps"]:
-        st.markdown(f"- {step['description']}")
-
-    if plan["reachable"]:
-        st.caption(plan["note"])
-    else:
-        st.caption(
-            f"{plan['note']} Each one still helps, and support can look at "
-            "options this account cannot reach on its own."
+        st.plotly_chart(
+            figure, width="stretch", theme=None, config={"displayModeBar": False},
+            key="history_chart",
         )
 
 
-def _advice(account: dict) -> list[tuple[str, str]]:
-    """Reasons the cardholder can act on, strongest first, paired with an action."""
-    advice = []
-    for reason in account["reasons"]:
-        if not reason["raises_risk"]:
-            continue
-        action = ACTIONABLE.get(reason["feature"])
-        if action:
-            advice.append((reason["description"], action))
-    return advice[:SHOWN_ADVICE]
+def _series(labels: list[str], amounts: list[float], name: str, colour: str) -> list:
+    """A soft glow under a crisp spline, with a gradient fading to the axis."""
+    shape = dict(shape="spline", smoothing=0.8)
+    glow = go.Scatter(
+        x=labels, y=amounts, mode="lines", hoverinfo="skip", showlegend=False,
+        line=dict(color=_rgba(colour, 0.25), width=10, **shape),
+    )
+    line = go.Scatter(
+        x=labels, y=amounts, name=name, mode="lines+markers",
+        line=dict(color=colour, width=3, **shape),
+        marker=dict(size=9, color="#FFFFFF", line=dict(color=colour, width=2.5)),
+        fill="tozeroy",
+        fillgradient=dict(
+            type="vertical", colorscale=[[0, _rgba(colour, 0)], [1, _rgba(colour, 0.28)]]
+        ),
+        hovertemplate=f"{name} ($): %{{y:,.0f}}<extra></extra>",
+    )
+    return [glow, line]
+
+
+def _rgba(colour: str, alpha: float) -> str:
+    red, green, blue = (int(colour[i : i + 2], 16) for i in (1, 3, 5))
+    return f"rgba({red},{green},{blue},{alpha})"
+
+
+def _ask_loana(needs_attention: bool) -> None:
+    """Why, and what would help, are answered in the chat rather than written out here."""
+    question = (
+        "what would help most this month" if needs_attention else "what keeps it on track"
+    )
+    st.markdown(
+        f'<div class="loana-hint">Want to know why, or {question}? '
+        "<b>Ask Loana</b> in the corner. She explains it with your own figures.</div>",
+        unsafe_allow_html=True,
+    )
 
 
 def _copilot(token: str, customer_id: str) -> None:
