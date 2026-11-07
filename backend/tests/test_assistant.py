@@ -416,8 +416,8 @@ def test_grounding_failure_wins_the_reason_but_the_claim_check_still_runs(row, m
     )
 
 
-def test_the_system_prompt_is_loana_v2_1():
-    assert assistant.PROMPT_VERSION == "v2.1-loana"
+def test_the_system_prompt_is_loana_v2_2():
+    assert assistant.PROMPT_VERSION == "v2.2-loana"
     assert assistant.SYSTEM_PROMPT.startswith("You are Loana AI")
     assert "{facts}" in assistant.SYSTEM_PROMPT
 
@@ -438,3 +438,40 @@ def test_an_obligation_with_any_verb_is_rejected_when_nothing_is_feasible():
 
     assert not assistant.validate_claim_level_safety(reply, UNREACHABLE_PAYLOAD)
     assert assistant.validate_claim_level_safety("You can ask me why the account is rated this way.", UNREACHABLE_PAYLOAD)
+
+
+@pytest.mark.parametrize("question", [
+    "Who can I contact about this?", "Can a human review my account?",
+    "How do I appeal this rating?", "I disagree, can I talk to someone?",
+])
+def test_asking_for_a_person_gets_the_review_request_route(row, question):
+    view = worklist.cardholder_view(row, record=STRESSED)
+    payload = coaching.build_payload(view["risk_band"], view["reasons"], STRESSED)
+
+    assert assistant.template_reply(question, view, payload) == assistant.REVIEW_ROUTE
+    assert assistant.REVIEW_ROUTE in json.dumps(_sheet(row), ensure_ascii=False)
+
+
+@pytest.mark.parametrize("payload", [UNREACHABLE_PAYLOAD, REACHABLE_PAYLOAD])
+@pytest.mark.parametrize("reply", [
+    assistant.REVIEW_ROUTE,
+    "You can use the human review request on this page; your loan officer will look at it.",
+    "You should contact your loan officer through the review request.",
+])
+def test_pointing_to_the_review_request_passes_whatever_the_outcome(payload, reply):
+    assert assistant.validate_claim_level_safety(reply, payload)
+
+
+@pytest.mark.parametrize("payload", [UNREACHABLE_PAYLOAD, REACHABLE_PAYLOAD])
+@pytest.mark.parametrize("reply", [
+    "Please contact customer service for help.",
+    "You can call the bank's helpline to appeal.",
+    "Reach out to our support team about this rating.",
+])
+def test_generic_contact_routes_are_rejected(payload, reply):
+    assert not assistant.validate_claim_level_safety(reply, payload)
+
+
+def test_a_review_referral_does_not_launder_payment_advice():
+    reply = "You should pay down the balance, then contact your loan officer."
+    assert not assistant.validate_claim_level_safety(reply, UNREACHABLE_PAYLOAD)

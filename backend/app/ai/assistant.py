@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 
 # Recorded with every reply. Bump it whenever SYSTEM_PROMPT changes, so logged
 # answers can be compared before and after.
-PROMPT_VERSION = "v2.1-loana"
+PROMPT_VERSION = "v2.2-loana"
 
 # Turns sent to the model. Older ones add prompt time and rarely matter.
 MAX_HISTORY = 10
@@ -63,7 +63,8 @@ Rules:
 3. Actions: only the steps listed under one_month_counterfactual.steps. Never suggest any other payment strategy. If the steps list is empty, say plainly and gently that no single-month action clears this risk band, and do not suggest anything to do this month.
 4. Never state, estimate or hint at a probability, percentage chance or score. The rating is a band. If asked for a number, say the service describes risk as a band and point to the factors.
 5. Do not give financial advice, promise an outcome, or say what any lender will decide. The rating is a model's estimate on a prototype, not a decision.
-6. At most four short sentences.
+6. Who to contact: if asked about talking to a person, a human review, disagreeing with the rating, or appealing, say they can use "Contact my loan officer for human review" on this page and leave a comment; it goes to the loan officer reviewing their account. Never point to customer service, a support team, a phone line or a branch.
+7. At most four short sentences.
 
 FACTS:
 {facts}"""
@@ -82,6 +83,16 @@ OUTCOME_WORDS = {
     UNCHECKED: "The one-month changes could not be checked for this account.",
 }
 
+# The one route to a person. A generic "contact support" sends the cardholder
+# somewhere the reviewing officer never sees; the review request lands in their queue.
+REVIEW_ROUTE = (
+    "If you would like a person to look at your account, or you disagree with this "
+    "rating, use “Contact my loan officer for human review” on this page and leave "
+    "a comment. It goes to the loan officer reviewing your account, who will look at it "
+    "and get back to you."
+)
+
+REVIEW_WORDS = ("appeal", "dispute", "disagree", "unfair", "human", "person", "someone", "contact", "review", "officer", "talk to", "speak to", "speak with", "complain")
 PROBABILITY_WORDS = ("probab", "percent", "%", "chance", "likel", "score", "number")
 WHY_WORDS = ("why", "reason", "cause", "factor", "because", "driv", "raising", "affect")
 ACCOUNT_WORDS = ("balance", "limit", "owe", "bill", "last payment", "arrears", "history")
@@ -130,6 +141,26 @@ OTHER_STRATEGY_PATTERNS = tuple(
         r"\binstal?lments?\b",
         r"\b(?:direct debit|auto-?pay|standing order)\b",
     )
+)
+
+# Rejected whatever the outcome: generic contact routes instead of the review request.
+GENERIC_CONTACT_PATTERNS = tuple(
+    re.compile(pattern, re.IGNORECASE)
+    for pattern in (
+        r"\bcustomer (?:service|support|care)\b",
+        r"\bsupport (?:team|line|desk|staff)\b",
+        r"\b(?:contact|call|email|reach out to) (?:support|us|the bank|your bank|the issuer)\b",
+        r"\b(?:call cent(?:re|er)|helpline|hotline|phone|branch)\b",
+    )
+)
+
+# Pointing to the review request is allowed even when there is nothing to do this
+# month, so that clause is taken out before the prescriptive scan.
+REVIEW_REFERRAL = re.compile(
+    r"(?:you (?:can|could|may|might want to|should) |please |simply )?"
+    r"(?:use|submit|send|ask for|request|contact|reach out to|talk to|speak (?:to|with))"
+    r"[^.!?\d]{0,40}?\b(?:loan officer|human review|review request)\b",
+    re.IGNORECASE,
 )
 
 # Rejected unless the search found a feasible action: when there is nothing to do this
@@ -385,6 +416,7 @@ def fact_sheet(view: dict, history: Sequence[Mapping], payload: CoachingPayload)
             "steps": list(payload.steps),
         },
         "recent_months": [_month(entry) for entry in history],
+        "how_to_reach_a_person": REVIEW_ROUTE,
     }
 
 
@@ -458,11 +490,14 @@ def validate_claim_level_safety(reply: str, payload: CoachingPayload) -> bool:
         return False
     if any(pattern.search(text) for pattern in OTHER_STRATEGY_PATTERNS):
         return False
+    if any(pattern.search(text) for pattern in GENERIC_CONTACT_PATTERNS):
+        return False
 
     if payload.outcome != REACHABLE:
         # The correct "nothing to do" message itself mentions this month's bill,
         # payment and repayment status, so it is taken out before scanning.
         text = _without_own_wording(text, payload)
+        text = REVIEW_REFERRAL.sub(" ", text)
         return not any(pattern.search(text) for pattern in PRESCRIPTIVE_PATTERNS)
 
     allowed = numbers_in(" ".join(payload.steps))
@@ -493,6 +528,10 @@ def template_reply(question: str, view: dict, payload: CoachingPayload) -> str:
     """A fixed answer from the same facts, picked by what the question is about."""
     asked = question.lower()
     band = view["risk_band"]
+
+    # First: "who can help me" is a request for a person, not for an action.
+    if any(word in asked for word in REVIEW_WORDS):
+        return REVIEW_ROUTE
 
     if any(word in asked for word in PROBABILITY_WORDS):
         return (
