@@ -172,32 +172,39 @@ html, body, [data-testid="stApp"], .ct-banner,
     color: rgba(15, 23, 42, 0.78);
 }}
 
-.st-key-loana_panel p {{ color: {LOANA_INK}; }}
-.st-key-loana_panel [data-testid="stCaptionContainer"] p {{
+.st-key-loana_panel p, .st-key-officer_triage p {{ color: {LOANA_INK}; }}
+.st-key-loana_panel [data-testid="stCaptionContainer"] p,
+.st-key-officer_triage [data-testid="stCaptionContainer"] p {{
     color: rgba(7, 59, 45, 0.78);
 }}
-.st-key-loana_panel [data-testid="stChatMessage"] {{
+.st-key-loana_panel [data-testid="stChatMessage"],
+.st-key-officer_triage [data-testid="stChatMessage"] {{
     background: rgba(255, 255, 255, 0.92);
     border-radius: 14px;
     padding: 0.9rem 1.1rem;
     align-items: flex-start;
 }}
-.st-key-loana_panel [data-testid="stChatMessage"] p {{
+.st-key-loana_panel [data-testid="stChatMessage"] p,
+.st-key-officer_triage [data-testid="stChatMessage"] p {{
     line-height: 1.55;
     text-align: left;
 }}
-.st-key-loana_panel [data-testid="stChatMessage"] p {{ color: #1D2B27; }}
-.st-key-loana_panel [data-testid="stChatMessage"] [data-testid="stCaptionContainer"] p {{
+.st-key-loana_panel [data-testid="stChatMessage"] p,
+.st-key-officer_triage [data-testid="stChatMessage"] p {{ color: #1D2B27; }}
+.st-key-loana_panel [data-testid="stChatMessage"] [data-testid="stCaptionContainer"] p,
+.st-key-officer_triage [data-testid="stChatMessage"] [data-testid="stCaptionContainer"] p {{
     color: {MUTED};
     text-align: left;
 }}
-.st-key-loana_panel button {{
+.st-key-loana_panel button,
+.st-key-officer_triage button {{
     background: #FFFFFF;
     border: none;
     color: {LOANA_INK};
     border-radius: 999px;
 }}
-.st-key-loana_panel button:hover {{ background: #E9FFF7; color: {LOANA_INK}; }}
+.st-key-loana_panel button:hover,
+.st-key-officer_triage button:hover {{ background: #E9FFF7; color: {LOANA_INK}; }}
 
 /* Cardholder timeline card (views/cardholder.py). */
 .st-key-history_card {{
@@ -423,6 +430,14 @@ hr {{ border-color: {GRID} !important; opacity: 1; }}
     top: 7.5rem;
     max-height: calc(100vh - 8.5rem);
     overflow-y: auto;
+}}
+/* The triage panel is Loana's card, the same emerald as the floating chat. */
+.st-key-officer_triage {{
+    background: {LOANA};
+    border: none;
+    border-radius: 22px;
+    padding: 1.1rem;
+    box-shadow: 0 16px 44px rgba(7, 59, 45, 0.35);
 }}
 </style>
 """
