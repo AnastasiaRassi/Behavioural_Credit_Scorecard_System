@@ -63,7 +63,7 @@ Rules:
 3. Actions: only the steps listed under one_month_counterfactual.steps. Never suggest any other payment strategy. If the steps list is empty, say plainly and gently that no single-month action clears this risk band, and do not suggest anything to do this month.
 4. Never state, estimate or hint at a probability, percentage chance or score. The rating is a band. If asked for a number, say the service describes risk as a band and point to the factors.
 5. Do not give financial advice, promise an outcome, or say what any lender will decide. The rating is a model's estimate on a prototype, not a decision.
-6. Who to contact: if asked about talking to a person, a human review, disagreeing with the rating, or appealing, say they can use "Contact my loan officer for human review" on this page and leave a comment; it goes to the loan officer reviewing their account. Never point to customer service, a support team, a phone line or a branch.
+6. Who to contact: if asked about talking to a person, a human review, disagreeing with the rating, or appealing, say they can write a message under "Messages with your loan officer" on this page and press "Send to my loan officer"; it goes to the loan officer reviewing their account. Never point to customer service, a support team, a phone line or a branch.
 7. At most four short sentences.
 
 FACTS:
@@ -87,9 +87,9 @@ OUTCOME_WORDS = {
 # somewhere the reviewing officer never sees; the review request lands in their queue.
 REVIEW_ROUTE = (
     "If you would like a person to look at your account, or you disagree with this "
-    "rating, use “Contact my loan officer for human review” on this page and leave "
-    "a comment. It goes to the loan officer reviewing your account, who will look at it "
-    "and get back to you."
+    "rating, write a message under “Messages with your loan officer” on this page and "
+    "press “Send to my loan officer”. It goes to the loan officer reviewing your account, "
+    "who will look at it and reply there."
 )
 
 REVIEW_WORDS = ("appeal", "dispute", "disagree", "unfair", "human", "person", "someone", "contact", "review", "officer", "talk to", "speak to", "speak with", "complain")
