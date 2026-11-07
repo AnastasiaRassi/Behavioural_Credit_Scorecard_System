@@ -81,6 +81,13 @@ _CSS = f"""
     min-height: 200px;
 }}
 .st-key-loana_chat {{ height: 100% !important; }}
+/* The messages fade out at the bottom edge of their fixed-height box. The padding
+   is the fade's own height, so the last message can still scroll clear of it. */
+.st-key-loana_chat {{
+    padding-bottom: 32px;
+    -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 32px), transparent);
+    mask-image: linear-gradient(to bottom, #000 calc(100% - 32px), transparent);
+}}
 @media (max-width: 640px) {{
     [data-testid="stLayoutWrapper"]:has(> .st-key-loana_panel) {{
         position: static;

@@ -1,14 +1,12 @@
-"""The sign-in screen: one photograph, one card.
+"""The sign-in screen: a 40/60 split, the logo on the left and the form on the right.
 
-The people who meet this screen are loan officers, product people and customers,
-so it is the one place in the product that reads as a brochure rather than a
-console. A view straight up between four glass towers leaves a plus-shaped gap
-of sky; the card sits where the two arms of that gap cross, and two quiet panels
-sit in the horizontal arm either side of it.
+The left 40% is a solid panel holding the CrediTrait logo. The right 60% is a
+faint office photograph with the sign-in card floating over it. The card holds
+the form and nothing else; the story sections below the fold are unchanged.
 
-Layout and colour live in `ui/login.css`, which is injected here with the
-photograph inlined as base64 so the page needs no static file server. Every rule
-in it is held behind `body:has(.st-key-signin_card)`, so none of it reaches the
+Layout and colour live in `ui/login.css`, which is injected here with the photograph
+and logo inlined as base64 so the page needs no static file server. Every rule in
+it is held behind `body:has(.st-key-signin_card)`, so none of it reaches the
 dashboard once a session exists.
 
 Nothing here touches a credential: `render` is handed the function that does,
@@ -27,21 +25,14 @@ from pathlib import Path
 import streamlit as st
 from dotenv import load_dotenv
 
-from ui.components import flatten
 from views import landing
 
 HERE = Path(__file__).resolve().parent
 CSS_PATHS = (HERE.parent / "ui" / "login.css", HERE.parent / "ui" / "landing.css")
 PHOTO_PATH = HERE.parent / "assets" / "login-bg.jpg"
-
-# What both stylesheets write where the inlined photograph goes.
+LOGO_PATH = HERE.parent / "assets" / "creditrait-logo.png"
 
 PRODUCT_NAME = "CrediTrait"
-DESCRIPTION = (
-    "Track loans and applications, and see the reasons behind every AI decision."
-)
-HEADING = "Sign in"
-HELPER = "No account yet? Your administrator can set one up."
 
 # What a failure says. Never a status code, a URL or a body: those go to the log
 # in api.py, because nothing here is a problem the person reading it can fix.
@@ -74,22 +65,6 @@ DEMO_ACCOUNTS = (
 INTERNAL_ACCOUNTS = (("ML engineer", "engineer@demo.test"),)
 INTERNAL_PARAM = "internal"
 
-# Four rounded squares around a plus-shaped gap: the view up between the towers.
-_LOGO = """
-<svg width="28" height="28" viewBox="0 0 28 28" fill="none" aria-hidden="true"
-     xmlns="http://www.w3.org/2000/svg">
-<rect x="0.8" y="0.8" width="10.4" height="10.4" rx="2.6"
-fill="rgba(74,107,133,0.10)" stroke="#4A6B85" stroke-width="1.5"/>
-<rect x="16.8" y="0.8" width="10.4" height="10.4" rx="2.6"
-fill="rgba(74,107,133,0.10)" stroke="#4A6B85" stroke-width="1.5"/>
-<rect x="0.8" y="16.8" width="10.4" height="10.4" rx="2.6"
-fill="rgba(74,107,133,0.10)" stroke="#4A6B85" stroke-width="1.5"/>
-<rect x="16.8" y="16.8" width="10.4" height="10.4" rx="2.6"
-fill="rgba(74,107,133,0.10)" stroke="#4A6B85" stroke-width="1.5"/>
-<circle cx="14" cy="14" r="2.1" fill="#D9A462"/>
-</svg>
-"""
-
 _CHEVRON = """
 <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"
      xmlns="http://www.w3.org/2000/svg">
@@ -105,38 +80,6 @@ _ALERT_ICON = """
 <line x1="7" y1="3.7" x2="7" y2="7.8" stroke="#8A3B2E" stroke-width="1.4"
 stroke-linecap="round"/>
 <circle cx="7" cy="10.2" r="0.85" fill="#8A3B2E"/>
-</svg>
-"""
-
-# How today's queue splits by risk band. Real proportions, from the live
-# queue's own summary: 2,224 Low, 1,338 Medium, 938 High of 4,500 accounts.
-# The earlier panel drew an Applied → Repaying pipeline, which this system does
-# not have: it scores existing card accounts from their payment history, so
-# there is no application to track and the panel was claiming a feature.
-_TRACK = """
-<svg viewBox="0 0 278 50" fill="none" aria-hidden="true"
-     xmlns="http://www.w3.org/2000/svg">
-<rect x="12" y="8" width="125" height="12" rx="3" fill="#2F7A52"/>
-<rect x="137" y="8" width="75" height="12" rx="3" fill="#B8742A"/>
-<rect x="212" y="8" width="54" height="12" rx="3" fill="#A6442F"/>
-<text x="12" y="39" text-anchor="start">Low 2,224</text>
-<text x="137" y="39" text-anchor="start">Medium 1,338</text>
-<text x="266" y="39" text-anchor="end">High 938</text>
-</svg>
-"""
-
-# What moved a score: right of the line helped, left of it hurt. An illustration
-# of the shape of an explanation, so it carries no numbers.
-_REASONS = """
-<svg viewBox="0 0 278 78" fill="none" aria-hidden="true"
-     xmlns="http://www.w3.org/2000/svg">
-<line x1="139" y1="4" x2="139" y2="74" stroke="#C6D1DB" stroke-width="1"/>
-<rect class="panel-bar" x="139" y="10" width="68" height="9" rx="4.5" fill="#2F6DA3"/>
-<text x="131" y="18.5" text-anchor="end">Paid on time</text>
-<rect class="panel-bar" x="87" y="34" width="52" height="9" rx="4.5" fill="#B8742A"/>
-<text x="147" y="42.5" text-anchor="start">High balance</text>
-<rect class="panel-bar" x="139" y="58" width="44" height="9" rx="4.5" fill="#2F6DA3"/>
-<text x="131" y="66.5" text-anchor="end">Long history</text>
 </svg>
 """
 
@@ -167,13 +110,11 @@ def render(attempt: Callable[[str, str], tuple[str, str] | None]) -> None:
     failure = st.session_state.get(ERROR_KEY)
 
     with st.container(key="hero"):
-        st.markdown(_side_panels(), unsafe_allow_html=True)
+        st.markdown(_brand_panel(), unsafe_allow_html=True)
 
         # Widgets cannot live inside raw HTML, so the card is a keyed container
         # and the stylesheet reaches it through the .st-key-signin_card class.
         with st.container(key="signin_card"):
-            st.markdown(_masthead(), unsafe_allow_html=True)
-
             with st.form("sign_in", border=False):
                 with st.container(key="field_email"):
                     email = st.text_input("Email", placeholder="you@company.com")
@@ -189,9 +130,6 @@ def render(attempt: Callable[[str, str], tuple[str, str] | None]) -> None:
                     disabled=bool(pending),
                 )
 
-            st.markdown(
-                f'<p class="signin-helper">{HELPER}</p>', unsafe_allow_html=True
-            )
             if demo_mode():
                 _demo_row()
 
@@ -232,9 +170,6 @@ def _internal() -> bool:
 def _demo_row(key: str = "demo_row") -> None:
     """One click per role, demo mode only. Hidden entirely when it is off."""
     accounts = DEMO_ACCOUNTS + (INTERNAL_ACCOUNTS if _internal() else ())
-    st.markdown(
-        '<p class="demo-label">Try a demo account</p>', unsafe_allow_html=True
-    )
     with st.container(key=key):
         columns = st.columns(len(accounts))
         for column, (label, email) in zip(columns, accounts):
@@ -271,8 +206,8 @@ def _alert(field: str, message: str) -> str:
 
 @lru_cache(maxsize=1)
 def _stylesheet() -> str:
-    """The stylesheet with the photograph inlined. Read once per process."""
-    for path in (*CSS_PATHS, PHOTO_PATH):
+    """The stylesheet with the photograph and logo inlined. Read once per process."""
+    for path in (*CSS_PATHS, PHOTO_PATH, LOGO_PATH):
         if not path.exists():
             raise FileNotFoundError(
                 f"Missing {path}. The sign-in screen ships with it; restore it "
@@ -280,32 +215,24 @@ def _stylesheet() -> str:
             )
 
     photo = base64.b64encode(PHOTO_PATH.read_bytes()).decode("ascii")
+    logo = base64.b64encode(LOGO_PATH.read_bytes()).decode("ascii")
     css = "\n".join(path.read_text(encoding="utf-8") for path in CSS_PATHS)
-    # Declared once and referenced as var(--login-photo): inlining the data URI
-    # at each use put a copy of the photograph in the markup per use, on every
-    # rerun, and the stylesheet went past a megabyte.
-    root = f':root {{ --login-photo: url("data:image/jpeg;base64,{photo}"); }}'
+    # Declared once and referenced as var(...): inlining the data URI at each use
+    # put a copy of the image in the markup per use, on every rerun.
+    root = (
+        ":root { "
+        f'--login-photo: url("data:image/jpeg;base64,{photo}"); '
+        f'--brand-logo: url("data:image/png;base64,{logo}"); }}'
+    )
     return f"<style>{root}\n{css}</style>"
 
 
-def _masthead() -> str:
-    """Logo, product name, what the product is, and the heading over the form."""
-    return _flatten(f"""
-<div class="signin-brand">{_LOGO}<span class="signin-name">{PRODUCT_NAME}</span></div>
-<p class="signin-desc">{DESCRIPTION}</p>
-<h1 class="signin-heading">{HEADING}</h1>
-""")
-
-
-def _side_panels() -> str:
-    """The two decorative panels in the horizontal arm of the sky gap."""
+def _brand_panel() -> str:
+    """The left 40%: the logo, centred. A background image, so it costs no markup."""
     return _flatten(f"""
 <span id="top"></span>
-<div class="sky-panel sky-panel--left" aria-hidden="true">
-<p class="sky-panel-title">Today's queue</p>{_TRACK}
-</div>
-<div class="sky-panel sky-panel--right" aria-hidden="true">
-<p class="sky-panel-title">Why this decision</p>{_REASONS}
+<div class="brand-panel">
+<div class="brand-logo" role="img" aria-label="{PRODUCT_NAME}"></div>
 </div>
 """)
 
