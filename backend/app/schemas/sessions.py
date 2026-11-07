@@ -17,7 +17,7 @@ class Account(BaseModel):
     role: str
     customer_id: str | None = Field(
         default=None,
-        description="The customer a cardholder is registered as; None for staff",
+        description="The customer's UUID for a cardholder; None for staff",
     )
 
 

@@ -1,4 +1,4 @@
-"""Load the UCI Taiwan dataset into customer, monthly_statement and credit_outcome.
+"""Load the UCI Taiwan dataset into users, user_details, customer and its history.
 
 Run from the backend/ directory:
 
@@ -7,17 +7,22 @@ Run from the backend/ directory:
 Reads the original .xls, not the cached CSV. The CSV that
 `ml/feature_engineering.load_taiwan` maintains drops the source `ID` column, and
 without it a customer could only be identified by row position, which stops being
-a stable identity the moment the file is re-sorted or filtered.
+a stable identity the moment the file is re-sorted or filtered. The source ID is
+kept as `customer.account_number`; the primary key is a fresh UUID.
+
+Each customer is also a user (role 'cardholder', no login, an invented name) with
+a user_details row for the audited demographics.
 
 Category codes are folded through `feature_engineering.clean()` — the same call
 training makes — so the codes stored here and the codes the model was fitted on
 cannot diverge. The CHECK constraints on `customer` are the second line of
-defence: if that folding ever stopped, ingestion would fail loudly instead of
-writing codes the pipeline has no level for.
+defence, on `user_details`: if that folding ever stopped, ingestion would fail
+loudly instead of writing codes the pipeline has no level for.
 
-Idempotent. Customers already present are left untouched, so rerunning adds only
-what is missing and never rewrites a row a prediction points at.
+Idempotent. Customers already present (by account number) are left untouched, so
+rerunning adds only what is missing and never rewrites a row a prediction points at.
 """
+import uuid
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
@@ -33,7 +38,10 @@ from app.db.models import (
     CreditOutcome,
     Customer,
     MonthlyStatement,
+    User,
+    UserDetails,
 )
+from app.db.customer_registry import invent_name
 from app.db.models.base import now
 from app.ml.feature_engineering import TARGET, clean, project_root
 
@@ -87,30 +95,34 @@ def read_source(path: Path | str | None = None) -> pd.DataFrame:
             "only be keyed by row position. Re-download the original file."
         )
 
-    # The identity stored in the database: the source's own integer id as text.
-    df["customer_id"] = df[SOURCE_ID_COLUMN].astype(int).astype(str)
+    # The source's own integer id as text: it becomes `customer.account_number`.
+    df["account_number"] = df[SOURCE_ID_COLUMN].astype(int).astype(str)
     return clean(df.drop(columns=[SOURCE_ID_COLUMN]))
 
 
 def load_taiwan(session: Session, path: Path | str | None = None) -> IngestionReport:
-    """Ingest the dataset into customer, monthly_statement and credit_outcome.
+    """Ingest the dataset: a user, its details and a customer per row, plus the history.
 
     Takes a session rather than opening one, so a caller can ingest inside a
     transaction it also rolls back.
     """
     frame = read_source(path)
-    known = _existing_customer_ids(session)
-    fresh = frame[~frame["customer_id"].isin(known)]
+    known = _existing_account_numbers(session)
+    fresh = frame[~frame["account_number"].isin(known)]
 
     if fresh.empty:
         return IngestionReport(0, 0, 0, already_present=len(frame))
+
+    fresh = _with_ids(fresh)
 
     ingested_at = now()
     customers = _customer_rows(fresh, ingested_at)
     statements = _statement_rows(fresh)
     outcomes = _outcome_rows(fresh)
 
-    # Customers first: the other two tables are foreign-keyed to them.
+    # Users first, then customers: every later table is foreign-keyed to them.
+    _insert_batched(session, User, _user_rows(fresh, ingested_at))
+    _insert_batched(session, UserDetails, _details_rows(fresh))
     _insert_batched(session, Customer, customers)
     _insert_batched(session, MonthlyStatement, statements)
     _insert_batched(session, CreditOutcome, outcomes)
@@ -123,21 +135,58 @@ def load_taiwan(session: Session, path: Path | str | None = None) -> IngestionRe
     )
 
 
-def _existing_customer_ids(session: Session) -> set[str]:
-    return set(session.scalars(select(Customer.customer_id)).all())
+def _with_ids(frame: pd.DataFrame) -> pd.DataFrame:
+    """The frame with a fresh UUID per row for its user and for its customer.
+
+    Minted here, not by the database, because the rows that point at them go in the
+    same batches and need the value up front.
+    """
+    out = frame.copy()
+    out["user_id"] = [uuid.uuid4() for _ in range(len(out))]
+    out["customer_uuid"] = [uuid.uuid4() for _ in range(len(out))]
+    return out
+
+
+def _existing_account_numbers(session: Session) -> set[str]:
+    return set(session.scalars(select(Customer.account_number)).all())
+
+
+def _user_rows(frame: pd.DataFrame, created_at: datetime) -> list[dict]:
+    return [
+        {
+            "id": row.user_id,
+            "display_name": invent_name(row.account_number),
+            "role": "cardholder",
+            # No email or password: a dataset entity cannot sign in until
+            # someone registers a login for it.
+            "email": None,
+            "password_hash": None,
+            "created_at": created_at,
+        }
+        for row in frame.itertuples(index=False)
+    ]
+
+
+def _details_rows(frame: pd.DataFrame) -> list[dict]:
+    return [
+        {
+            "user_id": row.user_id,
+            "sex": int(row.SEX),
+            "age_years": int(row.AGE),
+            "education": int(row.EDUCATION),
+            "marriage": int(row.MARRIAGE),
+        }
+        for row in frame.itertuples(index=False)
+    ]
 
 
 def _customer_rows(frame: pd.DataFrame, ingested_at: datetime) -> list[dict]:
     return [
         {
-            "customer_id": row.customer_id,
+            "id": row.customer_uuid,
+            "account_number": row.account_number,
+            "user_id": row.user_id,
             "credit_limit": float(row.LIMIT_BAL),
-            "sex": int(row.SEX),
-            "age_years": int(row.AGE),
-            "education": int(row.EDUCATION),
-            "marriage": int(row.MARRIAGE),
-            # Left null: a dataset entity has no login until someone registers.
-            "user_account_id": None,
             "ingested_at": ingested_at,
         }
         for row in frame.itertuples(index=False)
@@ -150,7 +199,7 @@ def _statement_rows(frame: pd.DataFrame) -> list[dict]:
         for month in range(1, MONTHS_OBSERVED + 1):
             rows.append(
                 {
-                    "customer_id": row.customer_id,
+                    "customer_id": row.customer_uuid,
                     "month_offset": month,
                     "repayment_status": int(getattr(row, f"PAY_{month}")),
                     "bill_amount": float(getattr(row, f"BILL_AMT{month}")),
@@ -163,7 +212,7 @@ def _statement_rows(frame: pd.DataFrame) -> list[dict]:
 def _outcome_rows(frame: pd.DataFrame) -> list[dict]:
     return [
         {
-            "customer_id": row.customer_id,
+            "customer_id": row.customer_uuid,
             "defaulted": bool(getattr(row, TARGET)),
             "observed_period": SOURCE_OBSERVED_PERIOD,
         }
@@ -190,7 +239,7 @@ def main() -> IngestionReport:
 
     if report.customers:
         print(
-            f"ingested       {report.customers} customers, "
+            f"ingested       {report.customers} customers (each with a user), "
             f"{report.statements} statements, {report.outcomes} outcomes"
         )
     else:

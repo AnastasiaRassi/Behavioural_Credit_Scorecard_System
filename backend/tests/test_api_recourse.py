@@ -74,10 +74,10 @@ def test_an_unknown_account_is_not_found(client):
 
 def test_a_cardholder_cannot_read_another_account(client, scored_customer, api_session):
     """The guard is account_reader's, and it applies here too."""
-    from app.db.models import UserAccount
+    from app.db.models import User
     from app.core.passwords import hash_password
 
-    other = UserAccount(
+    other = User(
         email="someone-else@example.test",
         display_name="Someone Else",
         password_hash=hash_password("not-a-real-password"),

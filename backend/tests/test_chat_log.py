@@ -9,13 +9,18 @@ from app.ai import llm_client, local_llm
 from app.db import chat_log
 from app.db.models import ChatTurn
 from tests.conftest import bearer
-from tests.test_api import api_session, client  # noqa: F401  (fixture import)
+from tests.test_api import (  # noqa: F401  (fixture imports)
+    api_session,
+    client,
+    quietest_customer_id,
+    riskiest_customer_id,
+)
 from tests.test_api_roles import any_customer_id, cardholder_identity  # noqa: F401
 
 
-def _turn(**overrides) -> dict:
+def _turn(customer_id, **overrides) -> dict:
     turn = dict(
-        customer_id="C1", turn_number=1, user_message="Why?", reply="Because.",
+        customer_id=customer_id, turn_number=1, user_message="Why?", reply="Because.",
         source="model", fallback_reason=None, rejected_reply=None,
         llm_model="test-model", prompt_version="v1", scoring_model_version="m1",
         latency_ms=1000, prompt_tokens=100, completion_tokens=20,
@@ -30,16 +35,22 @@ def session(api_session):  # noqa: F811
     return api_session
 
 
-def test_record_stores_the_turn(session):
-    chat_log.record(session, _turn())
+@pytest.fixture
+def turn(session, riskiest_customer_id):  # noqa: F811
+    """Builds a turn about a real customer: the log's customer_id is a foreign key."""
+    return lambda **overrides: _turn(riskiest_customer_id, **overrides)
+
+
+def test_record_stores_the_turn(session, turn):
+    chat_log.record(session, turn())
 
     stored = session.query(ChatTurn).one()
-    assert (stored.customer_id, stored.source, stored.latency_ms) == ("C1", "model", 1000)
+    assert (stored.source, stored.latency_ms) == ("model", 1000)
 
 
-def test_a_bad_row_is_contained_and_the_session_stays_usable(session):
+def test_a_bad_row_is_contained_and_the_session_stays_usable(session, turn):
     # A template turn with no reason breaks the table's own rule.
-    chat_log.record(session, _turn(source="template", fallback_reason=None))
+    chat_log.record(session, turn(source="template", fallback_reason=None))
 
     assert session.query(ChatTurn).count() == 0
     assert session.execute(text("select 1")).scalar() == 1
@@ -49,12 +60,12 @@ def test_summary_is_empty_without_turns(session):
     assert chat_log.summary(session)["turns"] == 0
 
 
-def test_summary_counts_fallbacks_and_times_only_model_turns(session):
-    chat_log.record(session, _turn(latency_ms=1000))
-    chat_log.record(session, _turn(latency_ms=3000, prompt_tokens=200, completion_tokens=40))
-    chat_log.record(session, _turn(source="template", fallback_reason="llm_timeout", latency_ms=60000))
+def test_summary_counts_fallbacks_and_times_only_model_turns(session, turn):
+    chat_log.record(session, turn(latency_ms=1000))
+    chat_log.record(session, turn(latency_ms=3000, prompt_tokens=200, completion_tokens=40))
+    chat_log.record(session, turn(source="template", fallback_reason="llm_timeout", latency_ms=60000))
     chat_log.record(
-        session, _turn(source="template", fallback_reason="invented_numbers", rejected_reply="x")
+        session, turn(source="template", fallback_reason="invented_numbers", rejected_reply="x")
     )
 
     result = chat_log.summary(session)
@@ -81,15 +92,15 @@ def test_a_chat_request_is_logged_and_shows_in_the_summary(
 
     assert response.status_code == 200
     stored = session.query(ChatTurn).one()
-    assert (stored.customer_id, stored.source, stored.fallback_reason) == (
+    assert (str(stored.customer_id), stored.source, stored.fallback_reason) == (
         any_customer_id, "template", "llm_unreachable",
     )
     assert client.get("/monitoring/assistant").json()["fallback_reasons"] == {"llm_unreachable": 1}
 
 
-def test_both_guard_verdicts_are_stored(session):
-    chat_log.record(session, _turn(grounding_passed=True, claim_passed=False))
-    chat_log.record(session, _turn(source="template", fallback_reason="llm_timeout"))
+def test_both_guard_verdicts_are_stored(session, turn):
+    chat_log.record(session, turn(grounding_passed=True, claim_passed=False))
+    chat_log.record(session, turn(source="template", fallback_reason="llm_timeout"))
 
     passed, unchecked = session.query(ChatTurn).order_by(ChatTurn.source).all()
     assert (passed.grounding_passed, passed.claim_passed) == (True, False)
@@ -97,28 +108,28 @@ def test_both_guard_verdicts_are_stored(session):
     assert (unchecked.grounding_passed, unchecked.claim_passed) == (None, None)
 
 
-def test_the_opening_is_stored_as_turn_zero_with_an_empty_message(session):
-    chat_log.record(session, _turn(turn_number=0, user_message=""))
+def test_the_opening_is_stored_as_turn_zero_with_an_empty_message(session, turn):
+    chat_log.record(session, turn(turn_number=0, user_message=""))
 
     stored = session.query(ChatTurn).one()
     assert (stored.turn_number, stored.user_message) == (0, "")
 
 
-def test_summary_reports_guard_rejection_rates_and_a_breakdown_per_provider(session):
-    chat_log.record(session, _turn(llm_model="gpt-4o-mini", grounding_passed=True, claim_passed=True))
+def test_summary_reports_guard_rejection_rates_and_a_breakdown_per_provider(session, turn):
+    chat_log.record(session, turn(llm_model="gpt-4o-mini", grounding_passed=True, claim_passed=True))
     chat_log.record(
         session,
-        _turn(llm_model="gpt-4o-mini", source="template", fallback_reason="invented_numbers",
+        turn(llm_model="gpt-4o-mini", source="template", fallback_reason="invented_numbers",
               rejected_reply="x", grounding_passed=False, claim_passed=True),
     )
     chat_log.record(
         session,
-        _turn(llm_model="gpt-4o-mini", source="template", fallback_reason="unsafe_claim",
+        turn(llm_model="gpt-4o-mini", source="template", fallback_reason="unsafe_claim",
               rejected_reply="y", grounding_passed=True, claim_passed=False),
     )
     # No LLM text: not part of the denominator.
     chat_log.record(
-        session, _turn(llm_model="qwen2.5:3b", source="template", fallback_reason="llm_unreachable"),
+        session, turn(llm_model="qwen2.5:3b", source="template", fallback_reason="llm_unreachable"),
     )
 
     result = chat_log.summary(session)
@@ -133,8 +144,8 @@ def test_summary_reports_guard_rejection_rates_and_a_breakdown_per_provider(sess
     }
 
 
-def test_summary_rates_are_none_when_nothing_was_checked(session):
-    chat_log.record(session, _turn(source="template", fallback_reason="llm_timeout"))
+def test_summary_rates_are_none_when_nothing_was_checked(session, turn):
+    chat_log.record(session, turn(source="template", fallback_reason="llm_timeout"))
 
     result = chat_log.summary(session)
 

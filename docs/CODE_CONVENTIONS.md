@@ -32,8 +32,8 @@ backend/app/
 │   └── monitoring.py            # drift and production performance
 ├── db/
 │   ├── models/                  # the schema, one module per concern
-│   │   ├── accounts.py          #   user_account: who can sign in
-│   │   ├── customers.py         #   customer, monthly_statement, credit_outcome
+│   │   ├── accounts.py          #   users, user_details: every person; details for customers
+│   │   ├── customers.py         #   customer (account_number), monthly_statement, credit_outcome
 │   │   ├── scoring.py           #   model_version, prediction
 │   │   ├── decisions.py         #   decision, observed_outcome
 │   │   ├── chat.py              #   chat_turn: every assistant reply, with how it was made
@@ -42,7 +42,7 @@ backend/app/
 │   ├── ingest.py                # load_taiwan(): the dataset into the tables
 │   ├── statements.py            # the stored months pivoted back to a wide frame
 │   ├── chat_log.py              # write a chat turn; summarise the log (GET /monitoring/assistant)
-│   ├── customer_registry.py     # a customer from submitted columns; account links
+│   ├── customer_registry.py     # a customer from submitted columns; give_login; invented names
 │   └── seed.py                  # demo accounts and the live model version
 ├── schemas/                     # pydantic request and response shapes
 ├── core/config.py               # DATABASE_URL, read once from .env
@@ -51,17 +51,30 @@ backend/app/
 └── artifacts/                   # generated, gitignored
 ```
 
-`user_account` holds credentials, but storing a hash is not a login. How a request
+`users` holds credentials, but storing a hash is not a login. How a request
 proves who is making it is a separate concern from this schema; what the schema
 guarantees is that `password_hash` is never readable. `core/passwords.py` hashes
 with stdlib scrypt and nothing else touches a plaintext password, and the seed
 stores a random one per account rather than a shared demo credential.
 
-**Rule: a `user_account` is a login, a `customer` is a scoring subject.** They are
-separate tables joined by a nullable, unique FK, set only when a cardholder
-registers. Staff never get a customer row, and the 30,000 dataset entities never
-get an account. Keying a prediction on an account would have forced a
-credential-bearing row into existence for every customer ever scored.
+**Rule: every person is a `users` row; a `customer` is what is scored about one.**
+Staff are users with no details. Each of the 30,000 dataset entities is a user with
+role `cardholder`, a `user_details` row (the audited demographics) and a `customer`
+(the limit, the history, the label), so `customer.user_id` is never null. Whether a
+user can sign in is a property of the row: `email` and `password_hash` are both set
+or both null, and only a cardholder may have neither. Registering is attaching a
+login to a customer's existing user (`customer_registry.give_login`), never
+creating a second person. Names are fictional and live only on
+`users.display_name`; nothing duplicates them.
+
+**Rule: ids are UUIDs, and the dataset's number is `customer.account_number`.**
+`users.id`, `customer.id` and every FK to them are UUIDs, so a sequence never
+reaches a URL. The source file's ID (or a walk-in's `W-...`) is kept as the unique
+`account_number`: what an officer types and what the ML queue artifact is keyed
+on. `ml/worklist.py` therefore speaks account numbers and the API adds the
+customer's UUID to a row (`dependencies.queued_account`), so the join between the
+two lives in one place. `coaching.json` is keyed by account number for the same
+reason: it survives a database rebuild that mints new UUIDs.
 
 **Rule: `ml/` holds logic, `api/` holds only routing.** An endpoint should import from
 `ml/` and translate between HTTP and Python. No scoring maths in a route handler.

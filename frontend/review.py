@@ -4,17 +4,12 @@ A review request is a customer asking a person to look again at the model's rati
 The shapes here are the ones `api.review_requests()` returns, so the screen does not
 change when the demo list is replaced by the real endpoint.
 """
-import re
 from datetime import datetime, timedelta, timezone
 
 OPEN_STATUSES = ("pending", "in_review")
 STATUS_LABELS = {"pending": "Pending", "in_review": "In review", "resolved": "Resolved"}
 
 NOTE_PREVIEW_CHARS = 140
-
-# Account numbers are bare digits; anything else in a deep link is not one, and it
-# ends up in an API path.
-_CUSTOMER_ID = re.compile(r"[A-Za-z0-9_-]{1,32}")
 
 # Demo only: (how long ago, status, the customer's note).
 _DEMO = (
@@ -30,10 +25,6 @@ _DEMO = (
     (timedelta(hours=2), "pending",
      "I do not understand why I am flagged. Can someone check my account?"),
 )
-
-
-def valid_customer_id(value: str | None) -> bool:
-    return bool(value) and _CUSTOMER_ID.fullmatch(value) is not None
 
 
 def parse_time(value: str) -> datetime:
@@ -90,8 +81,8 @@ def card_data(request: dict, band: str | None, now: datetime) -> dict:
     note = request["reason"].strip()
     preview = truncate(note)
     return {
-        "name": request.get("full_name") or f"Customer {request['customer_id']}",
-        "account": request["customer_id"],
+        "name": request.get("full_name") or f"Customer {request['account_number']}",
+        "account": request["account_number"],
         "waiting": waiting_text(request["requested_at"], now),
         "note": preview,
         "full_note": note,
@@ -101,21 +92,23 @@ def card_data(request: dict, band: str | None, now: datetime) -> dict:
     }
 
 
-def demo_requests(
-    customer_ids: list[str], names: dict[str, str], now: datetime
-) -> list[dict]:
-    """A fixed demo list over real accounts. Replaced by the endpoint, not extended."""
+def demo_requests(customers: list[dict], now: datetime) -> list[dict]:
+    """A fixed demo list over real customers. Replaced by the endpoint, not extended.
+
+    Each customer carries customer_id, account_number and full_name.
+    """
     return [
         {
             "request_id": f"demo-{number}",
-            "customer_id": customer_id,
-            "full_name": names.get(customer_id),
+            "customer_id": customer["customer_id"],
+            "account_number": customer["account_number"],
+            "full_name": customer.get("full_name"),
             "requested_at": (now - age).isoformat(),
             "reason": note,
             "status": status,
         }
-        for number, (customer_id, (age, status, note)) in enumerate(
-            zip(customer_ids, _DEMO), start=1
+        for number, (customer, (age, status, note)) in enumerate(
+            zip(customers, _DEMO), start=1
         )
     ]
 

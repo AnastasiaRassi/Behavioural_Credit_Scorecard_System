@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import get_session, signed_in_user
 from app.core import sessions
 from app.core.passwords import hash_password, verify_password
-from app.db.models import UserAccount
+from app.db.models import User
 from app.schemas.sessions import Account, Credentials, SignedIn
 
 router = APIRouter(tags=["session"])
@@ -41,9 +41,11 @@ def sign_in(request: Credentials, session: Session = Depends(get_session)):
     # Folded to lower case because that is how the seed and registration store
     # an email, so a capitalised one is the same account rather than no account.
     email = request.email.strip().lower()
-    account = session.query(UserAccount).filter_by(email=email).one_or_none()
+    account = session.query(User).filter_by(email=email).one_or_none()
 
-    if account is None:
+    # A customer who never registered has a user but no password, so there is
+    # nothing to verify: treated exactly like an unknown email.
+    if account is None or account.password_hash is None:
         # Hashed anyway, so a missing account does not answer faster than a wrong
         # password and reveal itself by timing.
         verify_password(request.password, _decoy_hash())
@@ -59,18 +61,17 @@ def sign_in(request: Credentials, session: Session = Depends(get_session)):
 
 
 @router.get("/session", response_model=Account)
-def read_signed_in_account(account: UserAccount = Depends(signed_in_user)):
+def read_signed_in_account(account: User = Depends(signed_in_user)):
     """Who the presented token belongs to, for a client checking it is still valid."""
     return _account(account)
 
 
-def _account(account: UserAccount) -> Account:
-    # A cardholder's customer id comes from the registration link, since an
-    # account id is not a customer id and the cardholder screen needs both.
+def _account(account: User) -> Account:
+    # A user id is not a customer id, and the cardholder screen needs the latter.
     registered_as = account.customer
     return Account(
         email=account.email,
         display_name=account.display_name,
         role=account.role,
-        customer_id=registered_as.customer_id if registered_as else None,
+        customer_id=str(registered_as.id) if registered_as else None,
     )

@@ -163,14 +163,14 @@ def is_grounded(text: str, payload: CoachingPayload) -> bool:
 
 
 def coach(
-    customer_id: str,
+    account_number: str,
     band: str,
     reasons: Sequence[Mapping],
     record: Mapping[str, float] | None = None,
 ) -> Coaching:
     """Coaching for one account. Needs no network."""
     descriptions = [reason["description"] for reason in reasons]
-    cached = _cached(customer_id, band, descriptions)
+    cached = _cached(account_number, band, descriptions)
     if cached is not None:
         return cached
     return Coaching(text=render(build_payload(band, reasons, record)), disclaimer=DISCLAIMER)
@@ -180,7 +180,7 @@ def _model_version() -> str:
     return artifacts.scoring_config()["model_version"]
 
 
-def _cached(customer_id: str, band: str, descriptions: list[str]) -> Coaching | None:
+def _cached(account_number: str, band: str, descriptions: list[str]) -> Coaching | None:
     """A pre-generated text, only while it still describes this model and this account."""
     try:
         cache = artifacts.coaching_cache()
@@ -188,14 +188,14 @@ def _cached(customer_id: str, band: str, descriptions: list[str]) -> Coaching | 
         return None
     if cache.get("model_version") != _model_version():
         return None
-    entry = cache.get("entries", {}).get(customer_id)
+    entry = cache.get("entries", {}).get(account_number)
     if entry is None or entry["band"] != band or entry["reasons"] != descriptions:
         return None
     return Coaching(text=entry["coaching"]["text"], disclaimer=entry["coaching"]["disclaimer"])
 
 
 def cache_entry(
-    customer_id: str,
+    account_number: str,
     band: str,
     reasons: Sequence[Mapping],
     record: Mapping[str, float] | None,
@@ -204,17 +204,17 @@ def cache_entry(
     return {
         "band": band,
         "reasons": [reason["description"] for reason in reasons],
-        "coaching": coach(customer_id, band, reasons, record).to_dict(),
+        "coaching": coach(account_number, band, reasons, record).to_dict(),
     }
 
 
-def cache_covers(customer_ids: Sequence[str]) -> bool:
-    """True when the cache was written by the live model and holds every id asked for."""
+def cache_covers(account_numbers: Sequence[str]) -> bool:
+    """True when the cache was written by the live model and holds every account asked for."""
     try:
         cache = artifacts.coaching_cache()
     except ArtifactsMissing:
         return False
-    return cache.get("model_version") == _model_version() and set(customer_ids) <= set(
+    return cache.get("model_version") == _model_version() and set(account_numbers) <= set(
         cache.get("entries", {})
     )
 

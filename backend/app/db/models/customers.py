@@ -5,9 +5,10 @@ repayment history repeats six times per customer, so it is a child table keyed b
 month; storing `PAY_1`..`PAY_6` as eighteen columns would make "the most recent
 month" a column name rather than a value, and no query could ask for it.
 
-`customer` is not `user_account`. A customer is an entity being scored and needs
-no credentials; `user_account_id` is filled only if that cardholder registers an
-account, which most never do. Staff have an account and no customer row.
+A customer is a person (`users`, role 'cardholder', with a `user_details` row) and
+`customer` is what is scored about them: the limit, the history and the label.
+`user_id` is therefore never null. Most customers have no login; staff have a user
+and no customer row.
 
 The wide shape the model wants is rebuilt on read by db/statements.py.
 """
@@ -27,7 +28,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.db.models.base import Base, now
+from app.db.models.base import Base, new_id, now
 
 # The observation window the scorecard was built on. Matches the six PAY_n /
 # BILL_AMTn / PAY_AMTn groups in ml/feature_engineering.py; changing one without
@@ -40,39 +41,34 @@ SOURCE_OBSERVED_PERIOD = "2005-10"
 
 
 class Customer(Base):
-    """A cardholder being scored, with the attributes the fairness audit needs.
+    """A cardholder being scored.
 
-    Keyed by the dataset's own ID so a row traces back to the source file.
+    Keyed by a UUID like every other table. The dataset's own ID survives as
+    `account_number`, so a row still traces back to the source file.
     """
 
     __tablename__ = "customer"
 
-    # The source dataset's ID ('1', '42'), never a row index: positions shift
-    # when the file is re-sorted and would silently repoint every statement.
-    customer_id: Mapped[str] = mapped_column(Text, primary_key=True)
-
-    credit_limit: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
-
-    # Protected attributes. Stored because the fairness audit needs them, and
-    # dropped inside CreditScorer.prepare() before anything reaches the model.
-    # Codes are the published codebook's, folded to documented levels at ingest.
-    sex: Mapped[int] = mapped_column(SmallInteger, nullable=False)
-    age_years: Mapped[int] = mapped_column(SmallInteger, nullable=False)
-    education: Mapped[int] = mapped_column(SmallInteger, nullable=False)
-    marriage: Mapped[int] = mapped_column(SmallInteger, nullable=False)
-
-    # Null for everyone the system has not met, which is most of them. Unique, so
-    # one account can never claim two customers.
-    user_account_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("user_account.id"), unique=True, nullable=True
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=new_id
     )
+
+    # The source dataset's ID ('1', '42') or a walk-in's 'W-...', never a row
+    # index: positions shift when the file is re-sorted and would silently
+    # repoint every statement. What an officer types, and what the ML queue
+    # artifact is keyed on.
+    account_number: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
+
+    # The person. Unique, so one user can never be two customers.
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id"), unique=True, nullable=False
+    )
+    credit_limit: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     ingested_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=now
     )
 
-    account: Mapped["UserAccount | None"] = relationship(  # noqa: F821
-        back_populates="customer"
-    )
+    user: Mapped["User"] = relationship(back_populates="customer")  # noqa: F821
     statements: Mapped[list["MonthlyStatement"]] = relationship(
         back_populates="customer",
         cascade="all, delete-orphan",
@@ -87,19 +83,23 @@ class Customer(Base):
 
     __table_args__ = (
         CheckConstraint("credit_limit > 0", name="credit_limit_is_positive"),
-        CheckConstraint("sex IN (1, 2)", name="sex_is_a_codebook_value"),
         CheckConstraint(
-            "age_years BETWEEN 18 AND 120", name="age_years_is_plausible"
+            "length(trim(account_number)) > 0", name="account_number_is_present"
         ),
-        CheckConstraint(
-            "education IN (1, 2, 3, 4)", name="education_is_a_codebook_value"
-        ),
-        CheckConstraint("marriage IN (1, 2, 3)", name="marriage_is_a_codebook_value"),
     )
 
     @property
+    def details(self) -> "UserDetails":  # noqa: F821
+        return self.user.details
+
+    @property
+    def display_name(self) -> str:
+        return self.user.display_name
+
+    @property
     def is_registered(self) -> bool:
-        return self.user_account_id is not None
+        """Whether this customer has a login."""
+        return self.user.can_sign_in
 
 
 class MonthlyStatement(Base):
@@ -107,8 +107,8 @@ class MonthlyStatement(Base):
 
     __tablename__ = "monthly_statement"
 
-    customer_id: Mapped[str] = mapped_column(
-        ForeignKey("customer.customer_id", ondelete="CASCADE"), primary_key=True
+    customer_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("customer.id", ondelete="CASCADE"), primary_key=True
     )
 
     # 1 is the most recent month, matching the source's PAY_1/BILL_AMT1 suffix, so
@@ -149,8 +149,8 @@ class CreditOutcome(Base):
 
     __tablename__ = "credit_outcome"
 
-    customer_id: Mapped[str] = mapped_column(
-        ForeignKey("customer.customer_id", ondelete="CASCADE"), primary_key=True
+    customer_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("customer.id", ondelete="CASCADE"), primary_key=True
     )
     defaulted: Mapped[bool] = mapped_column(Boolean, nullable=False)
 

@@ -17,8 +17,9 @@ from sqlalchemy.orm import Session
 
 from app.core import sessions
 from app.db.database import _session_factory
-from app.db.models import ModelVersion, Prediction, UserAccount
+from app.db.models import Customer, ModelVersion, Prediction, User
 from app.ml.counterfactuals import CounterfactualExplainer
+from app.ml import worklist
 from app.ml.explainability import Explainer
 from app.ml.scorer import ArtifactsMissing, CreditScorer
 
@@ -101,11 +102,11 @@ def prediction_or_404(session: Session, prediction_id: str) -> Prediction:
 
 def user_by_email(
     session: Session, email: str, expected_role: str | tuple[str, ...]
-) -> UserAccount:
+) -> User:
     """The account behind an asserted email: 404 if unknown, 403 if the wrong role."""
     allowed = (expected_role,) if isinstance(expected_role, str) else expected_role
 
-    user = session.query(UserAccount).filter_by(email=email).one_or_none()
+    user = session.query(User).filter_by(email=email).one_or_none()
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=f"Unknown user {email}"
@@ -131,7 +132,7 @@ def _unauthenticated(detail: str) -> HTTPException:
 def signed_in_user(
     authorization: str | None = Header(default=None, alias="Authorization"),
     session: Session = Depends(get_session),
-) -> UserAccount:
+) -> User:
     """The account a presented bearer token belongs to, or 401.
 
     Authentication only: what the caller may then reach is decided per resource.
@@ -148,13 +149,45 @@ def signed_in_user(
     # be trusted. The account is still re-read rather than carried in the token,
     # so a changed role or a deleted account takes effect on the next request
     # instead of at the next expiry.
-    account = session.query(UserAccount).filter_by(email=identity).one_or_none()
+    account = session.query(User).filter_by(email=identity).one_or_none()
     if account is None:
         raise _unauthenticated("This session belongs to an account that no longer exists")
     return account
 
 
-def authorise_account_read(user: UserAccount, customer_id: str) -> UserAccount:
+def customer_or_404(session: Session, customer_id: str) -> Customer:
+    """The customer behind a path id. A malformed id names nobody, so it is a 404 too."""
+    try:
+        parsed = uuid.UUID(customer_id)
+    except (ValueError, AttributeError, TypeError):
+        parsed = None
+
+    customer = None if parsed is None else session.get(Customer, parsed)
+    if customer is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No customer {customer_id}",
+        )
+    return customer
+
+
+def queued_account(session: Session, customer_id: str) -> tuple[Customer, dict]:
+    """A customer and their queue row, the row carrying the customer's UUID.
+
+    The queue artifact is keyed by account number and knows nothing of UUIDs, so
+    this is the one place the two are joined.
+    """
+    customer = customer_or_404(session, customer_id)
+    row = worklist.find(customer.account_number)
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No queued customer {customer_id}",
+        )
+    return customer, {**row, "customer_id": str(customer.id)}
+
+
+def authorise_account_read(user: User, customer_id: str) -> User:
     """Who may read one cardholder's account: that cardholder, or any staff reader.
 
     The only place this rule is written. Takes the resolved account, so changing
@@ -167,7 +200,7 @@ def authorise_account_read(user: UserAccount, customer_id: str) -> UserAccount:
     # matched against the customer this account actually registered as rather
     # than compared to the path.
     registered_as = user.customer
-    if registered_as is None or registered_as.customer_id != customer_id:
+    if registered_as is None or str(registered_as.id) != customer_id.lower():
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"{user.email} may only read their own account",
@@ -176,7 +209,7 @@ def authorise_account_read(user: UserAccount, customer_id: str) -> UserAccount:
 
 
 def account_reader(
-    customer_id: str, user: UserAccount = Depends(signed_in_user)
-) -> UserAccount:
+    customer_id: str, user: User = Depends(signed_in_user)
+) -> User:
     """Route guard: the signed-in caller, authorised to read this one account."""
     return authorise_account_read(user, customer_id)

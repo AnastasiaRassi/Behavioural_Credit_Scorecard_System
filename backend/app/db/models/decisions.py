@@ -37,7 +37,7 @@ class Decision(Base):
         ForeignKey("prediction.id"), nullable=False, index=True
     )
     decided_by_user_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("user_account.id"), nullable=False, index=True
+        ForeignKey("users.id"), nullable=False, index=True
     )
     decided_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=now
@@ -49,7 +49,7 @@ class Decision(Base):
     prediction: Mapped["Prediction"] = relationship(  # noqa: F821
         back_populates="decisions"
     )
-    decided_by: Mapped["UserAccount"] = relationship(  # noqa: F821
+    decided_by: Mapped["User"] = relationship(  # noqa: F821
         back_populates="decisions"
     )
 

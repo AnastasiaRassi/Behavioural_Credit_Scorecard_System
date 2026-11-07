@@ -15,8 +15,10 @@ the artifacts do not contain.
 With DEMO_MODE=1 it also creates one account per role on the password `demo`,
 so the app can be shown without anyone typing a generated credential.
 
-Seeds accounts, the model and the demo cardholders' coaching cache. Customers come from the dataset via
-db/ingest.py, and predictions are written by the API when someone is scored.
+Seeds staff, the model and the demo cardholders' logins and coaching cache. Customers
+(each already a user) come from the dataset via db/ingest.py, so "registering" a
+cardholder here means giving an ingested customer's user an email and password.
+Predictions are written by the API when someone is scored.
 """
 import json
 import os
@@ -26,9 +28,13 @@ from secrets import token_urlsafe
 from sqlalchemy.orm import Session
 
 from app.core.passwords import hash_password
-from app.db.customer_registry import link_account
+from app.db.customer_registry import (
+    find_by_account_number,
+    give_login,
+    invent_name,
+)
 from app.db.database import create_all, session_scope
-from app.db.models import Customer, ModelVersion, UserAccount
+from app.db.models import ModelVersion, User
 from app.ml.train import artifacts_dir
 
 # Demo staff: email, name, role.
@@ -39,23 +45,9 @@ STAFF = [
 ]
 
 # A handful of cardholders so the cardholder role has accounts to open without
-# an officer having scored anyone first. Each one is linked to the customer it
-# represents, which is how a login reaches a scoring subject at all.
+# an officer having scored anyone first. Each one is a customer whose user is
+# given a login, which is how a login reaches a scoring subject at all.
 DEMO_CARDHOLDERS = 5
-
-# Invented people. Drawn from a fixed list rather than a generator library so
-# the names are reproducible, reviewable, and add no dependency. Obviously
-# fictional, because the dataset's real customers are anonymous and inventing
-# plausible identities for them would misrepresent what the data contains.
-FIRST_NAMES = (
-    "Nour", "Karim", "Layla", "Fadi", "Maya", "Tarek", "Rima", "Jad",
-    "Hiba", "Omar", "Dana", "Ziad",
-)
-LAST_NAMES = (
-    "Haddad", "Khoury", "Nassar", "Saab", "Gerges", "Mansour", "Aoun",
-    "Chalhoub", "Daher", "Fares", "Rizk", "Sleiman",
-)
-
 
 # One account per role on a shared, memorable password, for showing the app.
 # DEMO_MODE=1 only: these are the credentials printed on a slide, so they must
@@ -82,13 +74,13 @@ def demo_password() -> str:
     return os.environ.get("SEED_PASSWORD") or token_urlsafe(32)
 
 
-def _set_credential(account: UserAccount) -> bool:
+def _set_credential(account: User) -> bool:
     """Bring an existing account to the configured password. True if it changed.
 
     Rerunning the seed is otherwise a no-op per account, which would leave the
     accounts created before SEED_PASSWORD was set holding a hash of a random
     string nobody recorded — unsignable, with no way to repair them short of
-    deleting the rows and the cardholder links hanging off them.
+    deleting the rows and the customers hanging off them.
     """
     configured = os.environ.get("SEED_PASSWORD")
     if not configured:
@@ -111,22 +103,10 @@ def live_model() -> dict:
     return {"version": config["model_version"], "trained_on": trained}
 
 
-def invent_name(customer_id: str) -> str:
-    """A stable fictional name for a customer id.
-
-    Derived from the id itself, so the same account is always the same person
-    and no state has to be kept to make that true.
-    """
-    digits = int("".join(filter(str.isdigit, customer_id)) or 0)
-    first = FIRST_NAMES[digits % len(FIRST_NAMES)]
-    last = LAST_NAMES[(digits // len(FIRST_NAMES)) % len(LAST_NAMES)]
-    return f"{first} {last}"
-
-
 def demo_cardholders(count: int = DEMO_CARDHOLDERS) -> list[tuple[str, str, str]]:
-    """A spread of queued customers: the riskiest, the safest, and the middle.
+    """(account number, name, email) for a spread of queued customers.
 
-    Picked by position in the risk ordering rather than at random, so the same
+    The riskiest, the safest, and the middle. Picked by position in the risk ordering rather than at random, so the same
     accounts are seeded on every run and a demo shows both a warning and an
     all-clear.
     """
@@ -143,24 +123,31 @@ def demo_cardholders(count: int = DEMO_CARDHOLDERS) -> list[tuple[str, str, str]
     chosen = [rows[position] for position in sorted(positions)][:count]
 
     people = []
+    taken: set[str] = set()
     for row in chosen:
-        customer_id = row["customer_id"]
-        name = invent_name(customer_id)
+        account_number = row["account_number"]
+        name = invent_name(account_number)
         handle = name.lower().replace(" ", ".")
-        people.append((customer_id, name, f"{handle}@example.test"))
+        email = f"{handle}@example.test"
+        if email in taken:
+            # Only 144 names exist, so two demo customers can share one; the
+            # account number keeps the second email unique.
+            email = f"{handle}.{account_number}@example.test"
+        taken.add(email)
+        people.append((account_number, name, email))
     return people
 
 
 def _seed_staff(session: Session) -> tuple[list[str], list[str]]:
     added, recredentialed = [], []
     for email, display_name, role in STAFF:
-        existing = session.query(UserAccount).filter_by(email=email).one_or_none()
+        existing = session.query(User).filter_by(email=email).one_or_none()
         if existing:
             if _set_credential(existing):
                 recredentialed.append(email)
             continue
         session.add(
-            UserAccount(
+            User(
                 email=email,
                 display_name=display_name,
                 password_hash=hash_password(demo_password()),
@@ -173,30 +160,22 @@ def _seed_staff(session: Session) -> tuple[list[str], list[str]]:
 
 def _seed_cardholders(session: Session) -> tuple[list[str], list[str], list[str]]:
     added, not_ingested, recredentialed = [], [], []
-    for customer_id, name, email in demo_cardholders():
-        customer = session.get(Customer, customer_id)
+    for account_number, name, email in demo_cardholders():
+        customer = find_by_account_number(session, account_number)
         if customer is None:
-            not_ingested.append(customer_id)
+            not_ingested.append(account_number)
             continue
 
-        existing = session.query(UserAccount).filter_by(email=email).one_or_none()
+        existing = session.query(User).filter_by(email=email).one_or_none()
         if existing is not None:
             if _set_credential(existing):
-                recredentialed.append(f"{customer_id} ({name})")
+                recredentialed.append(f"{account_number} ({name})")
             continue
-        if customer.user_account_id is not None:
+        if customer.user.can_sign_in:
             continue
 
-        account = UserAccount(
-            email=email,
-            display_name=name,
-            password_hash=hash_password(demo_password()),
-            role="cardholder",
-        )
-        session.add(account)
-        session.flush()
-        link_account(session, customer, account)
-        added.append(f"{customer_id} ({name})")
+        give_login(session, customer, email, hash_password(demo_password()))
+        added.append(f"{account_number} ({name})")
     return added, not_ingested, recredentialed
 
 
@@ -216,40 +195,40 @@ def seed_demo_accounts(session: Session) -> tuple[list[str], list[str]]:
 
     added, updated = [], []
     for email, display_name, role in DEMO_ACCOUNTS:
-        account = session.query(UserAccount).filter_by(email=email).one_or_none()
+        account = session.query(User).filter_by(email=email).one_or_none()
         if account is None:
-            account = UserAccount(email=email, display_name=display_name, role=role)
-            session.add(account)
+            if role == "cardholder":
+                account = _spare_customer_user(session)
+                if account is None:
+                    continue
+                account.email = email
+            else:
+                account = User(email=email, display_name=display_name, role=role)
+                session.add(account)
             added.append(email)
         else:
-            account.display_name = display_name
-            account.role = role
             updated.append(email)
+        account.display_name = display_name
+        account.role = role
         account.password_hash = hash_password(DEMO_PASSWORD)
         session.flush()
-
-        if role == "cardholder":
-            _link_spare_customer(session, account)
 
     return added, updated
 
 
-def _link_spare_customer(session: Session, account: UserAccount) -> None:
-    """Give the demo cardholder a scoring subject, so its screen has content.
+def _spare_customer_user(session: Session) -> User | None:
+    """A customer nobody can sign in as yet, to be the demo cardholder.
 
-    Any customer nobody else is linked to will do; without one the cardholder
-    screen can only say the account is not registered yet.
+    Any queued customer without a login will do; without one the cardholder
+    screen has no scoring subject to show.
     """
-    if account.customer is not None:
-        return
-
     from app.ml import worklist
 
     for row in worklist.all_rows()[:200]:
-        customer = session.get(Customer, row["customer_id"])
-        if customer is not None and customer.user_account_id is None:
-            link_account(session, customer, account)
-            return
+        customer = find_by_account_number(session, row["account_number"])
+        if customer is not None and not customer.user.can_sign_in:
+            return customer.user
+    return None
 
 
 def _pregenerate_coaching(session: Session) -> list[str]:
@@ -259,21 +238,28 @@ def _pregenerate_coaching(session: Session) -> list[str]:
     from app.ml import worklist
 
     people = demo_cardholders()
-    customer_ids = [customer_id for customer_id, _, _ in people]
-    if coaching.cache_covers(customer_ids):
+    # Keyed by account number, the dataset's id, so the cache survives a database
+    # rebuild that mints new customer UUIDs.
+    account_numbers = [account_number for account_number, _, _ in people]
+    if coaching.cache_covers(account_numbers):
         return []
 
     entries = {}
-    for customer_id in customer_ids:
-        row = worklist.find(customer_id)
+    for account_number in account_numbers:
+        row = worklist.find(account_number)
         if row is None:
             continue
+        customer = find_by_account_number(session, account_number)
         try:
-            record = statements.raw_input_for(session, customer_id)
+            record = (
+                statements.raw_input_for(session, customer.id)
+                if customer is not None
+                else None
+            )
         except statements.CustomerNotFound:
             record = None
-        entries[customer_id] = coaching.cache_entry(
-            customer_id, row["risk_band"], row["reasons"], record
+        entries[account_number] = coaching.cache_entry(
+            account_number, row["risk_band"], row["reasons"], record
         )
 
     coaching.write_cache(entries)
@@ -328,8 +314,8 @@ def main() -> dict:
 
     for email in added["users"]:
         print(f"user           {email}")
-    for customer_id in added["cardholders"]:
-        print(f"cardholder     {customer_id}")
+    for account_number in added["cardholders"]:
+        print(f"cardholder     {account_number}")
     for email in added["demo"]:
         print(f"demo account   {email} / {DEMO_PASSWORD}")
     for email in added["demo_updated"]:

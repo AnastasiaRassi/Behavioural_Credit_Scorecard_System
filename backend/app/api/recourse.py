@@ -15,7 +15,12 @@ The maths is in `ml/counterfactuals.py` and the wording is in
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import account_reader, get_recourse_explainer, get_session
+from app.api.dependencies import (
+    account_reader,
+    customer_or_404,
+    get_recourse_explainer,
+    get_session,
+)
 from app.db import statements
 from app.ml.counterfactuals import NEXT_BAND_UP, CounterfactualExplainer, RecourseTarget
 from app.ml.explainability import describe_change
@@ -35,8 +40,9 @@ def read_recourse(
     explainer: CounterfactualExplainer = Depends(get_recourse_explainer),
 ):
     """What would move this account one band better, in plain language."""
+    customer = customer_or_404(session, customer_id)
     try:
-        record = statements.raw_input_for(session, customer_id)
+        record = statements.raw_input_for(session, customer.id)
     except statements.CustomerNotFound as exception:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=str(exception)
@@ -48,7 +54,7 @@ def read_recourse(
         # Already in the best band: there is nothing to ask of this customer,
         # and saying so is the honest answer rather than an empty result.
         return RecourseView(
-            customer_id=customer_id,
+            customer_id=str(customer.id),
             current_band=current_band,
             target_band=current_band,
             reachable=True,
@@ -69,7 +75,7 @@ def read_recourse(
     ]
 
     return RecourseView(
-        customer_id=customer_id,
+        customer_id=str(customer.id),
         current_band=current_band,
         target_band=target_band,
         reachable=result.is_feasible,

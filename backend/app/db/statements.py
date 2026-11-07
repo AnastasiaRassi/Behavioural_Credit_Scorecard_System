@@ -8,6 +8,8 @@ cannot drift from what `engineer()` expects.
 
 Reads only. Nothing here scores, and nothing here writes.
 """
+import uuid
+
 import pandas as pd
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -17,7 +19,6 @@ from app.ml.feature_engineering import (
     AMT_COLS,
     BILL_COLS,
     PAY_COLS,
-    PROTECTED,
     RAW_COLUMNS,
 )
 
@@ -28,11 +29,11 @@ PIVOTED_COLUMNS = {
     "payment_amount": "PAY_AMT",
 }
 
-# The customer attributes the pipeline reads, under the dataset's own names, with
-# the type each one keeps. The four codes stay integral because the audit groups
-# and labels by them.
-CUSTOMER_COLUMNS = {
-    "credit_limit": ("LIMIT_BAL", float),
+# The customer's attributes the pipeline reads, under the dataset's own names, with
+# the type each one keeps. The limit is on `customer`, the four codes on
+# `user_details`; they stay integral because the audit groups and labels by them.
+CUSTOMER_COLUMNS = {"credit_limit": ("LIMIT_BAL", float)}
+DETAIL_COLUMNS = {
     "sex": ("SEX", int),
     "age_years": ("AGE", int),
     "education": ("EDUCATION", int),
@@ -48,7 +49,7 @@ class IncompleteHistory(RuntimeError):
     pass
 
 
-def monthly_statements(session: Session, customer_id: str) -> pd.DataFrame:
+def monthly_statements(session: Session, customer_id: uuid.UUID) -> pd.DataFrame:
     """A customer's statement rows in long form, most recent month first."""
     rows = session.scalars(
         select(MonthlyStatement)
@@ -76,7 +77,7 @@ def monthly_statements(session: Session, customer_id: str) -> pd.DataFrame:
     )
 
 
-def wide_statements(session: Session, customer_id: str) -> pd.DataFrame:
+def wide_statements(session: Session, customer_id: uuid.UUID) -> pd.DataFrame:
     """The eighteen history columns for one customer, as a single-row frame."""
     long = monthly_statements(session, customer_id)
     _require_a_full_window(customer_id, long["month_offset"])
@@ -93,7 +94,7 @@ def wide_statements(session: Session, customer_id: str) -> pd.DataFrame:
 
 
 def scoring_frame(
-    session: Session, customer_id: str, include_protected: bool = False
+    session: Session, customer_id: uuid.UUID, include_protected: bool = False
 ) -> pd.DataFrame:
     """One customer as the pipeline's input row: the limit plus the pivoted history.
 
@@ -108,9 +109,10 @@ def scoring_frame(
 
     frame = wide_statements(session, customer_id)
     for attribute, (column, kind) in CUSTOMER_COLUMNS.items():
-        if column in PROTECTED and not include_protected:
-            continue
         frame[column] = kind(getattr(customer, attribute))
+    if include_protected:
+        for attribute, (column, kind) in DETAIL_COLUMNS.items():
+            frame[column] = kind(getattr(customer.details, attribute))
 
     # Column order follows RAW_COLUMNS so the frame lines up with the order
     # training used, whichever subset of columns was asked for.
@@ -118,7 +120,7 @@ def scoring_frame(
 
 
 def raw_input_for(
-    session: Session, customer_id: str, include_protected: bool = False
+    session: Session, customer_id: uuid.UUID, include_protected: bool = False
 ) -> dict:
     """The same row as a plain dict, for storing on a prediction."""
     frame = scoring_frame(session, customer_id, include_protected)
@@ -127,7 +129,7 @@ def raw_input_for(
     return {column: frame[column].iloc[0].item() for column in frame.columns}
 
 
-def _require_a_full_window(customer_id: str, months: pd.Series) -> None:
+def _require_a_full_window(customer_id: uuid.UUID, months: pd.Series) -> None:
     expected = set(range(1, MONTHS_OBSERVED + 1))
     missing = sorted(expected - set(months.astype(int)))
     if missing:

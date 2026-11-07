@@ -3,6 +3,8 @@
 The point of these checks is that the officer and the cardholder end up looking
 at the same prediction, while still being sent different payloads.
 """
+import uuid
+
 import pytest
 
 from app.ml import worklist
@@ -11,12 +13,13 @@ from tests.test_api import (  # noqa: F401  (fixture imports)
     OFFICER_EMAIL,
     api_session,
     client,
+    riskiest_customer_id,
 )
 
 
-@pytest.fixture(scope="module")
-def customer_id() -> str:
-    return worklist.all_rows()[0]["customer_id"]
+@pytest.fixture
+def customer_id(riskiest_customer_id) -> str:
+    return riskiest_customer_id
 
 
 def _predict(client, customer_id: str, officer: str = OFFICER_EMAIL):
@@ -126,6 +129,7 @@ def test_predicting_needs_a_known_officer(client, customer_id):
 
 def test_predicting_an_unknown_customer_is_a_404(client):
     assert _predict(client, "C-nobody").status_code == 404
+    assert _predict(client, str(uuid.uuid4())).status_code == 404
 
 
 def test_the_stored_input_withholds_protected_attributes(client, customer_id):
@@ -135,7 +139,7 @@ def test_the_stored_input_withholds_protected_attributes(client, customer_id):
     # The read payload does not expose raw_input, so check the record directly.
     from app.db.queue_predictions import raw_input_from_history
 
-    raw = raw_input_from_history(worklist.find(customer_id))
+    raw = raw_input_from_history(worklist.all_rows()[0])
     for protected in ("SEX", "AGE", "EDUCATION", "MARRIAGE"):
         assert protected not in raw
     assert raw["_protected_attributes_withheld"] is True

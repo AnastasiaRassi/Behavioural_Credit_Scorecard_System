@@ -16,6 +16,7 @@ def _request(request_id, customer_id="1", status="pending", **delta) -> dict:
     return {
         "request_id": request_id,
         "customer_id": customer_id,
+        "account_number": f"acct-{customer_id}",
         "full_name": None,
         "requested_at": _ago(**delta),
         "reason": "Please look again.",
@@ -77,10 +78,15 @@ def test_request_for_finds_the_customers_open_request_only():
 
 def test_card_data_names_an_unnamed_customer_by_account_and_flags_long_notes():
     long_note = "I paid late once. " * 20
-    item = {**_request("a", customer_id="14861", days=3), "reason": long_note}
+    item = {
+        **_request("a", customer_id="uuid-1", days=3),
+        "account_number": "14861",
+        "reason": long_note,
+    }
     card = review.card_data(item, "High", NOW)
 
     assert card["name"] == "Customer 14861"
+    assert card["account"] == "14861"
     assert card["waiting"] == "3 days"
     assert card["status"] == "Pending"
     assert card["band"] == "High"
@@ -96,30 +102,32 @@ def test_card_data_leaves_a_short_note_whole():
     assert not card["is_truncated"]
 
 
-def test_demo_requests_are_deterministic_and_use_the_given_accounts():
-    first = review.demo_requests(["1", "2", "3"], {"2": "Maya Haddad"}, NOW)
-    again = review.demo_requests(["1", "2", "3"], {"2": "Maya Haddad"}, NOW)
+def _customers(count: int) -> list[dict]:
+    return [
+        {
+            "customer_id": f"uuid-{number}",
+            "account_number": str(number),
+            "full_name": "Maya Haddad" if number == 2 else None,
+        }
+        for number in range(1, count + 1)
+    ]
+
+
+def test_demo_requests_are_deterministic_and_use_the_given_customers():
+    first = review.demo_requests(_customers(3), NOW)
+    again = review.demo_requests(_customers(3), NOW)
 
     assert first == again
-    assert [item["customer_id"] for item in first] == ["1", "2", "3"]
+    assert [item["customer_id"] for item in first] == ["uuid-1", "uuid-2", "uuid-3"]
+    assert [item["account_number"] for item in first] == ["1", "2", "3"]
     assert first[1]["full_name"] == "Maya Haddad" and first[0]["full_name"] is None
     assert {item["status"] for item in first} <= {"pending", "in_review", "resolved"}
     assert len({item["request_id"] for item in first}) == 3
 
 
-def test_demo_requests_never_outnumber_the_accounts():
-    assert review.demo_requests([], {}, NOW) == []
-    assert len(review.demo_requests(["1"], {}, NOW)) == 1
-
-
-@pytest.mark.parametrize("value", ["14861", "abc_1-2", "A" * 32])
-def test_valid_customer_ids(value):
-    assert review.valid_customer_id(value)
-
-
-@pytest.mark.parametrize("value", [None, "", "../admin", "1 2", "1/decisions", "9" * 33])
-def test_invalid_customer_ids_never_reach_an_api_path(value):
-    assert not review.valid_customer_id(value)
+def test_demo_requests_never_outnumber_the_customers():
+    assert review.demo_requests([], NOW) == []
+    assert len(review.demo_requests(_customers(1), NOW)) == 1
 
 
 def _detail(**overrides) -> dict:

@@ -9,11 +9,11 @@ the payload is pointless if anyone can ask for anyone's.
 """
 from dataclasses import asdict
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.ai import assistant
-from app.api.dependencies import account_reader, get_session
+from app.api.dependencies import account_reader, get_session, queued_account
 from app.db import chat_log, queue_predictions, statements
 from app.ml import worklist
 from app.schemas.worklist import CardholderView, ChatReply, ChatRequest
@@ -69,16 +69,11 @@ def chat_aboutaccount_for(
 
 def account_for(customer_id: str, session: Session):
     """The queue row, the latest officer score if any, and the raw input for the search."""
-    row = worklist.find(customer_id)
-    if row is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"No account {customer_id}",
-        )
+    customer, row = queued_account(session, customer_id)
 
-    stored = queue_predictions.latest_for_cardholder(session, customer_id)
+    stored = queue_predictions.latest_for_cardholder(session, customer.id)
     try:
-        record = statements.raw_input_for(session, customer_id)
+        record = statements.raw_input_for(session, customer.id)
     except statements.CustomerNotFound:
         record = None
     return row, stored, record

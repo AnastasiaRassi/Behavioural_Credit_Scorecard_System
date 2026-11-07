@@ -13,7 +13,9 @@ class QueueReason(BaseModel):
 
 
 class QueueRow(BaseModel):
-    customer_id: str
+    customer_id: str = Field(description="The customer's UUID")
+    account_number: str = Field(description="The dataset's account number, as typed")
+    full_name: str | None = None
     probability: float
     risk_band: str
     flagged: bool
@@ -61,11 +63,9 @@ class Highlights(BaseModel):
 class CustomerDetail(BaseModel):
     """The dedicated customer page: a queue row plus history, segment, highlights."""
 
-    customer_id: str
-    full_name: str | None = Field(
-        default=None,
-        description="The registered cardholder's name; None if nobody registered",
-    )
+    customer_id: str = Field(description="The customer's UUID")
+    account_number: str
+    full_name: str | None = None
     probability: float
     risk_band: str
     flagged: bool
@@ -157,6 +157,7 @@ class CardholderView(BaseModel):
     """
 
     customer_id: str
+    account_number: str
     risk_band: str
     needs_attention: bool
     credit_limit: float

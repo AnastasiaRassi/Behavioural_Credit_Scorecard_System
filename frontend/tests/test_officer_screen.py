@@ -9,7 +9,10 @@ import api
 TIMEOUT = 30
 NOW = datetime.now(timezone.utc)
 
-NAMES = {"111": "Maya Haddad", "222": None}
+# A customer is addressed by UUID and shown by account number. The ids here are
+# stand-ins so a test cannot mix the two up.
+NAMES = {"id-111": "Maya Haddad", "id-222": "Omar Fares"}
+ACCOUNTS = {"id-111": "111", "id-222": "222"}
 
 
 def _history() -> list[dict]:
@@ -25,7 +28,8 @@ def _history() -> list[dict]:
 
 def _detail(customer_id: str) -> dict:
     return {
-        "customer_id": customer_id, "full_name": NAMES[customer_id],
+        "customer_id": customer_id, "account_number": ACCOUNTS[customer_id],
+        "full_name": NAMES[customer_id],
         "risk_band": "High", "probability": 0.7, "flagged": True,
         "credit_limit": 5000.0, "current_balance": 4000.0, "last_payment": 100.0,
         "months_in_arrears": 6, "segment": {"label": 1, "name": "Stretched"},
@@ -44,7 +48,8 @@ def _detail(customer_id: str) -> dict:
 def _requests() -> list[dict]:
     return [
         {
-            "request_id": "r1", "customer_id": "111", "full_name": "Maya Haddad",
+            "request_id": "r1", "customer_id": "id-111", "account_number": "111",
+            "full_name": "Maya Haddad",
             "requested_at": (NOW - timedelta(days=3)).isoformat(),
             "reason": "I paid in full last month.", "status": "pending",
         },
@@ -79,7 +84,10 @@ def faked_api(monkeypatch):
             "steps": [{"description": "Pay 500 this month"}], "note": "Reachable.",
         },
         "search_customers": lambda q, limit=10: [
-            {"customer_id": q, "full_name": NAMES.get(q), "known": q in NAMES}
+            {
+                "customer_id": f"id-{q}", "account_number": q,
+                "full_name": NAMES[f"id-{q}"], "known": False,
+            }
         ],
         "users": lambda role=None: [],
         "queue": lambda **filters: _queue(),
@@ -131,9 +139,9 @@ def test_a_search_lists_matches_and_opens_nothing_until_one_is_picked(faked_api)
     assert "officer_customer_id" not in app.session_state
     assert len(app.chat_input) == 0
 
-    app.button(key="officer_pick_111").click().run()
+    app.button(key="officer_pick_id-111").click().run()
 
-    assert app.session_state["officer_customer_id"] == "111"
+    assert app.session_state["officer_customer_id"] == "id-111"
     assert "LOANA AI" in _text(app)
     assert "Financial Health Copilot" in _text(app)
 
@@ -144,7 +152,7 @@ def test_review_opens_the_customer_with_the_request_banner(faked_api):
     app.button(key="review_r1").click().run()
 
     assert not app.exception
-    assert app.session_state["officer_customer_id"] == "111"
+    assert app.session_state["officer_customer_id"] == "id-111"
     text = _text(app)
     assert "Review request" in text
     assert "What the model saw" in text and "What the customer says" in text
@@ -169,21 +177,21 @@ def test_recording_a_review_outcome_needs_a_justification_and_names_the_customer
     app = _start()
     app.button(key="review_r1").click().run()
 
-    app.button(key="officer_record_111").click().run()
+    app.button(key="officer_record_id-111").click().run()
     assert "justification is required" in app.error[0].value
     assert faked_api == []
 
-    app.text_area(key="officer_note_111").set_value("Late transfer, confirmed.").run()
-    app.radio(key="officer_action_111").set_value("monitor").run()
-    app.button(key="officer_record_111").click().run()
+    app.text_area(key="officer_note_id-111").set_value("Late transfer, confirmed.").run()
+    app.radio(key="officer_action_id-111").set_value("monitor").run()
+    app.button(key="officer_record_id-111").click().run()
 
     assert not app.exception
     assert faked_api == [
-        ("111", "officer@example.com", "monitor", "Late transfer, confirmed.")
+        ("id-111", "officer@example.com", "monitor", "Late transfer, confirmed.")
     ]
     message = app.success[0].value
     assert "Maya Haddad" in message and "Monitor" in message
-    assert app.text_area(key="officer_note_111").value == ""
+    assert app.text_area(key="officer_note_id-111").value == ""
 
 
 def test_the_assistant_says_it_is_not_connected_and_keeps_the_layout(faked_api, monkeypatch):
@@ -198,7 +206,7 @@ def test_the_assistant_says_it_is_not_connected_and_keeps_the_layout(faked_api, 
 
     assert not app.exception
     assert "Assistant not connected yet." in [info.value for info in app.info]
-    assert app.session_state["officer_chat_111"] == []
+    assert app.session_state["officer_chat_id-111"] == []
     assert "LOANA AI" in _text(app)
 
 
@@ -211,31 +219,31 @@ def test_chat_history_is_kept_per_customer(faked_api, monkeypatch):
     app.button(key="review_r1").click().run()
     app.chat_input(key="officer_ask").set_value("Why flagged?").run()
 
-    assert [m["content"] for m in app.session_state["officer_chat_111"]] == [
-        "Why flagged?", "About 111",
+    assert [m["content"] for m in app.session_state["officer_chat_id-111"]] == [
+        "Why flagged?", "About id-111",
     ]
 
     app.button(key="officer_close").click().run()
     app.text_input(key="officer_lookup").set_value("222").run()
-    app.button(key="officer_pick_222").click().run()
+    app.button(key="officer_pick_id-222").click().run()
 
-    assert app.session_state["officer_customer_id"] == "222"
-    assert app.session_state["officer_chat_222"] == []
-    assert len(app.session_state["officer_chat_111"]) == 2
-    assert "About 111" not in _text(app)
+    assert app.session_state["officer_customer_id"] == "id-222"
+    assert app.session_state["officer_chat_id-222"] == []
+    assert len(app.session_state["officer_chat_id-111"]) == 2
+    assert "About id-111" not in _text(app)
 
 
 def test_the_prediction_survives_closing_and_reopening_the_customer(faked_api):
     app = _start()
     app.button(key="review_r1").click().run()
-    app.session_state["prediction_111"] = {"probability": 0.5}
+    app.session_state["prediction_id-111"] = {"probability": 0.5}
 
     app.button(key="officer_close").click().run()
     assert app.session_state["officer_customer_id"] is None
     assert "This month's triage" in _text(app)
 
     app.text_input(key="officer_lookup").set_value("111").run()
-    app.button(key="officer_pick_111").click().run()
+    app.button(key="officer_pick_id-111").click().run()
 
-    assert app.session_state["officer_customer_id"] == "111"
-    assert app.session_state["prediction_111"] == {"probability": 0.5}
+    assert app.session_state["officer_customer_id"] == "id-111"
+    assert app.session_state["prediction_id-111"] == {"probability": 0.5}

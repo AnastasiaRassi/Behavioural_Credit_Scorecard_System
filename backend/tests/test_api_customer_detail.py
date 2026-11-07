@@ -4,6 +4,8 @@ Covers the backend changes the new frontend needs: the six-month history, the
 month vocabulary, derived highlights, the behavioural segment, recording a
 decision against a queued customer, and malformed ids answering 4xx not 500.
 """
+import uuid
+
 import pytest
 
 from app.ml import worklist
@@ -12,12 +14,9 @@ from tests.test_api import (  # noqa: F401  (fixture imports)
     OFFICER_EMAIL,
     api_session,
     client,
+    quietest_customer_id,
+    riskiest_customer_id,
 )
-
-
-@pytest.fixture(scope="module")
-def riskiest_customer_id() -> str:
-    return worklist.all_rows()[0]["customer_id"]
 
 
 # --- B. the month vocabulary --------------------------------------------------
@@ -31,6 +30,83 @@ def test_month_labels_cover_the_observed_window():
 
 def test_an_unknown_month_still_reads_as_something():
     assert month_label(9) == "month 9"
+
+
+# --- the customer's identity --------------------------------------------------
+
+def test_the_detail_names_the_customer_by_uuid_and_account_number(
+    client, riskiest_customer_id
+):
+    body = client.get(f"/officer/customers/{riskiest_customer_id}").json()
+    riskiest = worklist.all_rows()[0]
+
+    assert body["customer_id"] == riskiest_customer_id
+    assert body["account_number"] == riskiest["account_number"]
+    assert body["full_name"], "every customer is a user with a name"
+
+
+def test_an_account_number_is_not_a_customer_id(client, riskiest_customer_id):
+    number = worklist.all_rows()[0]["account_number"]
+    assert client.get(f"/officer/customers/{number}").status_code == 404
+
+
+def test_search_finds_any_queued_customer_by_name(client, riskiest_customer_id):
+    detail = client.get(f"/officer/customers/{riskiest_customer_id}").json()
+
+    found = client.get(
+        "/officer/customers",
+        params={"q": detail["full_name"], "limit": 50},
+    ).json()
+
+    assert riskiest_customer_id in {match["customer_id"] for match in found}
+    assert all(match["account_number"] for match in found)
+
+
+def test_search_finds_a_customer_by_account_number_and_lists_it_first(
+    client, riskiest_customer_id
+):
+    number = worklist.all_rows()[0]["account_number"]
+
+    found = client.get("/officer/customers", params={"q": number}).json()
+
+    assert found[0]["customer_id"] == riskiest_customer_id
+    assert found[0]["account_number"] == number
+
+
+def test_search_lists_customers_who_can_sign_in_before_those_who_cannot(
+    client, api_session
+):
+    from app.core.passwords import hash_password
+    from app.db import customer_registry
+    from tests.conftest import ensure_queued_customer
+
+    # The last queue row gets a login; its name is then searched for.
+    last = worklist.all_rows()[-1]
+    ensure_queued_customer(api_session, last)
+    customer = customer_registry.find_by_account_number(api_session, last["account_number"])
+    customer_registry.give_login(
+        api_session, customer, "searchable@example.test", hash_password("not-a-real-password")
+    )
+
+    found = client.get(
+        "/officer/customers", params={"q": customer.user.display_name, "limit": 50}
+    ).json()
+
+    flags = [match["known"] for match in found]
+    assert str(customer.id) in {m["customer_id"] for m in found if m["known"]}
+    assert flags == sorted(flags, reverse=True), "signed-up customers come first"
+
+
+def test_search_only_returns_customers_who_can_be_opened(client, api_session):
+    # A walk-in is a customer and a user, but is not in the worklist.
+    from app.db import customer_registry
+    from app.ml.scorer import example_customer
+
+    customer_registry.register_from_raw(
+        api_session, example_customer(), "W-searchme"
+    )
+
+    assert client.get("/officer/customers", params={"q": "W-searchme"}).json() == []
 
 
 # --- A. the six-month history ------------------------------------------------
@@ -188,14 +264,13 @@ def test_the_stored_decision_withholds_protected_attributes(client, riskiest_cus
     assert raw["risk_band"] in {"Low", "Medium", "High"}
 
 
-def test_an_untouched_queued_customer_has_an_empty_trail(client):
-    quiet = worklist.all_rows()[-1]["customer_id"]
-    assert client.get(f"/officer/customers/{quiet}/decisions").json() == []
+def test_an_untouched_queued_customer_has_an_empty_trail(client, quietest_customer_id):
+    assert client.get(f"/officer/customers/{quietest_customer_id}/decisions").json() == []
 
 
 def test_deciding_on_an_unknown_customer_is_a_404(client):
     response = client.post(
-        "/officer/customers/C-nobody/decisions",
+        f"/officer/customers/{uuid.uuid4()}/decisions",
         json={
             "action": "monitor",
             "justification": "x",

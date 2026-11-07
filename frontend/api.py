@@ -240,7 +240,7 @@ def queue(
 
 
 @st.cache_data(ttl=30, show_spinner=False)
-def search_customers(q: str, limit: int = 10) -> list[dict]:
+def search_customers(q: str, limit: int = 25) -> list[dict]:
     """Find a customer by name, email or account number."""
     return _get("/officer/customers", q=q, limit=limit)
 
@@ -259,21 +259,29 @@ DEMO_REQUESTS = 4
 
 
 def review_requests() -> list[dict]:
-    """Customers asking for a human review: request_id, customer_id, full_name,
-    requested_at, reason, status (pending, in_review or resolved).
+    """Customers asking for a human review: request_id, customer_id, account_number,
+    full_name, requested_at, reason, status (pending, in_review or resolved).
 
     DEMO DATA until the backend has the endpoint. Replacing this body with a `_get`
     is the whole change; the officer screen reads only this shape.
     """
-    # Registered cardholders first, so the demo has names; then the flagged queue.
-    named = {
-        user["customer_id"]: user["display_name"]
+    # Cardholders who can sign in first, then the flagged queue.
+    registered = [
+        {
+            "customer_id": user["customer_id"],
+            "account_number": user["account_number"],
+            "full_name": user["display_name"],
+        }
         for user in users(role="cardholder")
         if user["customer_id"]
+    ]
+    flagged = queue(flagged=True, limit=DEMO_REQUESTS)["rows"]
+    chosen = {
+        customer["customer_id"]: customer for customer in [*registered, *flagged]
     }
-    flagged = [row["customer_id"] for row in queue(flagged=True, limit=DEMO_REQUESTS)["rows"]]
-    customer_ids = list(dict.fromkeys([*named, *flagged]))[:DEMO_REQUESTS]
-    return review.demo_requests(customer_ids, named, datetime.now(timezone.utc))
+    return review.demo_requests(
+        list(chosen.values())[:DEMO_REQUESTS], datetime.now(timezone.utc)
+    )
 
 
 def chat_before_request(customer_id: str, requested_at: str) -> list[dict]:

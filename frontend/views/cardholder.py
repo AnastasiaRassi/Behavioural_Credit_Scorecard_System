@@ -161,7 +161,7 @@ def _account(account: dict) -> None:
         st.columns(4),
         [
             ("Credit limit", f"{account['credit_limit']:,.0f}"),
-            ("Current balance", f"{account['current_balance']:,.0f}"),
+            ("Latest statement balance (BILL_AMT1)", f"{account['current_balance']:,.0f}"),
             ("Last payment", f"{account['last_payment']:,.0f}"),
             ("Months behind", f"{account['months_in_arrears']} of 6"),
         ],

@@ -8,14 +8,14 @@ here goes through POST /session for real and uses the token it returns.
 import pytest
 
 from app.db import seed
-from app.db.models import UserAccount
+from app.db.models import User
 from tests.test_api import (  # noqa: F401  (fixture imports)
     api_session,
     client,
 )
 
 # Where each role starts, as roles.py publishes it. A cardholder's landing
-# endpoint is keyed on the customer the account is linked to, so it is built
+# endpoint is keyed on the customer the account is registered as, so it is built
 # from the sign-in response rather than listed here.
 LANDING = {"officer": "/officer/queue", "engineer": "/report"}
 
@@ -52,7 +52,7 @@ def test_each_demo_account_lands_on_its_own_screen(client, demo_accounts):
 
         if role == "cardholder":
             if body["customer_id"] is None:
-                pytest.skip("no unlinked customer for the demo cardholder")
+                pytest.skip("no queued customer without a login for the demo cardholder")
             landing = f"/cardholders/{body['customer_id']}"
         else:
             landing = LANDING[role]
@@ -107,16 +107,16 @@ def test_reseeding_does_not_duplicate_or_crash(api_session, monkeypatch):
     assert sorted(second_updated) == sorted(emails)
 
     for email in emails:
-        count = api_session.query(UserAccount).filter_by(email=email).count()
+        count = api_session.query(User).filter_by(email=email).count()
         assert count == 1, f"{email} was seeded {count} times"
 
 
 def test_nothing_is_seeded_outside_demo_mode(api_session, monkeypatch):
     monkeypatch.delenv("DEMO_MODE", raising=False)
-    demo = UserAccount.email.like("%@demo.test")
-    before = api_session.query(UserAccount).filter(demo).count()
+    demo = User.email.like("%@demo.test")
+    before = api_session.query(User).filter(demo).count()
 
     assert seed.seed_demo_accounts(api_session) == ([], [])
     api_session.flush()
 
-    assert api_session.query(UserAccount).filter(demo).count() == before
+    assert api_session.query(User).filter(demo).count() == before

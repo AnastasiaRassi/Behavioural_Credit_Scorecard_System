@@ -21,12 +21,15 @@ from app.db.models import (
     ModelVersion,
     MonthlyStatement,
     Prediction,
-    UserAccount,
+    User,
+    UserDetails,
 )
 from tests.conftest import connect_or_skip
 
 # Prefixed so a test row can never be mistaken for an ingested source id.
-TEST_CUSTOMER_ID = "TEST-1001"
+TEST_ACCOUNT_NUMBER = "TEST-1001"
+
+DETAIL_FIELDS = ("sex", "age_years", "education", "marriage")
 
 
 @pytest.fixture(scope="module")
@@ -42,8 +45,9 @@ def session():
         active.close()
 
 
-def _account(role: str, display_name: str) -> UserAccount:
-    return UserAccount(
+def _account(role: str, display_name: str) -> User:
+    """A user who can sign in."""
+    return User(
         email=f"{uuid.uuid4().hex}@example.test",
         display_name=display_name,
         password_hash=hash_password("not-a-real-password"),
@@ -61,13 +65,9 @@ def seeded(session):
     savepoint = session.begin_nested()
 
     officer = _account("officer", "Demo Officer")
-    subject = Customer(
-        customer_id=TEST_CUSTOMER_ID,
-        credit_limit=20000,
-        sex=2,
-        age_years=24,
-        education=2,
-        marriage=1,
+    subject = _customer(
+        account_number=TEST_ACCOUNT_NUMBER,
+        credit_limit=20000, sex=2, age_years=24, education=2, marriage=1,
     )
     # Not live: a seeded live model may already exist, and only one is allowed.
     version = ModelVersion(
@@ -81,7 +81,7 @@ def seeded(session):
     for month in range(1, 7):
         session.add(
             MonthlyStatement(
-                customer_id=subject.customer_id,
+                customer_id=subject.id,
                 month_offset=month,
                 repayment_status=2 if month == 1 else 0,
                 bill_amount=3913 - month,
@@ -90,12 +90,12 @@ def seeded(session):
         )
     session.add(
         CreditOutcome(
-            customer_id=subject.customer_id, defaulted=True, observed_period="2005-10"
+            customer_id=subject.id, defaulted=True, observed_period="2005-10"
         )
     )
 
     prediction = Prediction(
-        subject_customer_id=subject.customer_id,
+        subject_customer_id=subject.id,
         model_version_id=version.id,
         probability=0.61,
         risk_band="High",
@@ -131,18 +131,25 @@ def _rejected_by(session, instance) -> str:
 
 
 def _customer(**overrides) -> Customer:
+    """A customer with its user and details. Demographic overrides go to the details."""
+    details = {"sex": 1, "age_years": 40, "education": 1, "marriage": 1}
+    for field in DETAIL_FIELDS:
+        if field in overrides:
+            details[field] = overrides.pop(field)
+
     values = {
-        "customer_id": f"TEST-{uuid.uuid4().hex[:8]}",
+        "account_number": f"TEST-{uuid.uuid4().hex[:8]}",
         "credit_limit": 50000,
-        "sex": 1,
-        "age_years": 40,
-        "education": 1,
-        "marriage": 1,
+        "user": User(
+            display_name="Test Customer",
+            role="cardholder",
+            details=UserDetails(**details),
+        ),
     }
     return Customer(**{**values, **overrides})
 
 
-def _statement(customer_id: str, **overrides) -> MonthlyStatement:
+def _statement(customer_id: uuid.UUID, **overrides) -> MonthlyStatement:
     values = {
         "customer_id": customer_id,
         "month_offset": 1,
@@ -158,7 +165,7 @@ def _statement(customer_id: str, **overrides) -> MonthlyStatement:
 
 def test_a_valid_chain_inserts(seeded):
     assert seeded["prediction"].id is not None
-    assert seeded["prediction"].subject_customer_id == seeded["subject"].customer_id
+    assert seeded["prediction"].subject_customer_id == seeded["subject"].id
 
 
 def test_a_customer_keeps_its_six_months_in_order(session, seeded):
@@ -177,26 +184,45 @@ def test_jsonb_survives_a_round_trip(session, seeded):
 # ---- the separation the schema exists to enforce -----------------------------
 
 
-def test_a_customer_needs_no_account(seeded):
-    assert seeded["subject"].user_account_id is None
-    assert seeded["subject"].is_registered is False
+def test_every_customer_is_a_user_who_cannot_sign_in_until_registered(seeded):
+    subject = seeded["subject"]
+    assert subject.user_id is not None
+    assert subject.user.role == "cardholder"
+    assert subject.user.password_hash is None and subject.user.email is None
+    assert subject.is_registered is False
+    assert subject.details.sex == 2
 
 
-def test_one_account_cannot_claim_two_customers(session, seeded):
-    cardholder = _account("cardholder", "Registered Cardholder")
-    session.add(cardholder)
-    session.flush()
+def test_one_user_cannot_be_two_customers(session, seeded):
+    second = Customer(
+        account_number=f"TEST-{uuid.uuid4().hex[:8]}",
+        user_id=seeded["subject"].user_id,
+        credit_limit=1000,
+    )
+    message = _rejected_by(session, second)
+    assert "customer_user_id_key" in message
 
-    seeded["subject"].user_account_id = cardholder.id
-    session.flush()
 
-    message = _rejected_by(session, _customer(user_account_id=cardholder.id))
-    assert "user_account_id" in message
+def test_a_customer_cannot_exist_without_a_user(session, seeded):
+    message = _rejected_by(session, _customer(user=None))
+    assert "user_id" in message
+
+
+def test_an_account_number_cannot_be_reused(session, seeded):
+    message = _rejected_by(
+        session, _customer(account_number=seeded["subject"].account_number)
+    )
+    assert "customer_account_number_key" in message
+
+
+def test_a_customer_id_is_a_uuid_like_a_users(seeded):
+    assert isinstance(seeded["subject"].id, uuid.UUID)
+    assert isinstance(seeded["subject"].user_id, uuid.UUID)
 
 
 def test_a_prediction_cannot_point_at_an_unknown_customer(session, seeded):
     message = _rejected_by(session, Prediction(
-        subject_customer_id="TEST-never-ingested",
+        subject_customer_id=uuid.uuid4(),
         model_version_id=seeded["version"].id,
         probability=0.5,
         risk_band="Medium",
@@ -208,7 +234,7 @@ def test_a_prediction_cannot_point_at_an_unknown_customer(session, seeded):
     assert "subject_customer_id" in message or "foreign key" in message.lower()
 
 
-# ---- customer attribute codes ------------------------------------------------
+# ---- customer and detail codes -------------------------------------------------
 
 
 def test_a_credit_limit_must_be_positive(session, seeded):
@@ -243,21 +269,21 @@ def test_undocumented_marriage_codes_are_rejected(session, seeded):
 
 def test_a_month_offset_must_be_within_the_window(session, seeded):
     message = _rejected_by(
-        session, _statement(seeded["subject"].customer_id, month_offset=7)
+        session, _statement(seeded["subject"].id, month_offset=7)
     )
     assert "month_offset_is_within_the_window" in message
 
 
 def test_a_month_cannot_be_recorded_twice(session, seeded):
     message = _rejected_by(
-        session, _statement(seeded["subject"].customer_id, month_offset=1)
+        session, _statement(seeded["subject"].id, month_offset=1)
     )
     assert "monthly_statement_pkey" in message
 
 
 def test_repayment_status_codes_are_restricted(session, seeded):
     message = _rejected_by(
-        session, _statement(seeded["subject"].customer_id, repayment_status=99)
+        session, _statement(seeded["subject"].id, repayment_status=99)
     )
     assert "repayment_status_is_a_codebook_value" in message
 
@@ -265,7 +291,7 @@ def test_repayment_status_codes_are_restricted(session, seeded):
 def test_a_payment_cannot_be_negative(session, seeded):
     message = _rejected_by(
         session,
-        _statement(seeded["subject"].customer_id, month_offset=1, payment_amount=-1),
+        _statement(seeded["subject"].id, month_offset=1, payment_amount=-1),
     )
     assert "payment_amount_is_not_negative" in message
 
@@ -276,12 +302,12 @@ def test_a_negative_bill_is_accepted(session, seeded):
     customer = _customer()
     session.add(customer)
     session.flush()
-    session.add(_statement(customer.customer_id, bill_amount=-250))
+    session.add(_statement(customer.id, bill_amount=-250))
     session.flush()
     savepoint.rollback()
 
 
-# ---- accounts ----------------------------------------------------------------
+# ---- users -------------------------------------------------------------------
 
 
 def test_roles_are_restricted(session, seeded):
@@ -290,20 +316,48 @@ def test_roles_are_restricted(session, seeded):
 
 
 def test_an_email_cannot_be_reused(session, seeded):
-    message = _rejected_by(session, UserAccount(
+    message = _rejected_by(session, User(
         email=seeded["officer"].email,
         display_name="Impostor",
         password_hash=hash_password("not-a-real-password"),
         role="officer",
     ))
-    assert "user_account_email_key" in message
+    assert "users_email_key" in message
 
 
-def test_an_account_cannot_store_an_empty_hash(session, seeded):
+def test_a_user_cannot_store_an_empty_hash(session, seeded):
     account = _account("officer", "No Credential")
     account.password_hash = ""
     message = _rejected_by(session, account)
-    assert "password_hash_is_present" in message
+    assert "password_hash_is_not_empty" in message
+
+
+def test_a_login_is_an_email_and_a_password_together(session, seeded):
+    message = _rejected_by(session, User(
+        email=f"{uuid.uuid4().hex}@example.test",
+        display_name="Half Registered",
+        role="cardholder",
+    ))
+    assert "login_is_complete" in message
+
+
+def test_staff_must_be_able_to_sign_in(session, seeded):
+    message = _rejected_by(
+        session, User(display_name="Ghost Officer", role="officer")
+    )
+    assert "staff_can_sign_in" in message
+
+
+def test_many_customers_can_have_no_email_at_once(session, seeded):
+    savepoint = session.begin_nested()
+    session.add_all([_customer(), _customer()])
+    session.flush()
+    savepoint.rollback()
+
+
+def test_staff_have_no_details_row(seeded):
+    assert seeded["officer"].details is None
+    assert seeded["officer"].customer is None
 
 
 def test_an_account_payload_never_carries_the_hash(seeded):
@@ -335,7 +389,7 @@ def test_decision_actions_are_restricted(session, seeded):
 
 def test_a_probability_must_be_a_rate(session, seeded):
     message = _rejected_by(session, Prediction(
-        subject_customer_id=seeded["subject"].customer_id,
+        subject_customer_id=seeded["subject"].id,
         model_version_id=seeded["version"].id,
         probability=1.4,
         risk_band="High",
@@ -365,7 +419,7 @@ def test_only_one_model_version_can_be_live(session, seeded):
 
 def test_a_dataset_label_cannot_be_recorded_twice(session, seeded):
     message = _rejected_by(session, CreditOutcome(
-        customer_id=seeded["subject"].customer_id,
+        customer_id=seeded["subject"].id,
         defaulted=False,
         observed_period="2005-10",
     ))
@@ -394,11 +448,11 @@ def test_an_outcome_cannot_be_recorded_twice(session, seeded):
 # ---- the chat log --------------------------------------------------------------
 
 
-def _chat_turn(**overrides):
+def _chat_turn(customer_id, **overrides):
     from app.db.models import ChatTurn
 
     values = dict(
-        customer_id="TEST-chat", turn_number=1, user_message="Why?", reply="Because.",
+        customer_id=customer_id, turn_number=1, user_message="Why?", reply="Because.",
         source="model", llm_model="gpt-4o-mini", prompt_version="v2.1-loana",
         scoring_model_version="m1", latency_ms=900,
     )
@@ -416,7 +470,16 @@ def chat_table(session):
     savepoint.rollback()
 
 
-def test_the_guard_columns_are_nullable_booleans(chat_table):
+@pytest.fixture
+def chatter(chat_table):
+    """The id of a customer the chat turns can point at."""
+    customer = _customer()
+    chat_table.add(customer)
+    chat_table.flush()
+    return customer.id
+
+
+def test_the_guard_columns_are_nullable_booleans(chat_table, chatter):
     from sqlalchemy import Boolean
 
     from app.db.models import ChatTurn
@@ -425,7 +488,7 @@ def test_the_guard_columns_are_nullable_booleans(chat_table):
         column = ChatTurn.__table__.c[name]
         assert isinstance(column.type, Boolean) and column.nullable
 
-    stored = _chat_turn(grounding_passed=True)
+    stored = _chat_turn(chatter, grounding_passed=True)
     chat_table.add(stored)
     chat_table.flush()
     assert (stored.grounding_passed, stored.claim_passed) == (True, None)
@@ -450,15 +513,23 @@ def test_the_live_chat_turn_table_has_the_guard_columns(session):
     assert {"grounding_passed", "claim_passed"} <= columns
 
 
-def test_the_opening_fits_the_table_as_turn_zero_with_an_empty_message(chat_table):
-    opening = _chat_turn(turn_number=0, user_message="")
+def test_the_opening_fits_the_table_as_turn_zero_with_an_empty_message(chat_table, chatter):
+    opening = _chat_turn(chatter, turn_number=0, user_message="")
     chat_table.add(opening)
     chat_table.flush()
 
     assert opening.id is not None
 
 
-def test_a_template_turn_still_needs_its_reason(chat_table):
-    message = _rejected_by(chat_table, _chat_turn(source="template", fallback_reason=None))
+def test_a_template_turn_still_needs_its_reason(chat_table, chatter):
+    message = _rejected_by(
+        chat_table, _chat_turn(chatter, source="template", fallback_reason=None)
+    )
 
     assert "fallback_reason_iff_template" in message
+
+
+def test_a_chat_turn_cannot_point_at_an_unknown_customer(chat_table, chatter):
+    message = _rejected_by(chat_table, _chat_turn(uuid.uuid4()))
+
+    assert "customer_id" in message or "foreign key" in message.lower()

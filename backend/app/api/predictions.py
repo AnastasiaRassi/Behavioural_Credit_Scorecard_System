@@ -55,14 +55,15 @@ def score_customer(
     if request.scored_by:
         user_by_email(session, request.scored_by, "officer")
 
-    # The submitted columns are everything `customer` needs, so a cardholder the
+    # The submitted columns are everything a customer needs, so a cardholder the
     # dataset never contained becomes a real subject rather than a loose score.
+    # `cardholder_reference` is an account number.
     subject = customer_registry.register_from_raw(
         session, customer, request.cardholder_reference
     )
 
     prediction = Prediction(
-        subject_customer_id=subject.customer_id,
+        subject_customer_id=subject.id,
         model_version_id=version.id,
         probability=result.probability,
         risk_band=result.risk_band,
@@ -99,10 +100,9 @@ def read_prediction(prediction_id: str, session: Session = Depends(get_session))
 
     stored = prediction.to_dict()
     stored["model_version"] = prediction.model_version.version
-    stored["cardholder"] = prediction.subject_customer_id
-    stored["cardholder_name"] = customer_registry.display_name_for(
-        session, prediction.subject_customer_id
-    )
+    stored["cardholder"] = str(prediction.subject_customer_id)
+    stored["account_number"] = prediction.subject.account_number
+    stored["cardholder_name"] = prediction.subject.user.display_name
     stored["decisions"] = [decision.to_dict() for decision in prediction.decisions]
     return stored
 

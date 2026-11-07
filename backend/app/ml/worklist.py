@@ -15,9 +15,12 @@ BANDS = ("Low", "Medium", "High")
 
 # train.py labels queue rows `C-<row position>`, because the frame it builds them
 # from is positionally indexed: feature_engineering drops the dataset's own ID
-# column. The database is keyed on that published id instead, so the artifact's
-# label is translated here, at the one point it enters the system, and every
-# caller downstream speaks the same id as `customer.customer_id`.
+# column. The database records that published id as `customer.account_number`, so
+# the artifact's label is translated here, at the one point it enters the system.
+#
+# Rows are keyed by account number and carry no `customer_id`: the UUID belongs
+# to the database, and the API adds it to a row once it has looked the customer
+# up (api/dependencies.queued_account).
 #
 # Source ids are 1-based and positions are 0-based, hence the offset. All of this
 # goes away if the queue is ever served from the database instead of a file.
@@ -34,10 +37,10 @@ DEFAULT_PAGE = 50
 MAX_PAGE = 500
 
 
-def source_customer_id(queue_id: str) -> str:
-    """The database's customer id for a label in the queue artifact."""
+def account_number_for(queue_id: str) -> str:
+    """The account number for a label in the queue artifact."""
     if not str(queue_id).startswith(QUEUE_ID_PREFIX):
-        # Already a customer id. Translating again would silently name a
+        # Already an account number. Translating again would silently name a
         # different customer, so leave it alone.
         return str(queue_id)
     position = str(queue_id).removeprefix(QUEUE_ID_PREFIX)
@@ -47,11 +50,15 @@ def source_customer_id(queue_id: str) -> str:
 
 
 def all_rows() -> list[dict]:
-    """Every queued customer, riskiest first, keyed by their customer id."""
-    rows = [
-        {**row, "customer_id": source_customer_id(row["customer_id"])}
-        for row in artifacts.officer_queue()
-    ]
+    """Every queued customer, riskiest first, keyed by their account number."""
+    rows = []
+    for row in artifacts.officer_queue():
+        rows.append(
+            {
+                **{key: value for key, value in row.items() if key != "customer_id"},
+                "account_number": account_number_for(row["customer_id"]),
+            }
+        )
     return sorted(rows, key=lambda row: row["probability"], reverse=True)
 
 
@@ -94,15 +101,15 @@ def filter_rows(
     if search:
         needle = search.strip().lower()
         selected = [
-            row for row in selected if needle in row["customer_id"].lower()
+            row for row in selected if needle in row["account_number"].lower()
         ]
 
     return selected
 
 
-def find(customer_id: str) -> dict | None:
+def find(account_number: str) -> dict | None:
     return next(
-        (row for row in all_rows() if row["customer_id"] == customer_id), None
+        (row for row in all_rows() if row["account_number"] == account_number), None
     )
 
 
@@ -168,9 +175,13 @@ def _months_since_full_payment(history: list[dict]) -> int | None:
 
 
 def customer_detail(row: dict) -> dict:
-    """Everything a dedicated customer page shows, for one queued customer."""
+    """Everything a dedicated customer page shows, for one queued customer.
+
+    `row` is a queue row the API has given its `customer_id`.
+    """
     return {
         "customer_id": row["customer_id"],
+        "account_number": row["account_number"],
         "probability": row["probability"],
         "risk_band": row["risk_band"],
         "flagged": row["flagged"],
@@ -215,10 +226,11 @@ def cardholder_view(row: dict, stored_prediction=None, record=None) -> dict:
         if stored_reasons:
             reasons = stored_reasons
 
-    coaching = coach(row["customer_id"], band, reasons, record)
+    coaching = coach(row["account_number"], band, reasons, record)
 
     return {
         "customer_id": row["customer_id"],
+        "account_number": row["account_number"],
         "risk_band": band,
         "needs_attention": needs_attention,
         "credit_limit": row["credit_limit"],

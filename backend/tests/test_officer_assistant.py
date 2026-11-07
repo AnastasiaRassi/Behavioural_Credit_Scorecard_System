@@ -9,6 +9,8 @@ Run from the backend/ directory:
 """
 import json
 
+import uuid
+
 import pytest
 from app.ai import llm_client, officer_assistant
 from app.ml import worklist
@@ -20,7 +22,8 @@ def row():
     rows = worklist.all_rows()
     if not rows:
         pytest.skip("no queue artifact; run: python -m app.ml.train")
-    return next(r for r in rows if r["risk_band"] == "High")
+    # The API adds the customer's UUID to a queue row; there is no database here.
+    return {**next(r for r in rows if r["risk_band"] == "High"), "customer_id": str(uuid.uuid4())}
 
 
 def _ask(question="Why is this customer flagged?"):

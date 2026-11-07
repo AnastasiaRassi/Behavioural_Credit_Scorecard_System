@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_session
 from app.core.passwords import hash_password
-from app.db.models import ModelVersion, UserAccount
+from app.db.models import ModelVersion, User
 from app.main import app
 from app.ml import worklist
 from app.ml.scorer import example_customer
@@ -25,6 +25,9 @@ OFFICER_EMAIL = "test-officer@example.test"
 
 # The fixture's own credential, so a sign-in test needs no seeded password.
 OFFICER_PASSWORD = "not-a-real-password"
+
+# Queue rows given a customer by `api_session`: enough for every page a test reads.
+QUEUE_HEAD = 30
 
 
 @pytest.fixture
@@ -46,19 +49,20 @@ def api_session():
         trained_on=datetime.now(timezone.utc),
         is_live=True,
     ))
-    session.add(UserAccount(
+    session.add(User(
         email=OFFICER_EMAIL,
         display_name="Test Officer",
         password_hash=hash_password(OFFICER_PASSWORD),
         role="officer",
     ))
 
-    # The officer flow writes predictions against a real customer, which
-    # ingestion normally provides. Seeded here so the suite does not require an
-    # ingested database.
+    # The officer flow writes predictions against real customers, which ingestion
+    # normally provides. Seeded here so the suite does not require an ingested
+    # database: the head of the queue (a page, the riskiest, the demo cardholders'
+    # neighbours) and its last row.
     queued = worklist.all_rows()
-    if queued:
-        ensure_queued_customer(session, queued[0])
+    for row in [*queued[:QUEUE_HEAD], *queued[-1:]]:
+        ensure_queued_customer(session, row)
 
     session.flush()
 
@@ -68,6 +72,18 @@ def api_session():
         session.close()
         transaction.rollback()
         connection.close()
+
+
+@pytest.fixture
+def riskiest_customer_id(api_session) -> str:
+    """The UUID of the first queue row, the riskiest customer."""
+    return ensure_queued_customer(api_session, worklist.all_rows()[0])
+
+
+@pytest.fixture
+def quietest_customer_id(api_session) -> str:
+    """The UUID of the last queue row."""
+    return ensure_queued_customer(api_session, worklist.all_rows()[-1])
 
 
 @pytest.fixture

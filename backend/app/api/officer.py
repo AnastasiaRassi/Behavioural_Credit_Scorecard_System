@@ -8,10 +8,11 @@ from app.api.dependencies import (
     get_scorer,
     get_session,
     live_model_version,
+    queued_account,
     user_by_email,
 )
 from app.db import chat_log, customer_registry, queue_predictions
-from app.db.models import Customer, Decision, UserAccount
+from app.db.models import Customer, Decision, User
 from app.ml import artifacts, worklist
 from app.schemas.decisions import DecisionCreate, DecisionOut
 from app.schemas.scoring import ScoreResponse
@@ -23,6 +24,7 @@ from app.schemas.worklist import (
     QueueRow,
 )
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import case
 from sqlalchemy.orm import Session
 
 router = APIRouter(prefix="/officer", tags=["officer"])
@@ -31,24 +33,39 @@ router = APIRouter(prefix="/officer", tags=["officer"])
 SHOWN_REASONS = 6
 
 
-def _queued_or_404(customer_id: str) -> dict:
-    row = worklist.find(customer_id)
-    if row is None:
+def _with_customer_ids(session: Session, rows: list[dict]) -> list[dict]:
+    """Give each queue row its customer's UUID, which only the database knows."""
+    found = customer_registry.customers_by_account_number(
+        session, [row["account_number"] for row in rows]
+    )
+    missing = [row["account_number"] for row in rows if row["account_number"] not in found]
+    if missing:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"No queued customer {customer_id}",
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                f"Queued account {missing[0]} is not in the database. "
+                "Run: python -m app.db.ingest"
+            ),
         )
-    return row
+    return [
+        {
+            **row,
+            "customer_id": str(found[row["account_number"]].id),
+            "full_name": found[row["account_number"]].user.display_name,
+        }
+        for row in rows
+    ]
 
 
 @router.get("/queue", response_model=QueuePage)
 def read_queue(
     band: str | None = Query(default=None, description="Low, Medium or High"),
     flagged: bool | None = Query(default=None),
-    search: str | None = Query(default=None, description="Customer id contains"),
+    search: str | None = Query(default=None, description="Account number contains"),
     minimum_months_in_arrears: int | None = Query(default=None, ge=0, le=6),
     limit: int = Query(default=worklist.DEFAULT_PAGE, ge=1, le=worklist.MAX_PAGE),
     offset: int = Query(default=0, ge=0),
+    session: Session = Depends(get_session),
 ):
     """A page of the worklist, riskiest first.
 
@@ -70,7 +87,7 @@ def read_queue(
         search=search,
         minimum_months_in_arrears=minimum_months_in_arrears,
     )
-    page = selected[offset : offset + limit]
+    page = _with_customer_ids(session, selected[offset : offset + limit])
 
     return QueuePage(
         total=len(selected),
@@ -89,58 +106,51 @@ def search_customers(
     limit: int = Query(default=10, ge=1, le=50),
     session: Session = Depends(get_session),
 ):
-    """Find a customer the way an officer would be given one: by name.
+    """Find a customer the way an officer would be given one: by name or number.
 
-    A name exists only where a cardholder registered an account, so this searches
-    the registered ones first and falls back to the account number. A customer
-    nobody has registered is still reachable by its id and nothing else.
+    Every customer has a name, so this matches the name, the account number or,
+    for those who registered, the email. Only customers in the worklist are
+    returned: the others have no queue row to open. An exact account number is
+    listed first, then customers who can sign in.
     """
-    needle = q.strip().lower()
+    needle = q.strip()
+    queued = [row["account_number"] for row in worklist.all_rows()]
 
-    registered = (
-        session.query(Customer, UserAccount)
-        .join(UserAccount, Customer.user_account_id == UserAccount.id)
+    matches = (
+        session.query(Customer, User)
+        .join(User, Customer.user_id == User.id)
         .filter(
-            UserAccount.display_name.ilike(f"%{needle}%")
-            | UserAccount.email.ilike(f"%{needle}%")
+            Customer.account_number.in_(queued),
+            User.display_name.icontains(needle, autoescape=True)
+            | User.email.icontains(needle, autoescape=True)
+            | Customer.account_number.icontains(needle, autoescape=True),
+        )
+        .order_by(
+            case((Customer.account_number == needle, 0), else_=1),
+            # Only 144 invented names exist, so a name matches dozens of people;
+            # those with a login are the ones anyone is likely to be looking for.
+            case((User.password_hash.is_not(None), 0), else_=1),
+            User.display_name,
+            Customer.account_number,
         )
         .limit(limit)
         .all()
     )
-    found = {
-        customer.customer_id: account.display_name
-        for customer, account in registered
-    }
-
-    # Account numbers, for everyone the system has not met. Matched as typed: a
-    # customer id is bare digits, and quietly stripping a prefix off one would
-    # name a different customer.
-    if needle.isdigit():
-        for row in worklist.filter_rows(worklist.all_rows(), search=needle)[:limit]:
-            found.setdefault(row["customer_id"], None)
-
-    # A customer found by number may still have registered, and the name branch
-    # above would not have matched them on it.
-    unnamed = [customer_id for customer_id, name in found.items() if name is None]
-    for customer_id, name in customer_registry.display_names_for(
-        session, unnamed
-    ).items():
-        found[customer_id] = name
-
     return [
         {
-            "customer_id": customer_id,
-            "full_name": full_name,
-            "known": full_name is not None,
+            "customer_id": str(customer.id),
+            "account_number": customer.account_number,
+            "full_name": user.display_name,
+            "known": user.can_sign_in,
         }
-        for customer_id, full_name in list(found.items())[:limit]
+        for customer, user in matches
     ]
 
 
 @router.get("/queue/{customer_id}", response_model=QueueRow)
-def read_queued_customer(customer_id: str):
+def read_queued_customer(customer_id: str, session: Session = Depends(get_session)):
     """One queue row. The shape the list uses; see /officer/customers for a page."""
-    return _queued_or_404(customer_id)
+    return queued_account(session, customer_id)[1]
 
 
 @router.get("/customers/{customer_id}", response_model=CustomerDetail)
@@ -158,11 +168,12 @@ def read_customer_detail(
     than replacing it, so the screen can show that a fresh prediction agrees with
     the overnight one instead of silently overwriting it.
     """
-    detail = worklist.customer_detail(_queued_or_404(customer_id))
+    customer, row = queued_account(session, customer_id)
+    detail = worklist.customer_detail(row)
 
-    detail["full_name"] = customer_registry.display_name_for(session, customer_id)
+    detail["full_name"] = customer.user.display_name
 
-    stored = queue_predictions.latest_for_cardholder(session, customer_id)
+    stored = queue_predictions.latest_for_cardholder(session, customer.id)
     detail["latest_prediction"] = stored.to_dict() if stored else None
     return detail
 
@@ -187,7 +198,7 @@ def predict_default(
     The inputs are the nineteen columns the queue carries. The four protected
     attributes are not among them and are not needed: they never reach the model.
     """
-    row = _queued_or_404(customer_id)
+    _, row = queued_account(session, customer_id)
     user_by_email(session, scored_by, "officer")
     version = live_model_version(session)
 
@@ -239,7 +250,7 @@ def decide_on_queued_customer(
     number the officer was looking at, and the blind feature set the queue is
     built from could not be re-scored anyway.
     """
-    row = _queued_or_404(customer_id)
+    _, row = queued_account(session, customer_id)
     officer = user_by_email(session, request.decided_by, "officer")
     version = live_model_version(session)
 
@@ -270,10 +281,7 @@ def read_customer_decisions(
     Empty until someone acts: a queued customer has no prediction row until the
     first decision materialises one.
     """
-    _queued_or_404(customer_id)
-    customer = session.get(Customer, customer_id)
-    if customer is None:
-        return []
+    customer, _ = queued_account(session, customer_id)
 
     decisions = [
         decision

@@ -9,7 +9,7 @@ and a change to any of them can be compared against the rows before it.
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, Index, Integer, Text
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -26,9 +26,11 @@ class ChatTurn(Base):
         DateTime(timezone=True), nullable=False, default=now
     )
 
-    # Not a foreign key: the chat also serves queue accounts that have no `customer`
-    # row, and a log write must never fail because of that.
-    customer_id: Mapped[str] = mapped_column(Text, nullable=False)
+    # A real foreign key: the chat resolves its customer through the database, so a
+    # turn always has one. A failed log write is still swallowed (db/chat_log.py).
+    customer_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("customer.id"), nullable=False
+    )
     # 0 is the assistant's opening message, which answers no question.
     turn_number: Mapped[int] = mapped_column(Integer, nullable=False)
 

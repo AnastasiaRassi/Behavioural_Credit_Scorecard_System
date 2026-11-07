@@ -228,9 +228,7 @@ def _open_request_for(customer_id: str) -> dict | None:
 
 
 def _label(match: dict) -> str:
-    if match["full_name"]:
-        return f"{match['full_name']} · {match['customer_id']}"
-    return f"{match['customer_id']} (no name on file)"
+    return f"{match['full_name']} · {match['account_number']}"
 
 
 def _suggestions() -> None:
@@ -243,7 +241,7 @@ def _suggestions() -> None:
     registered = [user for user in known if user["customer_id"]]
     if registered:
         st.caption("Try: " + ", ".join(
-            f"**{user['display_name']}** (`{user['customer_id']}`)"
+            f"**{user['display_name']}** (`{user['account_number']}`)"
             for user in registered
         ))
 
@@ -357,10 +355,10 @@ def _heading(detail: dict) -> None:
 
     title, close = st.columns([4, 2])
     name = detail.get("full_name")
-    title.subheader(name or f"Customer {detail['customer_id']}")
+    title.subheader(name or f"Customer {detail['account_number']}")
     close.button("Back to search", key="officer_close", on_click=_close_profile, width="stretch")
 
-    st.caption(f"Account {detail['customer_id']}")
+    st.caption(f"Account {detail['account_number']}")
     if segment:
         st.caption(f"Behavioural segment: **{segment['name']}**")
 
@@ -573,7 +571,10 @@ def _decision(detail: dict, officer_email: str, from_request: bool) -> None:
     st.button(
         "Record decision", type="primary", key=f"officer_record_{customer_id}",
         on_click=_record,
-        args=(customer_id, officer_email, detail.get("full_name"), from_request),
+        args=(
+            customer_id, officer_email, detail.get("full_name"),
+            detail["account_number"], from_request,
+        ),
     )
 
     notice = st.session_state.get(NOTICE_KEY)
@@ -582,7 +583,8 @@ def _decision(detail: dict, officer_email: str, from_request: bool) -> None:
 
 
 def _record(
-    customer_id: str, officer_email: str, name: str | None, from_request: bool
+    customer_id: str, officer_email: str, name: str | None,
+    account_number: str, from_request: bool,
 ) -> None:
     """Save the decision. A callback, so it can clear the note that was just sent."""
     action = st.session_state[f"officer_action_{customer_id}"]
@@ -606,7 +608,7 @@ def _record(
 
     api.decisions.clear()
     st.session_state[note_key] = ""
-    who = f"**{name}** (account {customer_id})" if name else f"account **{customer_id}**"
+    who = f"**{name}** (account {account_number})" if name else f"account **{account_number}**"
     outcome = "Review outcome recorded" if from_request else "Decision recorded"
     notify(True, f"{outcome}: **{ACTIONS[action]}** for {who}.")
 
@@ -708,7 +710,8 @@ def _queue() -> None:
         pd.DataFrame(
             [
                 {
-                    "Customer": row["customer_id"],
+                    "Account": row["account_number"],
+                    "Customer": row["full_name"],
                     "Risk": f"{BAND_ICONS[row['risk_band']]} {row['risk_band']}",
                     "Credit limit": f"{row['credit_limit']:,.0f}",
                     "Balance": f"{row['current_balance']:,.0f}",

@@ -1,9 +1,8 @@
 """What the system produced: which model was live, and what it said about whom.
 
-A prediction points at a `customer`, not at a `user_account`. The subject of a
-score is the entity being scored, which usually has no login at all, so keying
-this on an account would have forced a credential-bearing row into existence for
-every customer ever scored.
+A prediction points at a `customer`, not at a `users` row. The subject of a score
+is the entity being scored, which usually has no login at all, so keying this on
+the login identity would tie every score to credentials that mostly do not exist.
 
 Metrics are not stored. Production performance is a join over prediction and
 observed_outcome, computed on demand; training metrics live in
@@ -73,8 +72,8 @@ class Prediction(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=new_id
     )
-    subject_customer_id: Mapped[str] = mapped_column(
-        ForeignKey("customer.customer_id"), nullable=False, index=True
+    subject_customer_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("customer.id"), nullable=False, index=True
     )
     model_version_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("model_version.id"), nullable=False, index=True
@@ -123,7 +122,7 @@ class Prediction(Base):
     def to_dict(self) -> dict:
         return {
             "id": str(self.id),
-            "customer_id": self.subject_customer_id,
+            "customer_id": str(self.subject_customer_id),
             # Key stays "scored_at": it is the published API field name, and the
             # screens read it.
             "scored_at": self.created_at.isoformat(),

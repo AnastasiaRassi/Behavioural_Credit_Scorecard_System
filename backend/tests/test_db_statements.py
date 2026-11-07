@@ -12,12 +12,15 @@ from app.db.database import _session_factory
 from app.db.ingest import (
     SourceUnavailable,
     _customer_rows,
+    _details_rows,
     _outcome_rows,
     _statement_rows,
+    _user_rows,
+    _with_ids,
     read_source,
     source_path,
 )
-from app.db.models import MONTHS_OBSERVED, Customer, MonthlyStatement
+from app.db.models import MONTHS_OBSERVED, Customer, MonthlyStatement, User, UserDetails
 from app.db.models.base import now
 from app.db.statements import (
     CustomerNotFound,
@@ -32,7 +35,7 @@ from tests.conftest import connect_or_skip
 
 # The first row of the source file, which the published codebook documents.
 FIRST_CUSTOMER = {
-    "customer_id": "1",
+    "account_number": "1",
     "LIMIT_BAL": 20000.0,
     "SEX": 2,
     "EDUCATION": 2,
@@ -69,17 +72,23 @@ def stored(session):
     """One customer with a complete six-month history, rolled back afterwards."""
     savepoint = session.begin_nested()
 
-    customer_id = f"TEST-{uuid.uuid4().hex[:8]}"
-    session.add(
-        Customer(
-            customer_id=customer_id,
-            credit_limit=FIRST_CUSTOMER["LIMIT_BAL"],
-            sex=FIRST_CUSTOMER["SEX"],
-            age_years=FIRST_CUSTOMER["AGE"],
-            education=FIRST_CUSTOMER["EDUCATION"],
-            marriage=FIRST_CUSTOMER["MARRIAGE"],
-        )
+    customer = Customer(
+        account_number=f"TEST-{uuid.uuid4().hex[:8]}",
+        credit_limit=FIRST_CUSTOMER["LIMIT_BAL"],
+        user=User(
+            display_name="Stored Customer",
+            role="cardholder",
+            details=UserDetails(
+                sex=FIRST_CUSTOMER["SEX"],
+                age_years=FIRST_CUSTOMER["AGE"],
+                education=FIRST_CUSTOMER["EDUCATION"],
+                marriage=FIRST_CUSTOMER["MARRIAGE"],
+            ),
+        ),
     )
+    session.add(customer)
+    session.flush()
+    customer_id = customer.id
     # Distinct values per month, so a pivot that transposed or reversed the
     # window would not still pass.
     for month in range(1, MONTHS_OBSERVED + 1):
@@ -102,11 +111,11 @@ def stored(session):
 # ---- reading the source ------------------------------------------------------
 
 
-def test_the_source_id_is_kept_as_the_customer_id(source):
-    assert source["customer_id"].iloc[0] == "1"
-    assert source["customer_id"].iloc[-1] == "30000"
+def test_the_source_id_is_kept_as_the_account_number(source):
+    assert source["account_number"].iloc[0] == "1"
+    assert source["account_number"].iloc[-1] == "30000"
     # Natural ids, not positions: there is no '0' and the count matches.
-    assert source["customer_id"].nunique() == len(source) == 30_000
+    assert source["account_number"].nunique() == len(source) == 30_000
 
 
 def test_undocumented_codes_are_folded_at_read(source):
@@ -121,20 +130,55 @@ def test_a_missing_source_says_what_to_do():
 
 
 def test_customer_rows_carry_the_source_values(source):
-    rows = {row["customer_id"]: row for row in _customer_rows(source, now())}
+    rows = {row["account_number"]: row for row in _customer_rows(_with_ids(source), now())}
     first = rows["1"]
     assert first["credit_limit"] == FIRST_CUSTOMER["LIMIT_BAL"]
+    assert isinstance(first["id"], uuid.UUID)
+
+
+def test_every_customer_row_points_at_its_own_user(source):
+    frame = _with_ids(source.head(50))
+    customers = _customer_rows(frame, now())
+    users = {row["id"]: row for row in _user_rows(frame, now())}
+    details = {row["user_id"]: row for row in _details_rows(frame)}
+
+    assert len({row["id"] for row in customers}) == 50
+    assert len({row["user_id"] for row in customers}) == 50
+    for row in customers:
+        assert row["user_id"] in users, "a customer with no user cannot be inserted"
+        assert row["user_id"] in details
+
+
+def test_ingested_users_are_unregistered_cardholders_with_a_name(source):
+    users = _user_rows(_with_ids(source.head(50)), now())
+
+    for row in users:
+        assert row["role"] == "cardholder"
+        assert row["email"] is None and row["password_hash"] is None
+        assert row["display_name"].strip()
+
+
+def test_the_demographics_land_on_user_details_not_customer(source):
+    frame = _with_ids(source)
+    first_user = frame.iloc[0]["user_id"]
+    first = {row["user_id"]: row for row in _details_rows(frame.head(1))}[first_user]
+
     assert first["sex"] == FIRST_CUSTOMER["SEX"]
     assert first["age_years"] == FIRST_CUSTOMER["AGE"]
-    # Nobody is registered by ingestion.
-    assert first["user_account_id"] is None
+    assert first["education"] == FIRST_CUSTOMER["EDUCATION"]
+    assert first["marriage"] == FIRST_CUSTOMER["MARRIAGE"]
+    assert not {"sex", "age_years", "education", "marriage"} & set(
+        _customer_rows(frame.head(1), now())[0]
+    )
 
 
 def test_statement_rows_are_six_per_customer_with_month_one_most_recent(source):
-    rows = _statement_rows(source.head(3))
+    frame = _with_ids(source.head(3))
+    rows = _statement_rows(frame)
     assert len(rows) == 3 * MONTHS_OBSERVED
 
-    first = {row["month_offset"]: row for row in rows if row["customer_id"] == "1"}
+    first_id = frame.iloc[0]["customer_uuid"]
+    first = {row["month_offset"]: row for row in rows if row["customer_id"] == first_id}
     assert sorted(first) == [1, 2, 3, 4, 5, 6]
     assert first[1]["repayment_status"] == FIRST_CUSTOMER["PAY_1"]
     assert first[5]["repayment_status"] == FIRST_CUSTOMER["PAY_5"]
@@ -144,13 +188,13 @@ def test_statement_rows_are_six_per_customer_with_month_one_most_recent(source):
 
 def test_row_values_are_python_scalars_not_numpy(source):
     # psycopg does not adapt numpy scalars, so a leaked one fails at insert.
-    row = _statement_rows(source.head(1))[0]
+    row = _statement_rows(_with_ids(source.head(1)))[0]
     assert type(row["repayment_status"]) is int
     assert type(row["bill_amount"]) is float
 
 
 def test_outcome_rows_label_one_period(source):
-    rows = _outcome_rows(source.head(5))
+    rows = _outcome_rows(_with_ids(source.head(5)))
     assert {row["observed_period"] for row in rows} == {"2005-10"}
     assert all(isinstance(row["defaulted"], bool) for row in rows)
 
@@ -240,5 +284,5 @@ def test_an_incomplete_window_fails_loudly(session, stored):
 
 def test_an_unknown_customer_says_what_to_run(session):
     with pytest.raises(CustomerNotFound) as raised:
-        scoring_frame(session, "TEST-not-ingested")
+        scoring_frame(session, uuid.uuid4())
     assert "app.db.ingest" in str(raised.value)

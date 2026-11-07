@@ -46,13 +46,16 @@ class SchemaOutOfDate(RuntimeError):
     pass
 
 
-# Columns that only exist in the pre-separation schema, where one user_account
-# table was both the login and the scoring subject. `create_all` never alters an
+# Columns that only exist in an earlier schema: one where a user_account was both
+# the login and the scoring subject, and the one where customer was keyed by the
+# dataset's text id with a mostly-null user_account_id. `create_all` never alters an
 # existing table, so a database carrying these would keep the old shape and fail
 # on first query rather than at startup.
 LEGACY_COLUMNS = (
     ("user_account", "full_name"),
     ("prediction", "subject_user_id"),
+    ("customer", "customer_id"),
+    ("customer", "user_account_id"),
 )
 
 
@@ -94,18 +97,18 @@ def _add_missing_columns() -> None:
 
 
 def create_all() -> None:
-    """Create any missing tables, refusing to run against the pre-separation schema.
+    """Create any missing tables, refusing to run against an earlier schema.
 
     Enough for a prototype with no schema history. A migration tool would be the
     answer if this schema had to evolve against data worth keeping.
     """
     stale = _legacy_columns()
     if stale:
-        # Not migrated automatically: the subject of a prediction moved from a
-        # user account to a customer, and no rewrite of the old rows can invent
-        # the customer ids that were never stored.
+        # Not migrated automatically: keys changed type and every customer gained a
+        # user, and no rewrite of the old rows can invent the ids that were never
+        # stored.
         raise SchemaOutOfDate(
-            f"Database still has the pre-separation schema ({', '.join(stale)}). "
+            f"Database still has an earlier schema ({', '.join(stale)}). "
             "It holds demo output only, so rebuild it: "
             "python -c \"from app.db.database import drop_all; drop_all()\" "
             "&& python -m app.db.ingest && python -m app.db.seed"
@@ -115,6 +118,17 @@ def create_all() -> None:
     _add_missing_columns()
 
 
+# Tables an earlier schema had and this one does not, dropped too so a rebuild leaves
+# nothing behind. CASCADE because the old customer and decision tables point at it.
+LEGACY_TABLES = ("user_account",)
+
+
 def drop_all() -> None:
-    """Drop every table this schema defines. Destructive; used to rebuild a prototype."""
+    """Drop every table this schema defines, and any an earlier one left.
+
+    Destructive; used to rebuild a prototype.
+    """
+    with engine().begin() as connection:
+        for table in LEGACY_TABLES:
+            connection.execute(text(f'DROP TABLE IF EXISTS "{table}" CASCADE'))
     Base.metadata.drop_all(engine())

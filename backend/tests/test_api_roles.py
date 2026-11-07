@@ -3,50 +3,46 @@
 The important assertions here are about what each role is *not* sent. A payload
 that carries a number the screen declines to draw has still disclosed it.
 """
+import uuid
+
 import pytest
 
 from app.core.passwords import hash_password
 from app.db import customer_registry
-from app.db.models import Customer, UserAccount
-from app.ml import worklist
+from app.db.models import Customer
 from app.ml.scorer import example_customer
-from tests.conftest import bearer, ensure_queued_customer
+from tests.conftest import bearer
 from tests.test_api import (  # noqa: F401  (fixture imports)
     OFFICER_EMAIL,
     api_session,
     client,
+    quietest_customer_id,
+    riskiest_customer_id,
 )
 
 CARDHOLDER_EMAIL = "test-cardholder@example.test"
 
 
-@pytest.fixture(scope="module")
-def any_customer_id() -> str:
-    return worklist.all_rows()[0]["customer_id"]
+@pytest.fixture
+def any_customer_id(riskiest_customer_id) -> str:
+    return riskiest_customer_id
 
 
-@pytest.fixture(scope="module")
-def other_customer_id() -> str:
-    return worklist.all_rows()[-1]["customer_id"]
+@pytest.fixture
+def other_customer_id(quietest_customer_id) -> str:
+    return quietest_customer_id
 
 
 @pytest.fixture
 def cardholder_identity(api_session, any_customer_id) -> str:
-    """A cardholder registered as `any_customer_id`, the way the seed links one."""
-    account = UserAccount(
-        email=CARDHOLDER_EMAIL,
-        display_name="Test Cardholder",
-        password_hash=hash_password("not-a-real-password"),
-        role="cardholder",
+    """A cardholder registered as `any_customer_id`, the way the seed gives one a login."""
+    customer_registry.give_login(
+        api_session,
+        api_session.get(Customer, uuid.UUID(any_customer_id)),
+        CARDHOLDER_EMAIL,
+        hash_password("not-a-real-password"),
     )
-    api_session.add(account)
-    api_session.flush()
-
-    ensure_queued_customer(api_session, worklist.find(any_customer_id))
-    customer_registry.link_account(
-        api_session, api_session.get(Customer, any_customer_id), account
-    )
-    return account.email
+    return CARDHOLDER_EMAIL
 
 
 def _read_account(client, customer_id: str, email: str):
@@ -66,6 +62,14 @@ def test_users_omits_cardholders_by_default(client):
     body = client.get("/users").json()
     assert body, "the seeded staff should be listed"
     assert all(user["role"] != "cardholder" for user in body)
+
+
+def test_users_lists_only_cardholders_who_can_sign_in(client, cardholder_identity):
+    body = client.get("/users", params={"role": "cardholder"}).json()
+
+    assert cardholder_identity in {user["email"] for user in body}
+    assert all(user["email"] for user in body), "unregistered customers are not users to pick"
+    assert all(user["account_number"] for user in body)
 
 
 def test_users_can_be_filtered_to_officers(client):
@@ -104,6 +108,25 @@ def test_queue_paging_does_not_repeat_rows(client):
     assert ids.isdisjoint({row["customer_id"] for row in second["rows"]})
 
 
+def test_queue_rows_carry_a_uuid_and_the_account_number(client):
+    rows = client.get("/officer/queue", params={"limit": 5}).json()["rows"]
+
+    for row in rows:
+        assert uuid.UUID(row["customer_id"])
+        assert row["account_number"].isdigit()
+        assert row["full_name"]
+
+
+def test_the_queue_search_matches_account_numbers(client):
+    wanted = client.get("/officer/queue", params={"limit": 1}).json()["rows"][0]
+
+    found = client.get(
+        "/officer/queue", params={"search": wanted["account_number"]}
+    ).json()["rows"]
+
+    assert wanted["customer_id"] in {row["customer_id"] for row in found}
+
+
 def test_an_officer_sees_the_effect_size(client, any_customer_id):
     body = client.get(f"/officer/queue/{any_customer_id}").json()
     assert "probability" in body
@@ -111,7 +134,12 @@ def test_an_officer_sees_the_effect_size(client, any_customer_id):
 
 
 def test_an_unknown_queued_customer_is_a_404(client):
+    assert client.get(f"/officer/queue/{uuid.uuid4()}").status_code == 404
+
+
+def test_a_malformed_customer_id_is_a_404_not_a_500(client):
     assert client.get("/officer/queue/C-nobody").status_code == 404
+    assert client.get("/officer/queue/20722").status_code == 404
 
 
 # --- cardholder ---------------------------------------------------------------
@@ -147,6 +175,7 @@ def test_the_two_views_describe_the_same_account(client, any_customer_id):
 
 
 def test_an_unknown_account_is_a_404(client):
+    assert _read_account(client, str(uuid.uuid4()), OFFICER_EMAIL).status_code == 404
     assert _read_account(client, "C-nobody", OFFICER_EMAIL).status_code == 404
 
 

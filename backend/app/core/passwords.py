@@ -5,7 +5,7 @@ needs no new dependency, and keeps the stored form self-describing, so the cost
 can be raised later without invalidating existing hashes.
 
 Hashing a password is not authentication. The system still has no login (see
-docs/code_conventions.md §1); this exists so that `user_account.password_hash`
+docs/code_conventions.md §1); this exists so that `users.password_hash`
 can never hold a readable credential when one is set.
 """
 import hmac

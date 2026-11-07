@@ -10,19 +10,22 @@ officer was looking at when they decided, and re-scoring could not reproduce it
 anyway: the queue is built from the blind feature set, so the protected columns
 `CreditScorer.prepare()` expects are not present.
 
-A prediction points straight at `customer.customer_id`, so no cardholder row has
-to be invented to carry an id. The customer must already be ingested; the queue
-is built from the same dataset, so a missing one means ingestion has not been run.
+A prediction points straight at `customer.id`, so no cardholder row has to be
+invented to carry an id. The customer must already be ingested; the queue is
+built from the same dataset, so a missing one means ingestion has not been run.
 
-ml/worklist.py already maps the artifact's row labels onto customer ids, so the
-id on a queue row is the key to look up. Every lookup here still checks the
-figures against the stored ones rather than trusting the match, because pointing
-a decision at the wrong person's account is the worst thing this module could
-do.
+ml/worklist.py already maps the artifact's row labels onto account numbers, so a
+queue row's account number is the key to look up. Every lookup here still checks
+the figures against the stored ones rather than trusting the match, because
+pointing a decision at the wrong person's account is the worst thing this module
+could do.
 """
+import uuid
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.db.customer_registry import find_by_account_number
 from app.db.models import Customer, ModelVersion, MonthlyStatement, Prediction
 from app.ml.explainability import MONTHS_OBSERVED
 
@@ -67,20 +70,19 @@ def scored_columns(row: dict) -> dict:
 
 def customer_for_queue_row(session: Session, row: dict) -> Customer:
     """The stored customer a queue row describes, with the id mapping checked."""
-    customer_id = row["customer_id"]
-    customer = session.get(Customer, customer_id)
+    account_number = row["account_number"]
+    customer = find_by_account_number(session, account_number)
     if customer is None:
         raise CustomerNotIngested(
-            f"Queue row {row['customer_id']!r} maps to customer "
-            f"{customer_id!r}, which is not in the database, so no prediction "
-            "can reference it. Run: python -m app.db.ingest"
+            f"Queue row {account_number!r} has no customer in the database, so no "
+            "prediction can reference it. Run: python -m app.db.ingest"
         )
 
     _verify_same_account(row, customer, session)
     return customer
 
 
-def latest_for_cardholder(session: Session, customer_id: str) -> Prediction | None:
+def latest_for_cardholder(session: Session, customer_id: uuid.UUID) -> Prediction | None:
     """The newest stored score for a queue customer, if one has been run."""
     return session.scalars(
         select(Prediction)
@@ -91,7 +93,7 @@ def latest_for_cardholder(session: Session, customer_id: str) -> Prediction | No
 
 
 def _verify_same_account(row: dict, customer: Customer, session: Session) -> None:
-    recent = session.get(MonthlyStatement, (customer.customer_id, 1))
+    recent = session.get(MonthlyStatement, (customer.id, 1))
     stored = (
         float(customer.credit_limit),
         float(recent.bill_amount) if recent else None,
@@ -104,8 +106,8 @@ def _verify_same_account(row: dict, customer: Customer, session: Session) -> Non
     )
     if stored != queued:
         raise QueueIdMismatch(
-            f"Queue row {row['customer_id']!r} maps to customer "
-            f"{customer.customer_id!r}, but their figures differ "
+            f"Queue row {row['account_number']!r} maps to customer "
+            f"{customer.id}, but their figures differ "
             f"(limit/bill/payment stored {stored} vs queued {queued}). The "
             "worklist artifact and the ingested data are out of step; "
             "regenerate it with: python -m app.ml.train"
@@ -131,7 +133,7 @@ def store_fresh_prediction(
     customer = customer_for_queue_row(session, row)
 
     prediction = Prediction(
-        subject_customer_id=customer.customer_id,
+        subject_customer_id=customer.id,
         model_version_id=version.id,
         probability=probability,
         risk_band=risk_band,
@@ -163,7 +165,7 @@ def prediction_for(
     existing = session.scalars(
         select(Prediction)
         .where(
-            Prediction.subject_customer_id == customer.customer_id,
+            Prediction.subject_customer_id == customer.id,
             Prediction.model_version_id == version.id,
         )
         .order_by(Prediction.created_at.desc())
@@ -173,7 +175,7 @@ def prediction_for(
         return existing
 
     prediction = Prediction(
-        subject_customer_id=customer.customer_id,
+        subject_customer_id=customer.id,
         model_version_id=version.id,
         probability=row["probability"],
         risk_band=row["risk_band"],

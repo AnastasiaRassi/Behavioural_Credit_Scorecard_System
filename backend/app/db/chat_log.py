@@ -1,5 +1,6 @@
 """Writing and summarising the chat log (`chat_turn`)."""
 import logging
+import uuid
 from typing import Mapping
 
 from sqlalchemy import func
@@ -17,8 +18,11 @@ def record(session: Session, turn: Mapping) -> None:
         # A savepoint, so a failed insert (such as the table not existing yet) rolls
         # back alone instead of poisoning the request's own transaction.
         with session.begin_nested():
-            session.add(ChatTurn(**turn))
-    except SQLAlchemyError:
+            # The reply layer carries ids as text; the column is a UUID.
+            session.add(
+                ChatTurn(**{**turn, "customer_id": uuid.UUID(str(turn["customer_id"]))})
+            )
+    except (SQLAlchemyError, ValueError):
         logger.exception("chat log: could not store the turn; is the chat_turn table created?")
 
 
