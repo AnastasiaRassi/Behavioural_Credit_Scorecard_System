@@ -11,15 +11,19 @@ Telling someone they are predicted to default is distressing, can be
 self-fulfilling, and commits the lender to specific reasons the moment it acts.
 Pre-delinquency contact is framed as assistance, so this screen says what to do.
 
-Two columns: the account on the left, Loana AI (the chat copilot) on the right. Loana's
-wording, and the repayment history it draws on, come from the API.
+Two columns: the account on the left, Loana AI (the chat copilot) on the right in a
+sticky card (ui/loana.py). Loana's wording, and the repayment history it draws on,
+come from the API.
 """
+from collections.abc import Callable
+
 import altair as alt
 import pandas as pd
 import streamlit as st
 
 import api
 import theme
+from ui import loana
 
 # Features a cardholder can act on this month. A reason they cannot change is
 # not advice, it is an accusation.
@@ -62,18 +66,22 @@ anything that needs action, and you can ask for a human review of any decision.
 """
 
 
-def render(token: str, customer_id: str) -> None:
+def render(
+    token: str, customer_id: str, header: Callable[[], None] = loana.no_header
+) -> None:
+    """`header` draws the page bar at the top of the main column."""
     try:
         account = api.cardholder(customer_id, token)
     except api.ServiceUnavailable as exception:
+        header()
         api.guard(exception)
         return
 
-    st.divider()
-    main, copilot = st.columns([7, 3], gap="large")
+    main, copilot = loana.columns()
     with main:
+        header()
         _main(account, token, customer_id)
-    with copilot:
+    with copilot, loana.panel():
         _copilot(token, customer_id)
 
 
@@ -273,43 +281,42 @@ def _copilot(token: str, customer_id: str) -> None:
     is fetched once per session and kept here, because Streamlit reruns this script on
     every click and each fetch can cost the API an LLM call.
     """
-    with st.container(border=True):
-        st.subheader("Loana AI · Financial Health Copilot")
+    key = f"chat_{customer_id}"
+    if key not in st.session_state:
+        with st.spinner("Loana is reading your account..."):
+            try:
+                opening = api.chat(customer_id, token, [])
+            except api.ServiceUnavailable:
+                st.caption("The assistant is unavailable right now.")
+                return
+        st.session_state[key] = {
+            "messages": [
+                {"role": "assistant", "content": opening["reply"], "note": opening["note"]}
+            ],
+            "disclaimer": opening["disclaimer"],
+        }
+    conversation = st.session_state[key]
 
-        key = f"chat_{customer_id}"
-        if key not in st.session_state:
-            with st.spinner("Loana is reading your account..."):
-                try:
-                    opening = api.chat(customer_id, token, [])
-                except api.ServiceUnavailable:
-                    st.caption("The assistant is unavailable right now.")
-                    return
-            st.session_state[key] = {
-                "messages": [
-                    {"role": "assistant", "content": opening["reply"], "note": opening["note"]}
-                ],
-                "disclaimer": opening["disclaimer"],
-            }
-        conversation = st.session_state[key]
-        first, *rest = conversation["messages"]
-
-        _bubble(first)
-
-        asked = None
-        for column, (label, question) in zip(st.columns(len(PRESETS)), PRESETS.items()):
-            if column.button(label, key=f"preset_{customer_id}_{label}", width="stretch"):
-                asked = question
-
-        for message in rest:
+    # Messages scroll in their own box; presets and the input stay under it.
+    chat = loana.chat_area()
+    with chat:
+        for message in conversation["messages"]:
             _bubble(message)
 
-        asked = st.chat_input("Ask why, or what would help") or asked
-        st.caption(conversation["disclaimer"])
-        if not asked:
-            return
+    asked = None
+    for column, (label, question) in zip(st.columns(len(PRESETS)), PRESETS.items()):
+        if column.button(label, key=f"preset_{customer_id}_{label}", width="stretch"):
+            asked = question
 
-        conversation["messages"].append({"role": "user", "content": asked, "note": ""})
-        sent = [{"role": m["role"], "content": m["content"]} for m in conversation["messages"]]
+    asked = st.chat_input("Ask why, or what would help") or asked
+    st.caption(conversation["disclaimer"])
+    if not asked:
+        return
+
+    conversation["messages"].append({"role": "user", "content": asked, "note": ""})
+    sent = [{"role": m["role"], "content": m["content"]} for m in conversation["messages"]]
+    with chat:
+        _bubble(conversation["messages"][-1])
         with st.spinner("Thinking about your account..."):
             try:
                 turn = api.chat(customer_id, token, sent)
@@ -320,7 +327,7 @@ def _copilot(token: str, customer_id: str) -> None:
                     "content": "I could not reach the service just now. Please try again.",
                     "note": "",
                 }
-        conversation["messages"].append(reply)
+    conversation["messages"].append(reply)
     st.rerun()
 
 

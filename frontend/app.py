@@ -13,6 +13,7 @@ the account. Which screens open is therefore decided by the database, not by the
 person at the keyboard, and this module never sees a role it was not told.
 """
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 import streamlit as st
@@ -44,14 +45,18 @@ def main() -> None:
         _sign_in()
         return
 
-    _signed_in_bar(session)
+    # Drawn by the screen, not here: the officer and cardholder screens put it at
+    # the top of their main column so Loana's card can start at the top of the page.
+    def header() -> None:
+        _signed_in_bar(session)
 
     if session["role"] == "officer":
-        _officer(session)
+        _officer(session, header)
     elif session["role"] == "engineer":
+        header()
         _engineer()
     else:
-        _cardholder(session)
+        _cardholder(session, header)
 
 
 # --- signing in -----------------------------------------------------------
@@ -109,22 +114,26 @@ def _signed_in_bar(session: dict) -> None:
 # --- the three screens ----------------------------------------------------
 
 
-def _officer(session: dict) -> None:
+def _officer(session: dict, header: Callable[[], None]) -> None:
     # The acting officer is whoever signed in, not a sidebar choice: a decision
     # records who took it, and that must not be selectable.
-    officer.render(session["email"])
+    officer.render(session["email"], session["token"], header)
 
 
-def _cardholder(session: dict) -> None:
-    st.subheader("Your account")
+def _cardholder(session: dict, header: Callable[[], None]) -> None:
+    def titled() -> None:
+        header()
+        st.subheader("Your account")
+
     if session["customer_id"] is None:
+        titled()
         st.info(
             "This account is not registered against a customer yet, so there is "
             "no scored account to show. Link it with: "
             "`cd backend && python -m app.db.seed`"
         )
         return
-    cardholder.render(session["token"], session["customer_id"])
+    cardholder.render(session["token"], session["customer_id"], titled)
 
 
 def _engineer() -> None:

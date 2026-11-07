@@ -1,7 +1,8 @@
 """The loan officer's surface: a worklist, one customer in detail, a decision."""
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.orm import Session
+from dataclasses import asdict
 
+from app.ai import officer_assistant
+from app.api.cardholders import account_for
 from app.api.dependencies import (
     get_explainer,
     get_scorer,
@@ -9,12 +10,20 @@ from app.api.dependencies import (
     live_model_version,
     user_by_email,
 )
-from app.db import customer_registry, queue_predictions
+from app.db import chat_log, customer_registry, queue_predictions
 from app.db.models import Customer, Decision, UserAccount
 from app.ml import artifacts, worklist
 from app.schemas.decisions import DecisionCreate, DecisionOut
 from app.schemas.scoring import ScoreResponse
-from app.schemas.worklist import CustomerDetail, QueuePage, QueueRow
+from app.schemas.worklist import (
+    ChatReply,
+    ChatRequest,
+    CustomerDetail,
+    QueuePage,
+    QueueRow,
+)
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy.orm import Session
 
 router = APIRouter(prefix="/officer", tags=["officer"])
 
@@ -275,3 +284,28 @@ def read_customer_decisions(
         DecisionOut(**decision.to_dict())
         for decision in sorted(decisions, key=lambda row: row.decided_at)
     ]
+
+
+@router.post("/customers/{customer_id}/chat", response_model=ChatReply)
+def chat_about_customer(
+    customer_id: str, request: ChatRequest, session: Session = Depends(get_session)
+):
+    """The officer assistant's next turn, answered from this customer's own facts.
+
+    Stateless like the cardholder chat: the client sends the conversation so far,
+    which must end with the officer's question.
+    """
+    if not request.messages or request.messages[-1].role != "user":
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="messages must end with the officer's question",
+        )
+
+    row, stored, record = account_for(customer_id, session)
+    return officer_assistant.answer(
+        row,
+        [message.model_dump() for message in request.messages],
+        stored_prediction=stored,
+        record=record,
+        on_turn=lambda turn: chat_log.record(session, asdict(turn)),
+    ).to_dict()

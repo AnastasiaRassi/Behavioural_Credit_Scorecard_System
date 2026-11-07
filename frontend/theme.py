@@ -20,6 +20,10 @@ HIGH = "#E05545"
 # Neutral series and interface accent. Mirrors primaryColor in .streamlit/config.toml.
 ACCENT = "#4C8DF6"
 
+# Loana AI's card. Not a risk colour: it only ever fills the assistant's column.
+LOANA = "#00C588"
+LOANA_INK = "#073B2D"
+
 BAND_COLOURS = {"Low": LOW, "Medium": MEDIUM, "High": HIGH}
 BAND_ICONS = {"Low": "🟢", "Medium": "🟡", "High": "🔴"}
 
@@ -36,12 +40,110 @@ FONT = (
 
 _CSS = f"""
 <style>
+/* One light-blue gradient behind every signed-in page; the header is transparent
+   so it shows through. */
+[data-testid="stApp"] {{
+    background: linear-gradient(160deg, #EDF6FF 0%, #D9EBFC 50%, #C5DEF6 100%) fixed;
+}}
+[data-testid="stHeader"] {{ background: transparent; }}
+
+/* Loana AI (ui/loana.py). The column stays transparent and stretches to the row;
+   the card inside it is sticky and one screen tall, so it follows the page instead
+   of leaving green blank below a short chat. Streamlit gives columns and layout
+   wrappers no key, hence :has(). */
+[data-testid="stColumn"]:has(.st-key-loana_panel) {{
+    align-self: stretch;
+    display: flex;
+    flex-direction: column;
+}}
+[data-testid="stColumn"]:has(.st-key-loana_panel) > [data-testid="stVerticalBlock"] {{
+    flex: 1 1 auto;
+}}
+[data-testid="stLayoutWrapper"]:has(> .st-key-loana_panel) {{
+    position: sticky;
+    top: 4rem;
+    height: calc(100vh - 6.5rem);
+}}
+.st-key-loana_panel {{
+    height: 100%;
+    gap: 0.6rem;
+    padding: 1.1rem;
+    overflow-y: auto;
+    background: {LOANA};
+    border-radius: 22px;
+    box-shadow: 0 12px 32px rgba(0, 197, 136, 0.28);
+}}
+.st-key-loana_panel > * {{ flex-shrink: 0; }}
+/* The messages scroll inside the card; everything under them (presets, input)
+   keeps its place at the bottom. */
+[data-testid="stLayoutWrapper"]:has(> .st-key-loana_chat) {{
+    flex: 1 1 0;
+    min-height: 200px;
+}}
+.st-key-loana_chat {{ height: 100% !important; }}
+@media (max-width: 640px) {{
+    [data-testid="stLayoutWrapper"]:has(> .st-key-loana_panel) {{
+        position: static;
+        height: auto;
+    }}
+    [data-testid="stLayoutWrapper"]:has(> .st-key-loana_chat) {{ flex: none; }}
+    .st-key-loana_chat {{ height: 420px !important; }}
+}}
+
+.loana-head {{ display: flex; align-items: center; gap: 0.85rem; }}
+.loana-head img {{
+    width: 64px;
+    height: 64px;
+    flex: none;
+    padding: 4px;
+    background: #FFFFFF;
+    border-radius: 50%;
+    box-shadow: 0 4px 14px rgba(7, 59, 45, 0.25);
+}}
+/* Padding, not margin: Streamlit trims a markdown block's last 1rem. */
+.loana-head {{ min-width: 0; padding-bottom: 1rem; }}
+.loana-head .loana-name {{
+    font-size: clamp(1.1rem, 1.9vw, 1.4rem);
+    font-weight: 800;
+    letter-spacing: 0.14em;
+    line-height: 1.1;
+    white-space: nowrap;
+    color: #0F172A;
+}}
+.loana-head .loana-sub {{
+    margin-top: 0.15rem;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: rgba(15, 23, 42, 0.78);
+}}
+
+.st-key-loana_panel p {{ color: {LOANA_INK}; }}
+.st-key-loana_panel [data-testid="stCaptionContainer"] p {{
+    color: rgba(7, 59, 45, 0.78);
+}}
+.st-key-loana_panel [data-testid="stChatMessage"] {{
+    background: rgba(255, 255, 255, 0.92);
+    border-radius: 14px;
+}}
+.st-key-loana_panel [data-testid="stChatMessage"] p {{ color: #1D2B27; }}
+.st-key-loana_panel [data-testid="stChatMessage"] [data-testid="stCaptionContainer"] p {{
+    color: {MUTED};
+    text-align: left;
+}}
+.st-key-loana_panel button {{
+    background: #FFFFFF;
+    border: none;
+    color: {LOANA_INK};
+    border-radius: 999px;
+}}
+.st-key-loana_panel button:hover {{ background: #E9FFF7; color: {LOANA_INK}; }}
+
 /* Shorter run-in at the top. The page uses the full width: the cardholder screen is
    two columns, and a 1180px cap left the copilot column too narrow to read. The
    sign-in page sets its own width (ui/login.css). */
 [data-testid="stMainBlockContainer"] {{
     padding-top: 3rem;
-    padding-bottom: 5rem;
+    padding-bottom: 2rem;
     padding-left: clamp(1.5rem, 4vw, 4rem);
     padding-right: clamp(1.5rem, 4vw, 4rem);
     max-width: none;
@@ -98,9 +200,49 @@ h3 {{ font-size: 1.12rem !important; }}
     border-radius: 10px;
 }}
 
+/* Officer cards (ui/components.py). Red, amber and green appear only on the band
+   badge and the reason arrows, where they mean risk. */
+.officer-card-head {{
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 0.75rem;
+}}
+.officer-card-title {{ font-size: 1.05rem; font-weight: 650; line-height: 1.3; }}
+.officer-card-meta {{ font-size: 0.85rem; color: {MUTED}; margin-top: 0.1rem; }}
+.officer-badge {{
+    flex: none;
+    font-size: 0.78rem;
+    font-weight: 600;
+    padding: 0.15rem 0.6rem;
+    border-radius: 999px;
+    border: 1px solid {MUTED};
+    white-space: nowrap;
+}}
+.officer-badge--Low {{ border-color: {LOW}; }}
+.officer-badge--Medium {{ border-color: {MEDIUM}; }}
+.officer-badge--High {{ border-color: {HIGH}; }}
+.officer-quote {{
+    margin: 0.25rem 0 0;
+    padding-left: 0.8rem;
+    border-left: 3px solid {GRID};
+    line-height: 1.5;
+}}
+.officer-arrow--up {{ color: {HIGH}; }}
+.officer-arrow--down {{ color: {LOW}; }}
+
 [data-testid="stCaptionContainer"] p {{ color: {MUTED}; line-height: 1.5; }}
 hr {{ border-color: {GRID} !important; opacity: 1; }}
 [data-testid="stDataFrame"] {{ border-radius: 8px; overflow: hidden; }}
+
+/* The officer's search is the way in, so it is the biggest thing on the page. */
+.st-key-officer_lookup input {{
+    font-size: 1.15rem;
+    padding: 0.9rem 1.1rem;
+    background: #FFFFFF;
+    border-radius: 14px;
+    box-shadow: 0 6px 20px rgba(41, 98, 160, 0.14);
+}}
 </style>
 """
 

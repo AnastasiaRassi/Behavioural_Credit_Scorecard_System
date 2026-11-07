@@ -26,7 +26,7 @@ router = APIRouter(prefix="/cardholders", tags=["cardholder"])
     response_model=CardholderView,
     dependencies=[Depends(account_reader)],
 )
-def read_own_account(
+def read_ownaccount_for(
     customer_id: str, session: Session = Depends(get_session)
 ):
     """What this cardholder is told about their next payment.
@@ -39,7 +39,7 @@ def read_own_account(
     officer are looking at the same prediction rather than the customer seeing a
     stale overnight one. Falls back to the queue when none has been run.
     """
-    row, stored, record = _account(customer_id, session)
+    row, stored, record = account_for(customer_id, session)
     return worklist.cardholder_view(row, stored_prediction=stored, record=record)
 
 
@@ -48,7 +48,7 @@ def read_own_account(
     response_model=ChatReply,
     dependencies=[Depends(account_reader)],
 )
-def chat_about_account(
+def chat_aboutaccount_for(
     customer_id: str, request: ChatRequest, session: Session = Depends(get_session)
 ):
     """The assistant's next turn, answered from this account's own facts.
@@ -56,7 +56,7 @@ def chat_about_account(
     Stateless: the client sends the conversation so far. An empty conversation
     returns Loana's opening interpretation of the account.
     """
-    row, stored, record = _account(customer_id, session)
+    row, stored, record = account_for(customer_id, session)
     messages = [message.model_dump() for message in request.messages]
     return assistant.answer(
         row,
@@ -67,7 +67,7 @@ def chat_about_account(
     ).to_dict()
 
 
-def _account(customer_id: str, session: Session):
+def account_for(customer_id: str, session: Session):
     """The queue row, the latest officer score if any, and the raw input for the search."""
     row = worklist.find(customer_id)
     if row is None:
