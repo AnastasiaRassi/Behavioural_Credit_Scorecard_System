@@ -7,7 +7,7 @@ wrong can ask for a human review, and the officer decides whether it should stan
 Two states on one page, no tabs. With nobody selected it is a landing page: a large
 search box, the review requests and this month's triage, and no assistant. Once the
 officer picks a customer, from a search result or a request card, the page becomes
-the customer's record at 70% with Loana AI at 30% (ui/loana.py).
+the customer's record at full width with Loana AI as a floating chat (ui/loana.py).
 
 Nothing opens by itself: the selected customer (`officer_customer_id`) is only ever
 set by a click, and is deliberately not mirrored in or read from the URL, so a
@@ -81,12 +81,9 @@ def render(
         _landing()
         return
 
-    main, assistant = loana.columns()
-    with main:
-        header()
-        _record_page(customer_id, officer_email, token)
-    with assistant, loana.panel():
-        _assistant(customer_id)
+    header()
+    _record_page(customer_id, officer_email, token)
+    loana.dock(lambda: _assistant(customer_id))
 
 
 def _keep_widget_state() -> None:
@@ -107,6 +104,12 @@ def _select(customer_id: str | None) -> None:
         return
     st.session_state[CUSTOMER_KEY] = customer_id
     st.session_state.pop(NOTICE_KEY, None)
+
+
+def back_button() -> None:
+    """The way out of a customer page; app.py pins it into the header bar."""
+    if st.session_state.get(CUSTOMER_KEY):
+        st.button("Back to search", key="officer_close", on_click=_close_profile)
 
 
 def _close_profile() -> None:
@@ -352,10 +355,8 @@ def _plan(detail: dict, token: str) -> None:
 def _heading(detail: dict) -> None:
     segment = detail.get("segment") or {}
 
-    title, close = st.columns([4, 2])
     name = detail.get("full_name")
-    title.subheader(name or f"Customer {detail['account_number']}")
-    close.button("Back to search", key="officer_close", on_click=_close_profile, width="stretch")
+    st.subheader(name or f"Customer {detail['account_number']}")
 
     st.caption(f"Account {detail['account_number']}")
     if segment:

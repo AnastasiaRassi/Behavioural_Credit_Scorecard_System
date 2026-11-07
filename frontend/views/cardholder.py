@@ -11,9 +11,9 @@ Telling someone they are predicted to default is distressing, can be
 self-fulfilling, and commits the lender to specific reasons the moment it acts.
 Pre-delinquency contact is framed as assistance, so this screen says what to do.
 
-Two columns: the account on the left, Loana AI (the chat copilot) on the right in a
-sticky card (ui/loana.py). Loana's wording, and the repayment history it draws on,
-come from the API.
+The account at full width, with Loana AI (the chat copilot) as a floating chat in the
+corner (ui/loana.py). Loana's wording, and the repayment history it draws on, come
+from the API.
 """
 from collections.abc import Callable
 
@@ -55,6 +55,11 @@ PRESETS = {
     "🎯 Next steps": "What can I do this month?",
 }
 
+GREETING = (
+    "Hi, I'm Loana. Ask me about your account, or pick one of the questions below."
+)
+DISCLAIMER = "Loana answers from your account's own data and is not financial advice."
+
 CONSENT = """
 Your account is checked each month using your billing and repayment history for
 the last six months.
@@ -79,12 +84,9 @@ def render(
         api.guard(exception)
         return
 
-    main, copilot = loana.columns()
-    with main:
-        header()
-        _main(account, token, customer_id)
-    with copilot, loana.panel():
-        _copilot(token, customer_id)
+    header()
+    _main(account, token, customer_id)
+    loana.dock(lambda: _copilot(token, customer_id))
 
 
 def _main(account: dict, token: str, customer_id: str) -> None:
@@ -318,25 +320,19 @@ def _copilot(token: str, customer_id: str) -> None:
     """Loana AI: questions about this account, answered from the account's own facts.
 
     The conversation lives in session state and is sent whole each turn; the API
-    keeps none. Every reply's wording comes from the API. The opening interpretation
-    is fetched once per session and kept here, because Streamlit reruns this script on
-    every click and each fetch can cost the API an LLM call.
+    keeps none. Every reply's wording comes from the API, and only after the customer
+    asks, because each reply can cost the API an LLM call.
     """
     key = f"chat_{customer_id}"
-    if key not in st.session_state:
-        with st.spinner("Loana is reading your account..."):
-            try:
-                opening = api.chat(customer_id, token, [])
-            except api.ServiceUnavailable:
-                st.caption("The assistant is unavailable right now.")
-                return
-        st.session_state[key] = {
-            "messages": [
-                {"role": "assistant", "content": opening["reply"], "note": opening["note"]}
-            ],
-            "disclaimer": opening["disclaimer"],
-        }
-    conversation = st.session_state[key]
+    # No API call until the customer asks: the greeting is local, and the real
+    # disclaimer replaces the placeholder with the first answer.
+    conversation = st.session_state.setdefault(
+        key,
+        {
+            "messages": [{"role": "assistant", "content": GREETING, "note": "", "local": True}],
+            "disclaimer": DISCLAIMER,
+        },
+    )
 
     # Messages scroll in their own box; presets and the input stay under it.
     chat = loana.chat_area()
@@ -355,12 +351,17 @@ def _copilot(token: str, customer_id: str) -> None:
         return
 
     conversation["messages"].append({"role": "user", "content": asked, "note": ""})
-    sent = [{"role": m["role"], "content": m["content"]} for m in conversation["messages"]]
+    sent = [
+        {"role": m["role"], "content": m["content"]}
+        for m in conversation["messages"]
+        if not m.get("local")
+    ]
     with chat:
         _bubble(conversation["messages"][-1])
         with st.spinner("Thinking about your account..."):
             try:
                 turn = api.chat(customer_id, token, sent)
+                conversation["disclaimer"] = turn.get("disclaimer") or DISCLAIMER
                 reply = {"role": "assistant", "content": turn["reply"], "note": turn["note"]}
             except api.ServiceUnavailable:
                 reply = {

@@ -14,8 +14,8 @@ import streamlit as st
 
 # Risk bands and audit outcomes. The only three colours allowed to mean something.
 LOW = "#35B36A"
-MEDIUM = "#E0A92B"
-HIGH = "#E05545"
+MEDIUM = "#D97706"
+HIGH = "#DC2626"
 
 # Neutral series and interface accent. Mirrors primaryColor in .streamlit/config.toml.
 ACCENT = "#4C8DF6"
@@ -27,11 +27,11 @@ LOANA_INK = "#073B2D"
 BAND_COLOURS = {"Low": LOW, "Medium": MEDIUM, "High": HIGH}
 BAND_ICONS = {"Low": "🟢", "Medium": "🟡", "High": "🔴"}
 
-# Chart furniture, dark-theme matched.
-TEXT = "#E4E9F2"
-MUTED = "#8C98AC"
-GRID = "#222C3C"
-SURFACE = "#172030"
+# Chart furniture: espresso text and warm stone on white cards.
+TEXT = "#1C1917"
+MUTED = "#78716C"
+GRID = "#E6E2DE"
+SURFACE = "#FFFFFF"
 
 FONT = (
     '-apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", "Helvetica Neue", '
@@ -40,38 +40,90 @@ FONT = (
 
 _CSS = f"""
 <style>
-/* One light-blue gradient behind every signed-in page; the header is transparent
-   so it shows through. */
-[data-testid="stApp"] {{
-    background: linear-gradient(160deg, #EDF6FF 0%, #D9EBFC 50%, #C5DEF6 100%) fixed;
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
+/* Inter everywhere: banner, Loana and the rest of the app. Icon fonts are kept. */
+html, body, [data-testid="stApp"], .ct-banner,
+[data-testid="stApp"] :is(p, span, div, label, button, input, textarea, h1, h2, h3, h4, li, td, th):not([data-testid="stIconMaterial"]):not(.material-symbols-rounded) {{
+    font-family: "Inter", -apple-system, "Segoe UI", sans-serif;
 }}
+/* Warm ecru page; the header is transparent so it shows through. */
+[data-testid="stApp"] {{ background: #FBF9F6; color: {TEXT}; }}
+[data-testid="stApp"] :is(h1, h2, h3, h4, p, li, label) {{ color: {TEXT}; }}
+[data-testid="stCaptionContainer"] p {{ color: {MUTED}; }}
 [data-testid="stHeader"] {{ background: transparent; }}
 
-/* Loana AI (ui/loana.py). The column stays transparent and stretches to the row;
-   the card inside it is sticky and one screen tall, so it follows the page instead
-   of leaving green blank below a short chat. Streamlit gives columns and layout
-   wrappers no key, hence :has(). */
-[data-testid="stColumn"]:has(.st-key-loana_panel) {{
-    align-self: stretch;
-    display: flex;
-    flex-direction: column;
+/* Loana AI (ui/loana.py): a fixed bubble, or a fixed 380x550 card, bottom-right. */
+.st-key-loana_launch {{
+    position: fixed;
+    right: 1.5rem;
+    bottom: 1.5rem;
+    z-index: 1000;
+    width: auto;
 }}
-[data-testid="stColumn"]:has(.st-key-loana_panel) > [data-testid="stVerticalBlock"] {{
-    flex: 1 1 auto;
+/* A pill: the invitation on the left, the avatar (a CSS background, so the button
+   stays a real button) on the right. */
+.st-key-loana_launch button {{
+    width: auto;
+    height: 112px;
+    min-height: 0;
+    padding: 0 132px 0 1.6rem;
+    border: 3px solid {LOANA};
+    border-radius: 999px;
+    background-color: #FFFFFF;
+    background-size: auto 100%;
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    box-shadow: 0 8px 22px rgba(7, 59, 45, 0.3);
+    transition: transform 0.18s ease, box-shadow 0.18s ease;
+    animation: loana-nudge 2.6s ease-in-out 1.5s 3;
 }}
-[data-testid="stLayoutWrapper"]:has(> .st-key-loana_panel) {{
-    position: sticky;
-    top: 4rem;
-    height: calc(100vh - 6.5rem);
+.st-key-loana_launch button p {{
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: #1C1917;
+    white-space: nowrap;
+}}
+.st-key-loana_launch button:hover {{
+    transform: scale(1.05);
+    border-color: {LOANA_INK};
+    box-shadow: 0 12px 28px rgba(7, 59, 45, 0.42);
+}}
+@keyframes loana-nudge {{
+    0%, 100% {{ transform: none; }}
+    50% {{ transform: translateY(-6px); }}
+}}
+@keyframes loana-pop {{
+    from {{ opacity: 0; transform: translateY(16px) scale(0.96); }}
+    to {{ opacity: 1; transform: none; }}
 }}
 .st-key-loana_panel {{
-    height: 100%;
+    position: fixed;
+    right: 1.5rem;
+    bottom: 1.5rem;
+    z-index: 1000;
+    width: min(460px, calc(100vw - 2rem));
+    height: min(760px, calc(100vh - 3rem));
     gap: 0.6rem;
     padding: 1.1rem;
     overflow-y: auto;
     background: {LOANA};
     border-radius: 22px;
-    box-shadow: 0 12px 32px rgba(0, 197, 136, 0.28);
+    box-shadow: 0 16px 44px rgba(7, 59, 45, 0.35);
+    animation: loana-pop 0.22s ease-out;
+}}
+.st-key-loana_close {{
+    position: absolute;
+    top: 0.7rem;
+    right: 0.7rem;
+    z-index: 2;
+    width: auto;
+}}
+.st-key-loana_panel .st-key-loana_close button {{
+    width: 32px;
+    height: 32px;
+    min-height: 0;
+    padding: 0;
+    background: rgba(255, 255, 255, 0.85);
 }}
 .st-key-loana_panel > * {{ flex-shrink: 0; }}
 /* The messages scroll inside the card; everything under them (presets, input)
@@ -88,19 +140,11 @@ _CSS = f"""
     -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 32px), transparent);
     mask-image: linear-gradient(to bottom, #000 calc(100% - 32px), transparent);
 }}
-@media (max-width: 640px) {{
-    [data-testid="stLayoutWrapper"]:has(> .st-key-loana_panel) {{
-        position: static;
-        height: auto;
-    }}
-    [data-testid="stLayoutWrapper"]:has(> .st-key-loana_chat) {{ flex: none; }}
-    .st-key-loana_chat {{ height: 420px !important; }}
-}}
 
 .loana-head {{ display: flex; align-items: center; gap: 0.85rem; }}
 .loana-head img {{
-    width: 64px;
-    height: 64px;
+    width: 88px;
+    height: 88px;
     flex: none;
     padding: 4px;
     background: #FFFFFF;
@@ -111,8 +155,8 @@ _CSS = f"""
 .loana-head {{ min-width: 0; padding-bottom: 1rem; }}
 .loana-head .loana-name {{
     font-size: clamp(1.1rem, 1.9vw, 1.4rem);
-    font-weight: 800;
-    letter-spacing: 0.14em;
+    font-weight: 600;
+    letter-spacing: 0.5px;
     line-height: 1.1;
     white-space: nowrap;
     color: #0F172A;
@@ -131,6 +175,12 @@ _CSS = f"""
 .st-key-loana_panel [data-testid="stChatMessage"] {{
     background: rgba(255, 255, 255, 0.92);
     border-radius: 14px;
+    padding: 0.9rem 1.1rem;
+    align-items: flex-start;
+}}
+.st-key-loana_panel [data-testid="stChatMessage"] p {{
+    line-height: 1.55;
+    text-align: left;
 }}
 .st-key-loana_panel [data-testid="stChatMessage"] p {{ color: #1D2B27; }}
 .st-key-loana_panel [data-testid="stChatMessage"] [data-testid="stCaptionContainer"] p {{
@@ -202,9 +252,19 @@ h3 {{ font-size: 1.12rem !important; }}
 }}
 
 /* Bordered containers become cards rather than boxes drawn on the background. */
-[data-testid="stVerticalBlockBorderWrapper"] {{
+[data-testid="stVerticalBlockBorderWrapper"],
+[data-testid="stMetric"],
+[data-testid="stDataFrame"],
+[data-testid="stTable"] {{
     background: {SURFACE};
-    border-radius: 10px;
+    border: 1px solid {GRID};
+    border-radius: 12px;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+}}
+[data-testid="stMetric"] {{ padding: 0.9rem 1.1rem; }}
+/* The Loana card and its chat are not white cards. */
+.st-key-loana_panel [data-testid="stVerticalBlockBorderWrapper"] {{
+    background: transparent; border: none; box-shadow: none;
 }}
 
 /* Officer cards (ui/components.py). Red, amber and green appear only on the band

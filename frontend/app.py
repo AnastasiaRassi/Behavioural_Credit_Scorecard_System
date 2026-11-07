@@ -12,6 +12,8 @@ Signing in exchanges a password for a signed token, and the role comes back from
 the account. Which screens open is therefore decided by the database, not by the
 person at the keyboard, and this module never sees a role it was not told.
 """
+import base64
+import html
 import sys
 from collections.abc import Callable
 from pathlib import Path
@@ -30,6 +32,7 @@ from views import cardholder, officer, sign_in  # noqa: E402
 
 # The signed-in session: the token plus who the API says the caller is.
 SESSION_KEY = "session"
+ICON_PATH = HERE / "assets" / "credit-logo-icon-transparent.png"
 
 ICONS = {"officer": "🧑‍💼", "engineer": "🔬", "cardholder": "💳"}
 
@@ -93,17 +96,62 @@ def _attempt(email: str, password: str) -> tuple[str, str] | None:
     return None
 
 
-def _signed_in_bar(session: dict) -> None:
-    """Who you are, and the way back out, on every screen."""
-    title, identity = st.columns([5, 2])
-    title.title("CrediTrait")
+@st.cache_resource
+def _banner_html() -> str:
+    """Fixed full-width navbar. Read once per process."""
+    icon = base64.b64encode(ICON_PATH.read_bytes()).decode("ascii")
+    return (
+        "<style>"
+        # Fixed to the viewport, so column and container padding can't box it in.
+        # The pale bar matches the logo's white edge pixels so they vanish.
+        ".ct-banner{position:fixed;top:0;left:0;right:0;width:100vw;height:84px;"
+        "z-index:1000000;display:flex;align-items:center;gap:1rem;"
+        "padding:0 1.75rem;margin:0;border-radius:0;box-sizing:border-box;"
+        "background:#FFFFFF;border-bottom:1px solid #E6E2DE;box-shadow:none}"
+        ".ct-banner img{height:56px;width:auto;display:block;background:transparent!important;"
+        "border:none!important;box-shadow:none!important;padding:0!important;"
+        "border-radius:0!important;mix-blend-mode:multiply}"
+        ".ct-banner span{font-family:'Inter',sans-serif;font-weight:600;"
+        "font-size:clamp(1rem,2vw,1.5rem);letter-spacing:.5px;color:#1C1917;"
+        "text-transform:uppercase;line-height:1;white-space:nowrap}"
+        # Badge and actions: one row on the banner's right, ghost-style buttons.
+        ".st-key-top_actions{position:fixed;top:0;right:1.75rem;height:84px;"
+        "z-index:1000001;display:flex;flex-direction:row;align-items:center;"
+        "gap:.5rem;width:auto!important}"
+        ".st-key-top_actions>*{width:auto!important;flex:none}"
+        ".st-key-top_actions p,.st-key-top_actions .ct-user{margin:0;font-size:13px;"
+        "color:rgba(28,25,23,.65)}"
+        ".st-key-top_actions .ct-user{margin-right:.5rem;white-space:nowrap}"
+        ".st-key-top_actions .ct-user b{font-weight:600;color:#1C1917}"
+        ".st-key-top_actions button{background:transparent;border:1px solid rgba(28,25,23,.25);"
+        "border-radius:8px;padding:4px 10px;min-height:0;line-height:1.4;"
+        "transition:background .15s,border-color .15s}"
+        ".st-key-top_actions button p{font-size:13px;font-weight:500;color:#1C1917}"
+        ".st-key-top_actions button:hover,.st-key-top_actions button:focus-visible{"
+        "background:rgba(28,25,23,.08);border-color:rgba(28,25,23,.5)}"
+        ".st-key-top_actions button:active{background:rgba(28,25,23,.14)}"
+        # Content starts below the bar.
+        '[data-testid="stMainBlockContainer"]{padding-top:7rem!important}'
+        "</style>"
+        f'<div class="ct-banner"><img src="data:image/png;base64,{icon}" alt="CrediTrait">'
+        "<span>Explainable Credit Decisioning</span></div>"
+    )
 
-    with identity:
-        st.caption(
-            f"{ICONS.get(session['role'], '👤')} **{session['display_name']}** · "
-            f"{LABELS.get(session['role'], session['role'])}"
+
+def _signed_in_bar(session: dict) -> None:
+    """The banner, then who you are and the way back out, on every screen."""
+    st.markdown(_banner_html(), unsafe_allow_html=True)
+
+    # Pinned into the banner's right side by the .st-key-top_actions rules in _banner_html.
+    with st.container(key="top_actions"):
+        st.markdown(
+            f'<span class="ct-user"><b>{html.escape(session["display_name"])}</b>'
+            f" · {LABELS.get(session['role'], session['role'])}</span>",
+            unsafe_allow_html=True,
         )
-        if st.button("Sign out", width="stretch"):
+        if session["role"] == "officer":
+            officer.back_button()
+        if st.button("Sign out", key="sign_out"):
             # The token is the whole session, so dropping it is the sign-out.
             # Cached reads go with it: they were fetched for this caller.
             st.session_state.pop(SESSION_KEY, None)

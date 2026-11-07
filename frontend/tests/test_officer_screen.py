@@ -102,11 +102,15 @@ def faked_api(monkeypatch):
 def _app() -> None:
     from views import officer
 
-    officer.render("officer@example.com", "token")
+    officer.render("officer@example.com", "token", officer.back_button)
 
 
 def _start() -> AppTest:
     return AppTest.from_function(_app, default_timeout=TIMEOUT).run()
+
+
+def _open_chat(app: AppTest) -> None:
+    app.button(key="loana_launch_button").click().run()
 
 
 def _text(app: AppTest) -> str:
@@ -142,8 +146,18 @@ def test_a_search_lists_matches_and_opens_nothing_until_one_is_picked(faked_api)
     app.button(key="officer_pick_id-111").click().run()
 
     assert app.session_state["officer_customer_id"] == "id-111"
+    assert "LOANA AI" not in _text(app)
+    assert len(app.chat_input) == 0
+
+    _open_chat(app)
+
     assert "LOANA AI" in _text(app)
     assert "Financial Health Copilot" in _text(app)
+
+    app.button(key="loana_close").click().run()
+
+    assert "LOANA AI" not in _text(app)
+    assert len(app.chat_input) == 0
 
 
 def test_review_opens_the_customer_with_the_request_banner(faked_api):
@@ -159,7 +173,6 @@ def test_review_opens_the_customer_with_the_request_banner(faked_api):
     assert "What would change the rating" in text
     assert "Pay 500 this month" in text
     assert "Record the outcome of this review" in text
-    assert "LOANA AI" in text
 
 
 def test_a_customer_link_in_the_address_never_opens_a_customer(faked_api):
@@ -201,6 +214,7 @@ def test_the_assistant_says_it_is_not_connected_and_keeps_the_layout(faked_api, 
     monkeypatch.setattr(api, "officer_chat", unreachable)
     app = _start()
     app.button(key="review_r1").click().run()
+    _open_chat(app)
 
     app.chat_input(key="officer_ask").set_value("Why flagged?").run()
 
@@ -217,6 +231,7 @@ def test_chat_history_is_kept_per_customer(faked_api, monkeypatch):
     )
     app = _start()
     app.button(key="review_r1").click().run()
+    _open_chat(app)
     app.chat_input(key="officer_ask").set_value("Why flagged?").run()
 
     assert [m["content"] for m in app.session_state["officer_chat_id-111"]] == [

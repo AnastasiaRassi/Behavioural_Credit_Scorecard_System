@@ -9,9 +9,9 @@
 [theme]
 base = "light"
 primaryColor = "#4A6B85"
-backgroundColor = "#FFFFFF"
-secondaryBackgroundColor = "#EEF3F7"
-textColor = "#2B2724"
+backgroundColor = "#FBF9F6"
+secondaryBackgroundColor = "#FFFFFF"
+textColor = "#1C1917"
 font = "sans serif"
 
 [server]
