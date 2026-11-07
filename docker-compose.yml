@@ -31,7 +31,7 @@ services:
     working_dir: /app/backend
     command: sh -c "python -m app.db.ingest && python -m app.db.seed"
     environment: &backend-env
-      DATABASE_URL: postgresql+psycopg://postgres:${DB_PASSWORD:?set DB_PASSWORD in .env}@db:5432/credit
+      DATABASE_URL: postgresql+psycopg://postgres:${DB_PASSWORD}@db:5432/credit
       SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET in .env}
       SEED_PASSWORD: ${SEED_PASSWORD:-}
       DEMO_MODE: ${DEMO_MODE:-1}
