@@ -27,7 +27,7 @@ from app.ml import artifacts, worklist
 logger = logging.getLogger(__name__)
 
 # Recorded with every reply; bump whenever SYSTEM_PROMPT changes.
-PROMPT_VERSION = "v1-officer"
+PROMPT_VERSION = "v4-officer"
 
 SYSTEM_PROMPT = """You are Loana AI, an assistant in CrediTrait, a credit card prototype. You help a loan officer understand one existing customer's account.
 Everything you know is in FACTS below. It comes from a risk model that estimates whether the customer's next payment will be missed, and from a search for the smallest change this month that would improve the rating.
@@ -38,7 +38,8 @@ Rules:
 3. Changes: only the steps listed under one_month_counterfactual.steps. If the steps list is empty, say plainly that no single-month action clears this risk band.
 4. The rating is a band. FACTS do not include a probability; if asked for one, say the officer can read it in the prediction panel.
 5. Do not approve, deny or recommend a decision, promise an outcome, or say what any lender will decide. The officer decides.
-6. At most five short sentences.
+6. The behavioural segment is a grouping by habits, separate from the risk band. If asked why the customer is in a segment, answer "The customer is in X because ..." using behavioural_segment.this_customer_habits, which are read from this customer's own months. Never describe habits the customer does not have. Do not mention risk, the model, or that it is "not about risk".
+7. At most four short sentences, in plain everyday words a non-specialist would use. Never mention averages, scores, statuses as numbers, features or model terms; say things like "has been behind on payments most months" instead. Lead with the one or two biggest reasons.
 
 FACTS:
 {facts}"""
@@ -58,6 +59,13 @@ def answer(
     view = worklist.cardholder_view(row, stored_prediction=stored_prediction, record=record)
     payload = build_payload(view["risk_band"], view["reasons"], record)
     sheet = fact_sheet(view, row.get("history") or [], payload)
+    segment = row.get("segment")
+    if segment:
+        sheet["behavioural_segment"] = {
+            "name": segment.get("name"),
+            "this_customer_habits": _customer_habits(row.get("history") or []),
+            "note": "Groups customers by habits. Explain membership from this_customer_habits only; do not bring in the risk band.",
+        }
 
     conversation = [{"role": m["role"], "content": m["content"]} for m in messages]
     question = conversation[-1]["content"]
@@ -81,6 +89,43 @@ def answer(
     if on_turn is not None:
         _log(on_turn, row, conversation, question, reply, call, reason, rejected, guard)
     return reply
+
+
+def _customer_habits(history: Sequence[Mapping]) -> list[str]:
+    """Plain-word habits read from this customer's own months, never a segment average.
+
+    Words not digits: the number guard rejects any figure the sheet does not state.
+    """
+    if not history:
+        return []
+
+    facts = worklist.highlights({"history": history})
+    behind = sum(1 for entry in history if entry["payment_status"] > 0)
+    no_balance = sum(1 for entry in history if entry["bill_amount"] <= 0)
+    billed = len(history) - no_balance
+    unpaid = facts["months_with_no_payment"]
+    utilisation = facts["utilisation_mean"]
+
+    habits = [
+        "has not been behind on payments" if behind == 0
+        else "was behind on payments in one month" if behind == 1
+        else "was behind on payments in several months",
+        "had no balance to pay in most months" if no_balance * 2 > len(history)
+        else "had no balance to pay in some months" if no_balance
+        else "had a balance to pay every month",
+    ]
+    if billed:
+        habits.append(
+            "paid something in every month a bill was due" if unpaid == 0
+            else "went without paying in some months when a bill was due"
+        )
+    if utilisation is not None:
+        habits.append(
+            "uses very little of the credit limit" if utilisation < 0.1
+            else "uses a moderate share of the credit limit" if utilisation < 0.5
+            else "uses most of the credit limit"
+        )
+    return habits
 
 
 def _template(view: dict, payload) -> str:
