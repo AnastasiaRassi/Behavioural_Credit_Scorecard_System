@@ -100,7 +100,7 @@ def test_a_decision_closes_the_conversation_but_the_box_stays(faked_api):
 
     text = _markdown(app)
     assert "Already asked." in text and "Monitoring it." in text and "Decision" in text
-    assert "conversation is closed" in _captions(app)
+    assert "conversation is closed" in _markdown(app)
     assert app.text_area(key=f"review_comment_{ID}") is not None
 
 

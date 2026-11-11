@@ -23,9 +23,9 @@ ACCENT = "#4C8DF6"
 LOANA = "#00C588"
 LOANA_INK = "#073B2D"
 
-# Cardholder timeline: neon mint for what was paid, slate for what was billed.
+# Cardholder timeline: neon mint for what was paid, red for what was billed.
 PAID = "#00E699"
-BILLED = "#64748B"
+BILLED = "#EF4444"
 
 BAND_COLOURS ={"Low": LOW, "Medium": MEDIUM, "High": HIGH}
 BAND_ICONS = {"Low": "🟢", "Medium": "🟡", "High": "🔴"}
@@ -212,6 +212,7 @@ div.account-alert {{
     border: 1px solid;
     border-left: 4px solid;
     line-height: 1.5;
+    margin-bottom: 1.25rem;
 }}
 .account-alert-title {{ font-weight: 700; }}
 div.account-alert p {{ margin: 0.3rem 0 0; color: inherit; }}
@@ -259,6 +260,57 @@ div.inbox-alert--clear {{ background: #F5F5F4; color: {MUTED}; border-color: {GR
 .thread-tag--open {{ background: #FDE68A; color: #92400E; }}
 .thread-foot {{ margin-top: 0.4rem; font-size: 0.75rem; color: {MUTED}; font-style: italic; }}
 .thread-empty {{ color: {MUTED}; font-style: italic; margin: 0.4rem 0 0.8rem; }}
+
+.thread-row {{ align-items: flex-end; gap: 0.5rem; }}
+.thread-avatar {{
+    flex: none; width: 30px; height: 30px; border-radius: 50%; background: #D1FAE5;
+    color: #065F46; display: flex; align-items: center; justify-content: center;
+    font-size: 0.72rem; font-weight: 700;
+}}
+
+/* Cardholder chat card (views/cardholder.py): header, history, composer in one box. */
+.st-key-chat_card {{
+    max-width: 760px; gap: 0; background: #F9FAFB; border: 1px solid #E5E7EB;
+    border-radius: 12px; overflow: hidden;
+}}
+.chat-head {{
+    display: flex; align-items: center; gap: 0.6rem; padding: 0.75rem 1rem;
+    background: #FFFFFF; border-bottom: 1px solid #E5E7EB; color: {TEXT};
+}}
+.chat-head b {{ font-size: 0.95rem; }}
+.chat-status {{
+    margin-left: auto; padding: 0.15rem 0.65rem; border-radius: 999px;
+    font-size: 0.75rem; font-weight: 600;
+}}
+.chat-status--active {{ background: #D1FAE5; color: #065F46; }}
+.chat-status--closed {{ background: #F3F4F6; color: #4B5563; }}
+.st-key-chat_card .thread {{ margin: 0; padding: 1rem; }}
+.st-key-chat_card .thread-empty {{ margin: 0; padding: 1.25rem 1rem; text-align: center; }}
+.st-key-chat_card .thread-card {{ max-width: 68%; }}
+.st-key-chat_card .thread-row--mine .thread-card {{ background: #ECFDF5; border-color: #A7F3D0; }}
+.st-key-chat_card .thread-row--theirs .thread-card {{ background: #FFFFFF; border-color: #E5E7EB; }}
+.st-key-chat_card .thread-row--theirs .thread-card--decision {{ border-left-color: {ACCENT}; }}
+.chat-closed {{
+    display: flex; flex-direction: column; align-items: center; gap: 0.1rem;
+    margin: 0 1rem 0.75rem; padding: 0.6rem 1rem; text-align: center;
+    background: #F3F4F6; border: 1px solid #E5E7EB; border-radius: 10px; color: #374151;
+}}
+.chat-closed span {{ font-size: 0.8rem; color: {MUTED}; }}
+.st-key-chat_card [data-testid="stCaptionContainer"] {{ padding: 0 1rem 0.6rem; }}
+.st-key-chat_composer {{
+    padding: 0.75rem 1rem; background: #FFFFFF; border-top: 1px solid #E5E7EB;
+}}
+.st-key-chat_composer [data-baseweb="textarea"], .st-key-chat_composer textarea {{
+    border-radius: 12px; }}
+.st-key-chat_composer textarea {{ padding: 0.6rem 0.85rem; }}
+.st-key-chat_composer [data-testid="stTextAreaRootElement"] {{ border-radius: 12px; }}
+[class*="st-key-review_send_"] button {{
+    background: #059669; border: 1px solid #059669; color: #FFFFFF; border-radius: 10px;
+    min-height: 44px; transition: background 0.15s;
+}}
+[class*="st-key-review_send_"] button p {{ color: #FFFFFF; font-weight: 600; }}
+[class*="st-key-review_send_"] button:hover {{ background: #047857; border-color: #047857; }}
+.st-key-chat_card [data-testid="stAlert"] {{ margin: 0 1rem 1rem; }}
 
 /* Cardholder timeline card (views/cardholder.py). */
 .st-key-history_card {{

@@ -6,6 +6,7 @@ side sits on the right. Bodies are escaped, since they are typed by people.
 from html import escape
 
 import review
+from ui.profile import initials
 from ui.components import flatten, show
 
 EMPTY = {
@@ -49,8 +50,12 @@ def _card(entry: dict, viewer: str) -> str:
         kind = "message--open" if awaiting else "message"
 
     footer = f'<div class="thread-foot">{foot}</div>' if foot else ""
+    avatar = (
+        "" if mine
+        else f'<div class="thread-avatar">{escape(initials(entry["author"]))}</div>'
+    )
     return (
-        f'<div class="thread-row thread-row--{side}">'
+        f'<div class="thread-row thread-row--{side}">{avatar}'
         f'<div class="thread-card thread-card--{kind}">'
         f'<div class="thread-meta"><b>{escape(who)}</b> · {escape(when)}</div>'
         f"{head}"

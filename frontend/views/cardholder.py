@@ -24,6 +24,7 @@ import streamlit as st
 import api
 import theme
 from ui import loana, thread
+from ui.components import show
 
 # Features a cardholder can act on this month (read by the officer screen). A reason
 # they cannot change is not advice, it is an accusation.
@@ -130,33 +131,48 @@ def _human_review(token: str, customer_id: str) -> None:
     writing again reopens it.
     """
     st.markdown("**Messages with your loan officer**")
-    st.caption("Your messages and your loan officer's decisions, oldest first.")
     try:
         entries = api.cardholder_thread(customer_id, token)
     except api.ServiceUnavailable:
         st.caption("Messages are unavailable right now.")
         return
 
-    thread.draw(entries, "cardholder")
-    if entries and entries[-1]["kind"] == "message":
-        st.caption("Sent. Your loan officer will look at your account and reply here.")
-    elif entries:
-        st.caption("This conversation is closed. Write below if you would like to reopen it.")
+    closed = bool(entries) and entries[-1]["kind"] == "decision"
+    badge = (
+        '<span class="chat-status chat-status--closed">Closed</span>' if closed
+        else '<span class="chat-status chat-status--active">Active</span>'
+    )
+    with st.container(key="chat_card"):
+        show(
+            '<div class="chat-head"><div class="thread-avatar">LO</div>'
+            f"<b>Conversation with Loan Officer</b>{badge}</div>"
+        )
+        thread.draw(entries, "cardholder")
+        if closed:
+            show(
+                '<div class="chat-closed"><b>This conversation is closed</b>'
+                "<span>Write below if you would like to reopen it.</span></div>"
+            )
+        elif entries:
+            st.caption("Sent. Your loan officer will look at your account and reply here.")
 
-    with st.container(border=True, key="thread_composer"):
-        st.text_area(
-            "Your message for the loan officer",
-            key=f"review_comment_{customer_id}",
-            placeholder="Tell them what you would like them to look at.",
-            max_chars=REVIEW_COMMENT_MAX,
-        )
-        st.button(
-            "Send to my loan officer", key=f"review_send_{customer_id}", type="primary",
-            on_click=_send, args=(token, customer_id),
-        )
-    problem = st.session_state.pop(f"review_problem_{customer_id}", None)
-    if problem:
-        st.error(problem)
+        with st.container(key="chat_composer"):
+            box, send = st.columns([5, 1], vertical_alignment="bottom")
+            box.text_area(
+                "Your message for the loan officer",
+                key=f"review_comment_{customer_id}",
+                placeholder="Write a message to your loan officer...",
+                max_chars=REVIEW_COMMENT_MAX,
+                label_visibility="collapsed",
+                height=68,
+            )
+            send.button(
+                "Send", key=f"review_send_{customer_id}", type="primary",
+                on_click=_send, args=(token, customer_id), width="stretch",
+            )
+        problem = st.session_state.pop(f"review_problem_{customer_id}", None)
+        if problem:
+            st.error(problem)
 
 
 def _send(token: str, customer_id: str) -> None:
