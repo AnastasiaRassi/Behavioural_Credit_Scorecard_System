@@ -15,7 +15,7 @@ import uuid
 from typing import Sequence
 
 import pandas as pd
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session, selectinload
 
 from app.db.models import (
@@ -36,26 +36,82 @@ WALK_IN_PREFIX = "W-"
 # fictional: the dataset's customers are anonymous, so these stand in for the
 # name a real deployment would hold.
 FIRST_NAMES = (
-    "Nour", "Karim", "Layla", "Fadi", "Maya", "Tarek", "Rima", "Jad",
-    "Hiba", "Omar", "Dana", "Ziad",
+    "Nour", "Karim", "Layla", "Fadi", "Maya", "Tarek", "Rima", "Jad", "Hiba",
+    "Omar", "Dana", "Ziad", "James", "Sofia", "Wei", "Priya", "Mateo", "Aisha",
+    "Liam", "Yuki", "Elena", "Kwame", "Chloe", "Arjun", "Isabella", "Noah",
+    "Fatima", "Lucas", "Mei", "Olivia", "Diego", "Amara", "Ethan", "Hana", "Pavel",
+    "Zara", "Henrik", "Camila", "Ravi", "Grace", "Mohammed", "Ingrid", "Tomas",
+    "Leila", "Daniel", "Anya", "Samuel", "Nia", "Rami", "Joelle", "Georges",
+    "Carla", "Elie", "Joumana", "Bilal", "Yasmine", "Walid", "Lina", "Hadi",
+    "Salma", "Marwan", "Reem", "Anwar", "Tala", "Samir", "Rana", "Kamal", "Nadine",
+    "Ali", "Aya", "Hassan", "Mira", "Youssef", "Celine", "Ahmad", "Jana", "Rayan",
+    "Lara", "Majd", "Noura", "Rabih", "Sara", "Tony", "Michelle", "Charbel",
+    "Perla", "Mario", "Rita", "Antoine", "Maria", "Peter", "Emma", "Oliver",
+    "Sophie", "Jack", "Hannah", "Henry", "Lea", "Felix", "Clara", "Hugo", "Alice",
+    "Leo", "Nora", "Max", "Ida", "Oscar", "Ella", "Anton", "Mila", "Jonas", "Greta",
+    "Marco", "Giulia", "Luca", "Chiara", "Andrei", "Irina", "Dmitri", "Katya",
+    "Jin", "Sakura", "Hiro", "Aiko", "Min", "Soo", "Jun", "Hyun", "Anil", "Deepa",
+    "Vikram", "Sunita", "Imran", "Nadia", "Tariq", "Samira", "Kofi", "Abena",
+    "Chidi", "Ngozi", "Thabo", "Zola", "Juan", "Lucia", "Pablo", "Valeria",
 )
 LAST_NAMES = (
-    "Haddad", "Khoury", "Nassar", "Saab", "Gerges", "Mansour", "Aoun",
-    "Chalhoub", "Daher", "Fares", "Rizk", "Sleiman",
+    "Haddad", "Khoury", "Nassar", "Saab", "Gerges", "Mansour", "Aoun", "Chalhoub",
+    "Daher", "Fares", "Rizk", "Sleiman", "Smith", "Garcia", "Chen", "Patel",
+    "Okafor", "Tanaka", "Muller", "Rossi", "Kowalski", "Nguyen", "Silva",
+    "Johansson", "Ivanov", "Kim", "Hernandez", "Dubois", "Mensah", "Ahmed", "Lopez",
+    "Brown", "Singh", "Andersen", "Costa", "Novak", "Park", "Williams", "Santos",
+    "Petrov", "Yilmaz", "Reyes", "Fischer", "Abebe", "Larsen", "Moreau", "Sato",
+    "Clarke", "Karam", "Abboud", "Hamade", "Azar", "Sfeir", "Boustany", "Frem",
+    "Gemayel", "Kanaan", "Maalouf", "Tabet", "Zeidan", "Bitar", "Hajj", "Issa",
+    "Jaber", "Kassab", "Lahoud", "Matta", "Nahas", "Obeid", "Qassem", "Raad",
+    "Salameh", "Tawil", "Wehbe", "Yazbeck", "Zahar", "Atallah", "Baroudi", "Daou",
+    "Eid", "Farhat", "Ghanem", "Hobeika", "Itani", "Jreij", "Khalil", "Mouawad",
+    "Nakhoul", "Habib", "Najjar", "Sarkis", "Touma", "Younes", "Abi", "Rahme",
+    "Murray", "Walker", "Young", "Hughes", "Foster", "Bennett", "Gray", "Reid",
+    "Webb", "Stone", "Weber", "Schmidt", "Bauer", "Keller", "Hoffmann", "Wagner",
+    "Bianchi", "Romano", "Conti", "Ricci", "Bruno", "Popov", "Sokolov", "Volkov",
+    "Lee", "Wong", "Takahashi", "Watanabe", "Yamamoto", "Joshi", "Sharma", "Reddy",
+    "Khan", "Hussain", "Mwangi", "Diallo", "Traore", "Osei", "Banda", "Mokoena",
+    "Torres", "Ramirez", "Flores", "Vargas",
 )
+
+# Odd multiplier, coprime to the pair count, so neighbouring accounts look unrelated.
+_SCRAMBLE = 7919
 
 
 def invent_name(account_number: str) -> str:
     """A stable fictional name for an account number.
 
     Derived from the number itself, so the same account is always the same person
-    and no state has to be kept to make that true. Only 144 combinations exist,
-    so names repeat across customers; the account number is what tells them apart.
+    and no state has to be kept to make that true. The number is scrambled across
+    every first/last pairing, so consecutive accounts get unrelated names and no
+    pairing is used more than twice per 2x the pair count of accounts.
     """
     digits = int("".join(filter(str.isdigit, account_number)) or 0)
-    first = FIRST_NAMES[digits % len(FIRST_NAMES)]
-    last = LAST_NAMES[(digits // len(FIRST_NAMES)) % len(LAST_NAMES)]
-    return f"{first} {last}"
+    pairs = len(FIRST_NAMES) * len(LAST_NAMES)
+    index = (digits * _SCRAMBLE) % pairs
+    return f"{FIRST_NAMES[index % len(FIRST_NAMES)]} {LAST_NAMES[index // len(FIRST_NAMES)]}"
+
+
+def refresh_names(session: Session) -> int:
+    """Rewrite stored names that no longer match `invent_name`; returns the count.
+
+    Names are stored at creation, so changing the name lists leaves old rows stale.
+    Only customers are touched, so staff and demo logins keep their names.
+    """
+    rows = session.execute(
+        select(User.id, User.display_name, Customer.account_number).join(
+            Customer, Customer.user_id == User.id
+        )
+    ).all()
+    stale = [
+        {"id": user_id, "display_name": invent_name(account)}
+        for user_id, current, account in rows
+        if current != invent_name(account)
+    ]
+    if stale:
+        session.execute(update(User), stale)
+    return len(stale)
 
 
 def find_by_account_number(session: Session, account_number: str) -> Customer | None:

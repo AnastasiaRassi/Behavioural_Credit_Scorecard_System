@@ -41,7 +41,7 @@ from app.db.models import (
     User,
     UserDetails,
 )
-from app.db.customer_registry import invent_name
+from app.db.customer_registry import invent_name, refresh_names
 from app.db.models.base import now
 from app.ml.feature_engineering import TARGET, clean, project_root
 
@@ -106,6 +106,7 @@ def load_taiwan(session: Session, path: Path | str | None = None) -> IngestionRe
     Takes a session rather than opening one, so a caller can ingest inside a
     transaction it also rolls back.
     """
+    refresh_names(session)
     frame = read_source(path)
     known = _existing_account_numbers(session)
     fresh = frame[~frame["account_number"].isin(known)]

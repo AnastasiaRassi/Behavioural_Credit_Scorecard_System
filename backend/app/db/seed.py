@@ -24,8 +24,8 @@ Predictions are written by the API when someone is scored.
 import json
 import os
 from datetime import datetime, time, timezone
-from secrets import token_urlsafe
 
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.core.passwords import hash_password
@@ -36,7 +36,7 @@ from app.db.customer_registry import (
     invent_name,
 )
 from app.db.database import create_all, session_scope
-from app.db.models import ModelVersion, User
+from app.db.models import Customer, ModelVersion, User
 from app.ml.train import artifacts_dir
 
 # Demo staff: email, name, role.
@@ -67,32 +67,28 @@ DEMO_ACCOUNTS = [
 ]
 
 
+def email_for(name: str, account_number: str, taken: set[str]) -> str:
+    """`first.last@example.test`; the account number breaks a tie between namesakes."""
+    handle = name.lower().replace(" ", ".")
+    email = f"{handle}@example.test"
+    if email in taken:
+        email = f"{handle}.{account_number}@example.test"
+    taken.add(email)
+    return email
+
+
 def demo_mode() -> bool:
     return os.environ.get("DEMO_MODE") == "1"
 
 
 def demo_password() -> str:
-    """A password for a seeded account: from SEED_PASSWORD, else unguessable.
-
-    A random fallback keeps `password_hash` honest without putting a shared
-    credential in version control, but nothing can then sign in to these
-    accounts. Set SEED_PASSWORD in .env to be able to.
-    """
-    return os.environ.get("SEED_PASSWORD") or token_urlsafe(32)
+    """A password for a seeded account: SEED_PASSWORD, else the shared demo password."""
+    return os.environ.get("SEED_PASSWORD") or DEMO_PASSWORD
 
 
 def _set_credential(account: User) -> bool:
-    """Bring an existing account to the configured password. True if it changed.
-
-    Rerunning the seed is otherwise a no-op per account, which would leave the
-    accounts created before SEED_PASSWORD was set holding a hash of a random
-    string nobody recorded — unsignable, with no way to repair them short of
-    deleting the rows and the customers hanging off them.
-    """
-    configured = os.environ.get("SEED_PASSWORD")
-    if not configured:
-        return False
-    account.password_hash = hash_password(configured)
+    """Bring an existing account to the seed password on every run."""
+    account.password_hash = hash_password(demo_password())
     return True
 
 
@@ -134,14 +130,7 @@ def demo_cardholders(count: int = DEMO_CARDHOLDERS) -> list[tuple[str, str, str]
     for row in chosen:
         account_number = row["account_number"]
         name = invent_name(account_number)
-        handle = name.lower().replace(" ", ".")
-        email = f"{handle}@example.test"
-        if email in taken:
-            # Only 144 names exist, so two demo customers can share one; the
-            # account number keeps the second email unique.
-            email = f"{handle}.{account_number}@example.test"
-        taken.add(email)
-        people.append((account_number, name, email))
+        people.append((account_number, name, email_for(name, account_number, taken)))
     return people
 
 
@@ -163,6 +152,38 @@ def _seed_staff(session: Session) -> tuple[list[str], list[str]]:
         )
         added.append(email)
     return added, recredentialed
+
+
+def _give_every_cardholder_a_login(session: Session) -> int:
+    """Give each cardholder a name-based email and the seed password; returns rows changed.
+
+    Emails are rewritten when the name changes. One hash is shared across the rows:
+    scrypt per row would take many minutes for the whole dataset.
+    """
+    rows = session.execute(
+        select(User.id, User.display_name, User.email, User.password_hash, Customer.account_number)
+        .join(Customer, Customer.user_id == User.id)
+        .where(User.role == "cardholder")
+        .where(User.email.is_(None) | User.email.not_like("%@demo.test"))
+        .order_by(User.email.is_(None), Customer.account_number)  # keep existing holders
+    ).all()
+    shared_hash = hash_password(demo_password())
+    taken = {
+        email
+        for (email,) in session.execute(
+            select(User.email).where(User.email.isnot(None), User.role != "cardholder")
+        )
+    }
+    updates = []
+    for user_id, name, email, password_hash, account_number in rows:
+        wanted = email_for(name, account_number, taken)
+        if email != wanted or password_hash is None:
+            updates.append(
+                {"id": user_id, "email": wanted, "password_hash": password_hash or shared_hash}
+            )
+    if updates:
+        session.execute(update(User), updates)
+    return len(updates)
 
 
 def _seed_cardholders(session: Session) -> tuple[list[str], list[str], list[str]]:
@@ -315,6 +336,7 @@ def seed() -> dict:
 
     with session_scope() as session:
         users, staff_recredentialed = _seed_staff(session)
+        _give_every_cardholder_a_login(session)
         cardholders, not_ingested, held_recredentialed = _seed_cardholders(session)
         demo_added, demo_updated = seed_demo_accounts(session)
         versions = _seed_model_version(session)
