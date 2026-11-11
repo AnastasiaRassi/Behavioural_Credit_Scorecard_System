@@ -32,8 +32,11 @@ from app.api import (
     roles,
     sessions,
 )
+from app.core.logging_config import configure_logging
 from app.db.database import create_all
 from app.ml import artifacts
+
+configure_logging()
 
 
 @asynccontextmanager
