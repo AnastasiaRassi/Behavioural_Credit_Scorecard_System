@@ -27,6 +27,11 @@ def test_a_delay_longer_than_the_window_is_kept_as_months():
     assert describe("pay_max", 8) == "Worst month in the six: 8 months in arrears"
 
 
+def test_pay_max_with_no_arrears_says_never_behind():
+    assert describe("pay_max", -2) == "Never behind on payments in the last six months"
+    assert describe("pay_max", 0) == "Never behind on payments in the last six months"
+
+
 def test_util_trend_says_which_way_it_moved_instead_of_a_bare_share():
     assert describe("util_trend", 0.12) == "Share of the limit in use is up 12 percentage points since six months ago"
     assert describe("util_trend", -0.3).startswith("Share of the limit in use is down 30")

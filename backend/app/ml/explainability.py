@@ -158,6 +158,9 @@ def describe(feature: str, value: float) -> str:
         return f"Month {month}: {status}"
 
     if feature == "pay_max":
+        # Status <= 0 means never in arrears; "no balance" reads oddly as a "worst month".
+        if value <= 0:
+            return "Never behind on payments in the last six months"
         return f"Worst month in the six: {describe_pay_status(value)}"
     if feature == "pay_mean":
         if value >= PAY_MEAN_USUALLY_BEHIND:

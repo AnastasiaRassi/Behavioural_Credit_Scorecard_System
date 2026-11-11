@@ -11,6 +11,7 @@ devtools panel away. What a role cannot see, it is not sent.
 """
 from app.ai.coaching import coach
 from app.ml import artifacts
+from app.ml.explainability import describe
 
 BANDS = ("Low", "Medium", "High")
 
@@ -330,7 +331,12 @@ def cardholder_view(row: dict, stored_prediction=None, record=None) -> dict:
         "reasons": [
             {
                 "feature": reason["feature"],
-                "description": reason["description"],
+                # Re-worded from the raw value: stored text can predate the current wording.
+                "description": (
+                    describe(reason["feature"], reason["value"])
+                    if reason.get("value") is not None
+                    else reason["description"]
+                ),
                 # Stored reasons already carry the direction; queue rows carry
                 # the effect it was derived from.
                 "raises_risk": reason.get("raises_risk", reason.get("effect", 0) > 0),
