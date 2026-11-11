@@ -69,10 +69,13 @@ body:has(.st-key-signin_card) [data-testid="stMain"] {
    stays behind the card rather than competing with it. */
 .st-key-hero::before {
     left: 40%;
-    background-image: var(--login-photo);
+    /* Dark scrim over the photograph so the white card separates from it. */
+    background-image: linear-gradient(rgba(17, 24, 39, 0.6), rgba(17, 24, 39, 0.6)),
+        var(--login-photo);
     background-size: cover;
     background-position: center center;
-    opacity: 0.3;
+    filter: blur(2px);
+    opacity: 0.9;
 }
 /* The fade over the bottom quarter, across both panels: it hands the hero to
    the page colour rather than ending it on a line. */

@@ -86,11 +86,11 @@ body:has(.st-key-signin_card) [data-testid="stMainBlockContainer"] {
     /* Streamlit stacks its blocks in a column flex container, so the cross-axis
        auto margins are what centre the card rather than the parent's rule. */
     margin: 0 auto;
-    padding: 44px 44px 40px;
-    background: rgba(255, 255, 255, 0.97);
-    border: 2px solid var(--green);
+    padding: 40px;
+    background: #FFFFFF;
+    border: 1px solid #E5E7EB;
     border-radius: 16px;
-    box-shadow: 0 22px 56px rgba(7, 59, 45, 0.20);
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
     animation: card-in 300ms ease-out both;
 }
 
@@ -171,6 +171,45 @@ body:has(.st-key-signin_card) [data-testid="stMainBlockContainer"] {
     text-transform: none;
     letter-spacing: 0;
 }
+.st-key-signin_card .stTextInput label {
+    margin-bottom: 8px;
+}
+.st-key-signin_card .stTextInput {
+    margin-bottom: 8px;
+}
+
+/* --- header and the remember / forgot row ------------------------------- */
+
+.signin-title {
+    margin: 0 0 6px;
+    font-size: 26px;
+    font-weight: 700;
+    line-height: 1.2;
+    color: var(--ink);
+}
+.signin-subtitle {
+    margin: 0 0 20px;
+    font-size: 14px;
+    line-height: 1.5;
+    color: #6B7280;
+}
+.st-key-signin_row {
+    align-items: center;
+    margin: 4px 0 8px;
+}
+.st-key-signin_row label p {
+    font-size: 14px;
+    color: var(--slate);
+}
+.signin-forgot {
+    display: block;
+    text-align: right;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--green-deep) !important;
+    text-decoration: none;
+}
+.signin-forgot:hover { text-decoration: underline; }
 .st-key-signin_card [data-testid="stTextInputRootElement"] {
     background: var(--mist);
     border: 1px solid var(--slate-line);
@@ -215,10 +254,17 @@ body:has(.st-key-signin_card) [data-testid="stMainBlockContainer"] {
     background: var(--green-deep);
     border: 1px solid var(--green-deep);
     border-radius: 10px;
-    color: var(--frost);
+    color: #FFFFFF;
     font-size: 15px;
-    font-weight: 600;
+    font-weight: 700;
     transition: background 0.15s ease;
+}
+/* Streamlit colours the label's inner <p>, which beats the button's own colour. */
+.st-key-signin_card [data-testid="stFormSubmitButton"] button p,
+.st-key-signin_card [data-testid="stFormSubmitButton"] button:hover p,
+.st-key-signin_card [data-testid="stFormSubmitButton"] button:disabled p {
+    color: #FFFFFF !important;
+    font-weight: 700;
 }
 .st-key-signin_card [data-testid="stFormSubmitButton"] button:hover {
     background: var(--green-deeper);

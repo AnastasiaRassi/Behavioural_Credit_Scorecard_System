@@ -82,11 +82,20 @@ def render(attempt: Callable[[str, str], tuple[str, str] | None]) -> None:
         # Widgets cannot live inside raw HTML, so the card is a keyed container
         # and the stylesheet reaches it through the .st-key-signin_card class.
         with st.container(key="signin_card"):
+            st.markdown(_card_header(), unsafe_allow_html=True)
             with st.form("sign_in", border=False):
                 with st.container(key="field_email"):
                     email = st.text_input("Email", placeholder="you@company.com")
                 with st.container(key="field_password"):
                     password = st.text_input("Password", type="password")
+
+                # Display only: sessions don't persist and there is no reset flow yet.
+                with st.container(key="signin_row", horizontal=True):
+                    st.checkbox("Remember me", key="signin_remember")
+                    st.markdown(
+                        '<a class="signin-forgot" href="#">Forgot password?</a>',
+                        unsafe_allow_html=True,
+                    )
 
                 if failure:
                     st.markdown(_alert(*failure), unsafe_allow_html=True)
@@ -111,6 +120,13 @@ def render(attempt: Callable[[str, str], tuple[str, str] | None]) -> None:
         if outcome is not None:
             st.session_state[ERROR_KEY] = outcome
             st.rerun()
+
+
+def _card_header() -> str:
+    return _flatten(f"""
+<h2 class="signin-title">Welcome Back</h2>
+<p class="signin-subtitle">Enter your credentials to access {PRODUCT_NAME}</p>
+""")
 
 
 def _alert(field: str, message: str) -> str:
