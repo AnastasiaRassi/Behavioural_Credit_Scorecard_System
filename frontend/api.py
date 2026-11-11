@@ -127,6 +127,17 @@ def sign_in(email: str, password: str) -> dict:
         raise
 
 
+def resume(token: str) -> dict | None:
+    """Rebuild a session from a stored token, or None if the API no longer accepts it."""
+    try:
+        account = _request("/session", token=token)
+    except ServiceUnavailable as exception:
+        if exception.status == 401:
+            return None
+        raise
+    return {**account, "token": token}
+
+
 # --- roles ----------------------------------------------------------------
 
 

@@ -147,12 +147,7 @@ def _select(customer_id: str | None) -> None:
 def back_button() -> None:
     """The way out of a customer page; app.py pins it into the header bar."""
     if st.session_state.get(CUSTOMER_KEY):
-        waiting = len(review.conversations(_all_requests()))
-        label = (
-            f"Back to worklist · 🔔 {review.capped(waiting, BADGE_CAP)}"
-            if waiting else "Back to worklist"
-        )
-        st.button(label, key="officer_close", on_click=_close_profile)
+        st.button("Back to worklist", key="officer_close", on_click=_close_profile)
 
 
 def _close_profile() -> None:
@@ -526,8 +521,7 @@ def _show_prediction(result: dict, is_fresh: bool) -> None:
     headline.metric("Risk of missing the next payment", _as_risk(result["probability"]))
     verdict.markdown(
         f"### {BAND_ICONS[band]} {band} risk\n"
-        f"{'Flagged' if result['flagged'] else 'Not flagged'} at a cut-off of "
-        f"{result['threshold']:.4f}."
+        f"{'Flagged for attention' if result['flagged'] else 'Not flagged for attention'}."
     )
     st.caption(
         "Scored just now and recorded." if is_fresh

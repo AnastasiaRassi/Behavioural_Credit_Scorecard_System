@@ -255,7 +255,7 @@ def test_review_opens_the_customer_with_the_unread_alert_and_thread(faked_api):
     )
     assert "Awaiting reply" in text
     assert "Reply with a decision" in text
-    assert "🔔 1" in app.button(key="officer_close").label
+    assert "Back to worklist" in app.button(key="officer_close").label
 
 
 def test_the_inbox_shortcut_opens_the_waiting_customer(faked_api):

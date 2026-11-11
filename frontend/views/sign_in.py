@@ -89,7 +89,7 @@ def render(attempt: Callable[[str, str], tuple[str, str] | None]) -> None:
                 with st.container(key="field_password"):
                     password = st.text_input("Password", type="password")
 
-                # Display only: sessions don't persist and there is no reset flow yet.
+                # Display only: a cookie always keeps you in for the token's 8h; no reset flow yet.
                 with st.container(key="signin_row", horizontal=True):
                     st.checkbox("Remember me", key="signin_remember")
                     st.markdown(
