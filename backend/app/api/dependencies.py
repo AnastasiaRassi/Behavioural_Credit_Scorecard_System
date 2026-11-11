@@ -8,6 +8,8 @@ Authentication and authorization both live here, and are kept apart:
 `POST /session` minted, and `authorise_account_read` decides what that caller
 may read. Each rule is written once, so a route never decides it for itself.
 """
+import logging
+import time
 import uuid
 from functools import lru_cache
 from typing import Iterator
@@ -15,13 +17,15 @@ from typing import Iterator
 from fastapi import Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.core import sessions
+from app.core import audit, sessions
 from app.db.database import _session_factory
 from app.db.models import Customer, ModelVersion, Prediction, User
 from app.ml.counterfactuals import CounterfactualExplainer
 from app.ml import worklist
 from app.ml.explainability import Explainer
 from app.ml.scorer import ArtifactsMissing, CreditScorer
+
+logger = logging.getLogger(__name__)
 
 BEARER_PREFIX = "Bearer "
 
@@ -32,9 +36,13 @@ ACCOUNT_READERS: tuple[str, ...] = ("officer", "engineer")
 
 @lru_cache(maxsize=1)
 def get_scorer() -> CreditScorer:
+    started = time.perf_counter()
     try:
-        return CreditScorer()
+        scorer = CreditScorer()
+        logger.info("scorer loaded in %.1fs", time.perf_counter() - started)
+        return scorer
     except ArtifactsMissing as exception:
+        logger.error("scorer: artifacts missing: %s", exception)
         # 503 rather than 500: the service is correctly built but not provisioned,
         # and the message says which command fixes it.
         raise HTTPException(
@@ -69,6 +77,7 @@ def live_model_version(session: Session) -> ModelVersion:
     """The registered live model, or a 503 telling the caller to seed it."""
     version = session.query(ModelVersion).filter_by(is_live=True).one_or_none()
     if version is None:
+        logger.error("no live model version registered; run: python -m app.db.seed")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="No live model version registered. Run: python -m app.db.seed",
@@ -108,10 +117,19 @@ def user_by_email(
 
     user = session.query(User).filter_by(email=email).one_or_none()
     if user is None:
+        audit.event("actor_rejected", actor=email, level=logging.WARNING, reason="unknown_user")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=f"Unknown user {email}"
         )
     if user.role not in allowed:
+        audit.event(
+            "actor_rejected",
+            actor=email,
+            level=logging.WARNING,
+            reason="wrong_role",
+            role=user.role,
+            needed="|".join(allowed),
+        )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"{email} is a {user.role}, not a {' or a '.join(allowed)}",
@@ -122,6 +140,7 @@ def user_by_email(
 def _unauthenticated(detail: str) -> HTTPException:
     # Declared optional above and refused here, rather than required by FastAPI:
     # a missing credential is a 401 with a challenge, not a 422 about a header.
+    audit.event("unauthenticated", level=logging.WARNING, reason=detail)
     return HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail=detail,
@@ -194,6 +213,7 @@ def authorise_account_read(user: User, customer_id: str) -> User:
     how callers are authenticated does not touch the rule.
     """
     if user.role in ACCOUNT_READERS:
+        audit.event("account_access", actor=user.email, role=user.role, customer=customer_id)
         return user
 
     # A cardholder is identified by email, never by customer id, so the caller is
@@ -201,10 +221,18 @@ def authorise_account_read(user: User, customer_id: str) -> User:
     # than compared to the path.
     registered_as = user.customer
     if registered_as is None or str(registered_as.id) != customer_id.lower():
+        audit.event(
+            "account_access_denied",
+            actor=user.email,
+            level=logging.WARNING,
+            role=user.role,
+            customer=customer_id,
+        )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"{user.email} may only read their own account",
         )
+    audit.event("account_access", actor=user.email, role=user.role, customer=customer_id)
     return user
 
 

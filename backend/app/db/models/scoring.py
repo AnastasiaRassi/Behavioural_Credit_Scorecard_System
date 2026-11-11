@@ -82,6 +82,12 @@ class Prediction(Base):
         DateTime(timezone=True), nullable=False, default=now
     )
 
+    # The officer who ran this score. Null for scores the system produced itself
+    # (the overnight queue, and rows from before this was recorded).
+    scored_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id"), nullable=True
+    )
+
     probability: Mapped[float] = mapped_column(Float, nullable=False)
     risk_band: Mapped[str] = mapped_column(Text, nullable=False)
     flagged: Mapped[bool] = mapped_column(Boolean, nullable=False)

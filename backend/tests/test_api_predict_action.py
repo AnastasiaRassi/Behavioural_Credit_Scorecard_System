@@ -68,6 +68,15 @@ def test_the_prediction_is_stored_and_readable(client, customer_id):
     assert stored["probability"] == pytest.approx(created["probability"])
     assert stored["explanation"]["reasons"]
 
+def test_the_officer_who_ran_the_prediction_is_recorded(client, customer_id, api_session):
+    from app.db.models import Prediction, User
+
+    created = _predict(client, customer_id).json()
+
+    stored = api_session.get(Prediction, uuid.UUID(created["prediction_id"]))
+    officer = api_session.query(User).filter_by(email=OFFICER_EMAIL).one()
+    assert stored.scored_by_user_id == officer.id
+
 
 def test_the_detail_page_reports_the_latest_prediction(client, customer_id):
     assert client.get(f"/officer/customers/{customer_id}").json()[

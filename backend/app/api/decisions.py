@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_session, prediction_or_404, user_by_email
+from app.core import audit
 from app.db.models import Decision
 from app.schemas.decisions import DecisionCreate, DecisionOut
 
@@ -37,6 +38,16 @@ def record_decision(
     session.add(decision)
     session.flush()
 
+    # The justification is deliberately not logged: it is free text about a person.
+    audit.event(
+        "decision",
+        actor=request.decided_by,
+        prediction=prediction.id,
+        decision=decision.id,
+        decided_action=request.action,
+        band=prediction.risk_band,
+        overrode_model=decision.to_dict()["overrode_model"],
+    )
     return DecisionOut(**decision.to_dict())
 
 

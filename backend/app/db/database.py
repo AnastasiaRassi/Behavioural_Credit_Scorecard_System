@@ -85,6 +85,7 @@ def _legacy_columns() -> list[str]:
 ADDED_COLUMNS = (
     ("chat_turn", "grounding_passed", "boolean"),
     ("chat_turn", "claim_passed", "boolean"),
+    ("prediction", "scored_by_user_id", "uuid REFERENCES users(id)"),
 )
 
 

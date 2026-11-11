@@ -19,6 +19,12 @@ class Account(BaseModel):
         default=None,
         description="The customer's UUID for a cardholder; None for staff",
     )
+    # The caller's own record, for their profile page. Cardholders only.
+    account_number: str | None = None
+    age_years: int | None = None
+    sex: int | None = None
+    education: int | None = None
+    marriage: int | None = None
 
 
 class SignedIn(Account):

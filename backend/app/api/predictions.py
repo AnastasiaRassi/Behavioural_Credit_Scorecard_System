@@ -13,6 +13,7 @@ from app.api.dependencies import (
     prediction_or_404,
     user_by_email,
 )
+from app.core import audit
 from app.db import customer_registry
 from app.db.models import Prediction
 from app.ml.feature_engineering import RAW_COLUMNS
@@ -52,8 +53,11 @@ def score_customer(
     result = scorer.score_one(customer)
     reasons, base_value = explainer.reasons(customer, limit=SHOWN_REASONS)
 
-    if request.scored_by:
+    officer = (
         user_by_email(session, request.scored_by, "officer")
+        if request.scored_by
+        else None
+    )
 
     # The submitted columns are everything a customer needs, so a cardholder the
     # dataset never contained becomes a real subject rather than a loose score.
@@ -65,6 +69,7 @@ def score_customer(
     prediction = Prediction(
         subject_customer_id=subject.id,
         model_version_id=version.id,
+        scored_by_user_id=officer.id if officer else None,
         probability=result.probability,
         risk_band=result.risk_band,
         flagged=result.flagged,
@@ -78,6 +83,16 @@ def score_customer(
     session.add(prediction)
     session.flush()
 
+    audit.event(
+        "score",
+        actor=request.scored_by,
+        subject=subject.id,
+        account=request.cardholder_reference,
+        prediction=prediction.id,
+        band=result.risk_band,
+        flagged=result.flagged,
+        model=version.version,
+    )
     return ScoreResponse(
         prediction_id=str(prediction.id),
         probability=result.probability,
@@ -97,6 +112,7 @@ def score_customer(
 def read_prediction(prediction_id: str, session: Session = Depends(get_session)):
     """A stored score with the reasons as they were shown at the time."""
     prediction = prediction_or_404(session, prediction_id)
+    audit.event("prediction_read", prediction=prediction_id)
 
     stored = prediction.to_dict()
     stored["model_version"] = prediction.model_version.version
@@ -159,6 +175,13 @@ async def score_csv(file: UploadFile):
             )
         )
 
+    audit.event(
+        "score_batch",
+        filename=file.filename,
+        rows=len(frame),
+        scored=scored,
+        rejected=len(rows) - scored,
+    )
     return BatchScoreResponse(
         scored=scored, rejected=len(rows) - scored, rows=rows
     )

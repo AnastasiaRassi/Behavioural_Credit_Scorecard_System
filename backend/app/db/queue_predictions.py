@@ -151,8 +151,10 @@ def store_fresh_prediction(
     threshold: float,
     reasons: list[dict],
     base_value: float,
+    scored_by_user_id: uuid.UUID | None,
+    source: str = "officer_request",
 ) -> Prediction:
-    """Record a score the officer asked for, as a new row.
+    """Record a live score as a new row, naming the officer who asked (None if self-service).
 
     Appends rather than replacing, so re-running the prediction leaves the
     earlier one in place: a decision taken last week still points at the score
@@ -163,6 +165,7 @@ def store_fresh_prediction(
     prediction = Prediction(
         subject_customer_id=customer.id,
         model_version_id=version.id,
+        scored_by_user_id=scored_by_user_id,
         probability=probability,
         risk_band=risk_band,
         flagged=probability >= threshold,
@@ -171,7 +174,7 @@ def store_fresh_prediction(
         explanation={
             "base_value": base_value,
             "reasons": reasons,
-            "source": "officer_request",
+            "source": source,
         },
     )
     session.add(prediction)

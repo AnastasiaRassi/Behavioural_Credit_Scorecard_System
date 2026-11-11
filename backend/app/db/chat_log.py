@@ -22,6 +22,17 @@ def record(session: Session, turn: Mapping) -> None:
             session.add(
                 ChatTurn(**{**turn, "customer_id": uuid.UUID(str(turn["customer_id"]))})
             )
+        logger.info(
+            "chat turn: customer=%s n=%s source=%s fallback=%s model=%s latency_ms=%s tokens=%s/%s",
+            turn["customer_id"],
+            turn.get("turn_number"),
+            turn.get("source"),
+            turn.get("fallback_reason") or "-",
+            turn.get("llm_model"),
+            turn.get("latency_ms"),
+            turn.get("prompt_tokens"),
+            turn.get("completion_tokens"),
+        )
     except (SQLAlchemyError, ValueError):
         logger.exception("chat log: could not store the turn; is the chat_turn table created?")
 

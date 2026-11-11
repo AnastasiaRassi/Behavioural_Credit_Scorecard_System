@@ -12,6 +12,7 @@ from dataclasses import asdict
 
 from app.ai import officer_assistant, triage_assistant
 from app.api.cardholders import account_for
+from app.core import audit
 from app.api.dependencies import (
     get_explainer,
     get_scorer,
@@ -151,6 +152,8 @@ def search_customers(
         .limit(limit)
         .all()
     )
+    # The search text is a name or email, so only its length and the result count are logged.
+    audit.event("customer_search", query_length=len(needle), results=len(matches))
     return [
         {
             "customer_id": str(customer.id),
@@ -165,9 +168,11 @@ def search_customers(
 @router.get("/review-requests", response_model=list[ReviewRequestOut])
 def read_review_requests(session: Session = Depends(get_session)):
     """Customers waiting for a person to look at their account, oldest first."""
+    open_requests = reviews.all_open(session)
+    audit.event("inbox_viewed", open=len(open_requests))
     return [
         reviews.to_dict(request, customer, user)
-        for request, customer, user in reviews.all_open(session)
+        for request, customer, user in open_requests
     ]
 
 
@@ -193,6 +198,7 @@ def read_customer_detail(
     the overnight one instead of silently overwriting it.
     """
     customer, row = queued_account(session, customer_id)
+    audit.event("customer_viewed", customer=customer_id, account=customer.account_number)
     detail = worklist.customer_detail(row)
 
     detail["full_name"] = customer.user.display_name
@@ -222,11 +228,13 @@ def predict_default(
     The inputs are the nineteen columns the queue carries. The four protected
     attributes are not among them and are not needed: they never reach the model.
     """
-    user_by_email(session, scored_by, "officer")
-    return _predict(session, customer_id, live_model_version(session))
+    officer = user_by_email(session, scored_by, "officer")
+    return _predict(session, customer_id, live_model_version(session), officer)
 
 
-def _predict(session: Session, customer_id: str, version) -> ScoreResponse:
+def _predict(
+    session: Session, customer_id: str, version, officer: User
+) -> ScoreResponse:
     """Score one worklist customer through the live model and store the result."""
     _, row = queued_account(session, customer_id)
 
@@ -246,8 +254,19 @@ def _predict(session: Session, customer_id: str, version) -> ScoreResponse:
         threshold=result.threshold,
         reasons=reason_dicts,
         base_value=base_value,
+        scored_by_user_id=officer.id,
     )
 
+    audit.event(
+        "predict",
+        actor=officer.email,
+        customer=customer_id,
+        account=row["account_number"],
+        prediction=prediction.id,
+        band=result.risk_band,
+        flagged=result.flagged,
+        model=version.version,
+    )
     return ScoreResponse(
         prediction_id=str(prediction.id),
         probability=result.probability,
@@ -269,9 +288,17 @@ def predict_selected(request: BulkPredictRequest, session: Session = Depends(get
     Not batch scoring: capped at ten, every score is stored against the officer who
     asked for it, and any unknown customer fails the whole request.
     """
-    user_by_email(session, request.scored_by, "officer")
+    officer = user_by_email(session, request.scored_by, "officer")
     version = live_model_version(session)
-    return [_predict(session, customer_id, version) for customer_id in request.customer_ids]
+    audit.event(
+        "predict_selected",
+        actor=request.scored_by,
+        count=len(request.customer_ids),
+    )
+    return [
+        _predict(session, customer_id, version, officer)
+        for customer_id in request.customer_ids
+    ]
 
 
 def _cohort(session: Session, criteria: TriageFilter) -> CohortPage:
@@ -302,7 +329,9 @@ def _cohort(session: Session, criteria: TriageFilter) -> CohortPage:
 @router.post("/cohort", response_model=CohortPage)
 def read_cohort(criteria: TriageFilter, session: Session = Depends(get_session)):
     """A cohort from an explicit filter: the quick cohorts, or a filter Loana proposed."""
-    return _cohort(session, criteria)
+    page = _cohort(session, criteria)
+    audit.event("cohort", filter=page.description, total=page.total, shown=len(page.rows))
+    return page
 
 
 @router.post("/triage", response_model=TriageReply)
@@ -319,6 +348,12 @@ def triage(request: TriageRequest, session: Session = Depends(get_session)):
         )
 
     turn = triage_assistant.interpret([m.model_dump() for m in request.messages])
+    audit.event(
+        "triage",
+        turns=len(request.messages),
+        source=turn.source,
+        filter_proposed=turn.filter is not None,
+    )
     return TriageReply(
         reply=turn.reply,
         source=turn.source,
@@ -362,9 +397,22 @@ def decide_on_queued_customer(
     )
     session.add(decision)
     # The decision is the officer's answer, so it closes the conversation.
-    reviews.resolve_open(session, customer.id)
+    closed = reviews.resolve_open(session, customer.id)
     session.flush()
 
+    # The justification is deliberately not logged: it is free text about a person.
+    audit.event(
+        "decision",
+        actor=request.decided_by,
+        customer=customer_id,
+        account=customer.account_number,
+        decision=decision.id,
+        prediction=prediction.id,
+        decided_action=request.action,
+        band=prediction.risk_band,
+        overrode_model=decision.to_dict()["overrode_model"],
+        messages_closed=closed,
+    )
     return DecisionOut(**decision.to_dict())
 
 
@@ -415,6 +463,7 @@ def chat_about_customer(
         )
 
     row, stored, record = account_for(customer_id, session)
+    audit.event("officer_chat", customer=customer_id, turns=len(request.messages))
     return officer_assistant.answer(
         row,
         [message.model_dump() for message in request.messages],

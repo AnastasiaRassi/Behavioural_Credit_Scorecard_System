@@ -12,10 +12,14 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
 from app.ai import assistant
+from app.core import audit
 from app.api.dependencies import (
     account_reader,
     customer_or_404,
+    get_explainer,
+    get_scorer,
     get_session,
+    live_model_version,
     queued_account,
 )
 from app.db import chat_log, queue_predictions, reviews, statements
@@ -24,6 +28,8 @@ from app.schemas.reviews import ReviewRequestCreate, ReviewRequestOut, ThreadEnt
 from app.schemas.worklist import CardholderView, ChatReply, ChatRequest
 
 router = APIRouter(prefix="/cardholders", tags=["cardholder"])
+
+SHOWN_REASONS = 6  # matches the officer's predict
 
 
 @router.get(
@@ -63,6 +69,7 @@ def chat_aboutaccount_for(
     """
     row, stored, record = account_for(customer_id, session)
     messages = [message.model_dump() for message in request.messages]
+    audit.event("cardholder_chat", customer=customer_id, turns=len(messages))
     return assistant.answer(
         row,
         messages,
@@ -100,6 +107,14 @@ def request_human_review(
     """Send the loan officer a message; it reopens the conversation if it was closed."""
     customer = customer_or_404(session, customer_id)
     request = reviews.open_request(session, customer.id, body.reason)
+    # Only the length is logged: the message is the cardholder's own words.
+    audit.event(
+        "review_request",
+        customer=customer_id,
+        account=customer.account_number,
+        request=request.id,
+        message_length=len(body.reason),
+    )
     return reviews.to_dict(request, customer, customer.user)
 
 
@@ -113,11 +128,40 @@ def read_thread(customer_id: str, session: Session = Depends(get_session)):
     return reviews.thread(session, customer_or_404(session, customer_id))
 
 
+def _score_live(session: Session, row: dict):
+    """Score through the live model and store it, so the first view isn't a queue copy."""
+    customer = queue_predictions.scored_columns(row)
+    result = get_scorer().score_one(customer)
+    reasons, base_value = get_explainer().reasons(customer, limit=SHOWN_REASONS)
+    prediction = queue_predictions.store_fresh_prediction(
+        session,
+        row,
+        live_model_version(session),
+        probability=result.probability,
+        risk_band=result.risk_band,
+        threshold=result.threshold,
+        reasons=[{**r.to_dict(), "raises_risk": r.raises_risk} for r in reasons],
+        base_value=base_value,
+        scored_by_user_id=None,
+        source="cardholder_view",
+    )
+    audit.event(
+        "predict",
+        actor="cardholder",
+        account=row["account_number"],
+        prediction=prediction.id,
+        band=result.risk_band,
+    )
+    return prediction
+
+
 def account_for(customer_id: str, session: Session):
     """The queue row, the latest officer score if any, and the raw input for the search."""
     customer, row = queued_account(session, customer_id)
 
     stored = queue_predictions.latest_for_cardholder(session, customer.id)
+    if stored is None:
+        stored = _score_live(session, row)
     try:
         record = statements.raw_input_for(session, customer.id)
     except statements.CustomerNotFound:
