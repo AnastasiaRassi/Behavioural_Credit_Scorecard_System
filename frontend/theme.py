@@ -5,9 +5,8 @@ audit outcome; blue is the neutral series colour and the interface accent. Keepi
 the accent out of the traffic-light range stops a button or an active tab from
 reading as a verdict.
 
-The same four values were previously repeated as literals across eight modules,
-so a chart could drift away from the band colour it was meant to match. Import
-from here instead.
+Import colours from here rather than repeating literals, so a chart cannot drift
+away from the band colour it is meant to match.
 """
 import altair as alt
 import streamlit as st

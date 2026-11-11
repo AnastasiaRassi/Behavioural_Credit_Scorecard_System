@@ -15,7 +15,8 @@ the artifacts do not contain.
 With DEMO_MODE=1 it also creates one account per role on the password `demo`,
 so the app can be shown without anyone typing a generated credential.
 
-Seeds staff, the model and the demo cardholders' logins and coaching cache. Customers
+Seeds staff, the model, the demo cardholders' logins and coaching cache, and one
+sample message to the officer. Customers
 (each already a user) come from the dataset via db/ingest.py, so "registering" a
 cardholder here means giving an ingested customer's user an email and password.
 Predictions are written by the API when someone is scored.

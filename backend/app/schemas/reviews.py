@@ -1,4 +1,4 @@
-"""Request and response shapes for human-review requests."""
+"""Shapes for cardholder messages to the officer and the shared thread."""
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator

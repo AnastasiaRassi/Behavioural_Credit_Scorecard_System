@@ -11,10 +11,10 @@ Telling someone they are predicted to default is distressing, can be
 self-fulfilling, and commits the lender to specific reasons the moment it acts.
 Pre-delinquency contact is framed as assistance.
 
-The page stays visual: the figures and the bill-against-payment timeline. Reasons
-and what would help are Loana's to explain, on request. The account at full width, with Loana AI (the chat copilot) as a floating chat in the
-corner (ui/loana.py). Loana's wording, and the repayment history it draws on, come
-from the API.
+The page stays visual: the figures, the bill-against-payment timeline, and the
+thread with the loan officer (ui/thread.py). Reasons and what would help are
+Loana's to explain, on request, in a floating chat in the corner (ui/loana.py).
+Loana's wording and the repayment history it draws on come from the API.
 """
 from collections.abc import Callable
 
@@ -25,8 +25,8 @@ import api
 import theme
 from ui import loana, thread
 
-# Features a cardholder can act on this month (read by the officer screen). A reason they cannot change is
-# not advice, it is an accusation.
+# Features a cardholder can act on this month (read by the officer screen). A reason
+# they cannot change is not advice, it is an accusation.
 ACTIONABLE = {
     "PAY_1": "Bring the account up to date before the next statement.",
     "PAY_2": "Clearing the older arrears first stops them compounding.",

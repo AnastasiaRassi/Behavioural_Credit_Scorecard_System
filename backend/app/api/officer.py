@@ -1,4 +1,12 @@
-"""The loan officer's surface: a worklist, one customer in detail, a decision."""
+"""The loan officer's surface.
+
+The worklist and customer search, one customer in detail, on-demand predictions,
+decisions, the shared thread and review requests, cohorts (explicit or proposed by
+Loana's triage), and the per-customer officer chat.
+
+The worklist is a precomputed artifact; a customer's score is only stored in the
+database once an officer predicts or decides on it.
+"""
 import uuid
 from dataclasses import asdict
 
@@ -165,7 +173,7 @@ def read_review_requests(session: Session = Depends(get_session)):
 
 @router.get("/queue/{customer_id}", response_model=QueueRow)
 def read_queued_customer(customer_id: str, session: Session = Depends(get_session)):
-    """One queue row. The shape the list uses; see /officer/customers for a page."""
+    """One queue row, in the shape the list uses. /officer/customers/{id} is the full page."""
     return queued_account(session, customer_id)[1]
 
 

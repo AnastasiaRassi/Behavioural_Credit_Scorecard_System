@@ -2,7 +2,7 @@
 
 The left 40% is a solid panel holding the CrediTrait logo. The right 60% is a
 faint office photograph with the sign-in card floating over it. The card holds
-the form and nothing else; the story sections below the fold are unchanged.
+the form and nothing else.
 
 Layout and colour live in `ui/login.css`, which is injected here with the photograph
 and logo inlined as base64 so the page needs no static file server. Every rule in

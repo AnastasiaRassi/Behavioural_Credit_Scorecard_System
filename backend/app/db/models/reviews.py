@@ -1,4 +1,7 @@
-"""A cardholder's request for a person to look again at the model's rating."""
+"""A cardholder's message to the loan officer, asking a person to look again.
+
+One row per message. Open rows are the officer's inbox; an officer decision resolves them.
+"""
 import uuid
 from datetime import datetime
 

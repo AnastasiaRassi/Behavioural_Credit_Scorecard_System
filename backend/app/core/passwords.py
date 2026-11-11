@@ -4,8 +4,7 @@ scrypt from the standard library rather than bcrypt or argon2: it is memory-hard
 needs no new dependency, and keeps the stored form self-describing, so the cost
 can be raised later without invalidating existing hashes.
 
-Hashing a password is not authentication. The system still has no login (see
-docs/code_conventions.md §1); this exists so that `users.password_hash`
+Hashing a password is not authentication. This exists so that `users.password_hash`
 can never hold a readable credential when one is set.
 """
 import hmac

@@ -4,9 +4,9 @@ Uses LightGBM's native `pred_contrib`, which for a tree model is exact TreeSHAP
 rather than sampled. Same quantity the `shap` package would compute, without the
 large install.
 
-Contributions are in log-odds and sum to the model's raw score, which the
-calibrator then maps to the probability the user sees. The ordering and relative
-size of the reasons are exact; only the final percentage comes from calibration.
+Contributions are in log-odds and average over the seed ensemble. Their ordering
+and relative size are exact; the probability shown comes from the ensemble's
+averaged output (see `calibration.py`), not from summing the contributions.
 
 Every user-facing string lives in `describe()`, so the UI formats numbers but never
 invents wording.

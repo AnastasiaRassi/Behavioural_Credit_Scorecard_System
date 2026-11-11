@@ -1,8 +1,7 @@
 """Tab 6 · Monitoring. Has the population moved, and is the model still right.
 
-No longer a placeholder: both panels come from the API, which reports what the
-stored data can actually support and refuses to invent a number when there are
-too few rows. Every prediction an officer runs adds to what this can measure.
+Both panels come from the API, which reports what the stored data can actually
+support and refuses to invent a number when there are too few rows. Every prediction an officer runs adds to what this can measure.
 """
 import altair as alt
 import pandas as pd

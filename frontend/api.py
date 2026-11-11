@@ -1,9 +1,9 @@
 """HTTP client for the backend. The frontend reads nothing from disk.
 
-Replaces the earlier artifact readers. Reading `artifacts/` directly would let a
-screen hold data its role is not entitled to and merely decline to draw it: the
-cardholder's probability would still be one devtools panel away. The API decides
-what each role is sent, so the frontend asks for it.
+Reading `artifacts/` directly would let a screen hold data its role is not
+entitled to and merely decline to draw it: the cardholder's probability would
+still be one devtools panel away. The API decides what each role is sent, so the
+frontend asks for it.
 
 Shapes are adapted here rather than in the tabs, so the screens keep one vocabulary
 whichever endpoint feeds them.

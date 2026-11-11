@@ -1,8 +1,7 @@
-"""The landing page: pick a role, then pick who you are.
+"""Role and user listings for the landing and sign-in screens.
 
-Role selection is not authentication. It decides which screens open and which
-payload shape the API returns, and the system says so rather than implying a
-login took place.
+Read-only and unauthenticated: they say which roles exist and which accounts can
+sign in, nothing more. Proving who you are is `sessions.py`.
 """
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func

@@ -1,7 +1,8 @@
 """Reading the officer worklist, and deciding what each role is shown.
 
-The queue itself is precomputed by `train.py`. This module filters it, summarises
-it, and reduces a row to what a cardholder may see.
+The queue itself is precomputed by `train.py`. This module filters it, selects
+cohorts from it, summarises it, builds the per-customer detail, and reduces a row
+to what a cardholder may see.
 
 That reduction happens here rather than in the frontend on purpose. If the API
 returned a cardholder their probability and log-odds effects and the screen

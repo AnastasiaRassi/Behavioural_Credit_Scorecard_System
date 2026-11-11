@@ -1,11 +1,10 @@
-"""The cardholder's own view of their account.
+"""Cardholder-facing endpoints: own account view, Loana chat, and messages to the officer.
 
-A behavioural scorecard re-scores someone who already holds the card, so this is
-an early warning, never a decision. The payload reflects that: it carries the
-band and the reasons, not the probability or the threshold.
+The score is an early warning, never a decision, so the view carries the band and
+reasons but not the probability or threshold (see `CardholderView`).
 
-Who may read it is decided by `dependencies.account_reader`, not here: narrowing
-the payload is pointless if anyone can ask for anyone's.
+Every route is guarded by `dependencies.account_reader`, not here: narrowing the
+payload is pointless if anyone can ask for anyone's account.
 """
 from dataclasses import asdict
 

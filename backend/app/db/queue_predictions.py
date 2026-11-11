@@ -2,10 +2,11 @@
 
 Queue rows live in an artifact, decisions live in the database and point at a
 prediction row. So the first time an officer acts on a queued customer, that
-customer's score has to become a real prediction. This module does that and
-nothing else.
+customer's score has to become a real prediction (`prediction_for`). An officer's
+"predict default" instead stores a fresh live score (`store_fresh_prediction`);
+the `latest_*` helpers read the newest stored score back.
 
-The score is taken from the queue rather than recomputed. It is the number the
+A decision's score is taken from the queue rather than recomputed. It is the number the
 officer was looking at when they decided, and re-scoring could not reproduce it
 anyway: the queue is built from the blind feature set, so the protected columns
 `CreditScorer.prepare()` expects are not present.

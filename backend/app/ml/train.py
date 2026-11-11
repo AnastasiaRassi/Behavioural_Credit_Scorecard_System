@@ -4,10 +4,11 @@ Run this to regenerate artifacts after changing features or hyperparameters:
 
     python -m app.ml.train        (from the backend/ directory)
 
-Deliberately serves a single calibrated model rather than the notebook's rank blend.
-The blend ranked marginally worse on test and its scores were not probabilities, so
-its threshold could not be applied to a calibrated output. The model that is
-evaluated here is the model that is saved and served.
+Deliberately serves one seed ensemble of LightGBM models, averaged into a probability,
+rather than the notebook's rank blend. The blend ranked marginally worse on test and
+its scores were not probabilities, so a probability threshold could not be applied to
+it. No calibrator is fitted (see `calibration.py`). The model that is evaluated here
+is the model that is saved and served.
 """
 import json
 from datetime import date

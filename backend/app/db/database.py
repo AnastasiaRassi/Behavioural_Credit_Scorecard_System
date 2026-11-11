@@ -1,4 +1,4 @@
-"""Engine and session handling.
+"""Engine, session handling, and creating or dropping the schema.
 
 The engine is created once per process and cached, like the model artifacts.
 Sessions are per request: `session_scope()` commits on success and rolls back on
@@ -97,10 +97,11 @@ def _add_missing_columns() -> None:
 
 
 def create_all() -> None:
-    """Create any missing tables, refusing to run against an earlier schema.
+    """Create missing tables and columns, refusing to run against an earlier schema.
 
-    Enough for a prototype with no schema history. A migration tool would be the
-    answer if this schema had to evolve against data worth keeping.
+    Columns added since a table first shipped are listed in `ADDED_COLUMNS`. Anything
+    bigger needs a rebuild; a migration tool would replace this if the schema had to
+    evolve against data worth keeping.
     """
     stale = _legacy_columns()
     if stale:

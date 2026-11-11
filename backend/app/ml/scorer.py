@@ -2,7 +2,7 @@
 
 This is the single entry point the API and dashboard use. It loads the artifacts
 written by `app.ml.train`, applies the same feature engineering used in training,
-and returns a calibrated probability plus a risk band.
+and returns a probability plus a risk band.
 """
 import json
 from dataclasses import dataclass, asdict
