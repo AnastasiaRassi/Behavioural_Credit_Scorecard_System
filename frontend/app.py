@@ -27,7 +27,7 @@ if str(HERE) not in sys.path:
 
 import api  # noqa: E402
 import theme  # noqa: E402
-from tabs import drift, explain, fairness, performance, registry, threshold  # noqa: E402
+from tabs import drift, explain, fairness, performance, registry, segmentation, threshold  # noqa: E402
 from ui import profile  # noqa: E402
 from views import cardholder, officer, sign_in  # noqa: E402
 
@@ -287,11 +287,11 @@ def _engineer() -> None:
 
     names = [
         "Performance", "Fairness", "Explainability",
-        "Threshold", "Registry", "Monitoring",
+        "Threshold", "Segments", "Registry", "Monitoring",
     ]
     renderers = [
         performance.render, fairness.render, explain.render,
-        threshold.render, registry.render, drift.render,
+        threshold.render, segmentation.render, registry.render, drift.render,
     ]
     for tab, render in zip(st.tabs(names), renderers):
         with tab:

@@ -180,6 +180,11 @@ def importance() -> list[dict]:
 
 
 @st.cache_data(ttl=60, show_spinner=False)
+def segments() -> dict:
+    return _get("/segments")
+
+
+@st.cache_data(ttl=60, show_spinner=False)
 def fairness() -> dict:
     """Just the per-attribute detail, which is what the fairness tab renders."""
     return _get("/fairness")["detail"]
