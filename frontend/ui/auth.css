@@ -112,6 +112,7 @@ body:has(.st-key-signin_card) [data-testid="stMainBlockContainer"] {
     color: #FFFFFF;
     border-bottom: 1px solid rgba(255, 255, 255, 0.18);
     border-radius: 14px;
+    pointer-events: auto; /* the showcase overlay is pointer-events: none */
     transition: background-color 0.2s ease, box-shadow 0.2s ease;
 }
 .feature-card:hover {
