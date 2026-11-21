@@ -533,3 +533,12 @@ def test_a_chat_turn_cannot_point_at_an_unknown_customer(chat_table, chatter):
     message = _rejected_by(chat_table, _chat_turn(uuid.uuid4()))
 
     assert "customer_id" in message or "foreign key" in message.lower()
+
+
+def test_invented_first_names_match_the_stored_sex():
+    from app.db.customer_registry import FEMALE_FIRST_NAMES, MALE_FIRST_NAMES, invent_name
+
+    assert not set(MALE_FIRST_NAMES) & set(FEMALE_FIRST_NAMES)
+    for number in range(1, 400):
+        assert invent_name(str(number), 1).split()[0] in MALE_FIRST_NAMES
+        assert invent_name(str(number), 2).split()[0] in FEMALE_FIRST_NAMES

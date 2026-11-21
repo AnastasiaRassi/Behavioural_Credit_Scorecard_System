@@ -4,15 +4,3 @@
     margin: 0 1rem 1rem; max-width: calc(100% - 2rem);
 }
 
-[class*="st-key-request_card_"] [class*="st-key-approve_"] button {
-    background: #047857; border-color: #047857;
-}
-[class*="st-key-request_card_"] [class*="st-key-approve_"] button:hover {
-    background: #065F46; border-color: #065F46;
-}
-[class*="st-key-request_card_"] [class*="st-key-reject_"] button {
-    background: #B91C1C; border-color: #B91C1C;
-}
-[class*="st-key-request_card_"] [class*="st-key-reject_"] button:hover {
-    background: #991B1B; border-color: #991B1B;
-}

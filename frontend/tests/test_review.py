@@ -143,7 +143,7 @@ def test_model_saw_reads_the_history_in_plain_sentences():
     assert "Behind on payments in 2 of the last 6 months." in sentences
     assert "No payment at all in 1 month." in sentences
     assert "Using 85% of the limit now, 60% on average over six months." in sentences
-    assert "Paid 400 against 2,000 billed (20%)." in sentences
+    assert "Paid NT$400 against NT$2,000 billed (20%)." in sentences
     assert "Repayment behaviour is deteriorating." in sentences
 
 
@@ -191,3 +191,25 @@ def _entry(kind, status=None) -> dict:
 ])
 def test_case_stage_follows_the_newest_request(entries, stage):
     assert review.case_stage(entries) == stage
+
+
+def _account(behind: int, latest: int, flagged: bool = True) -> dict:
+    history = [
+        {"payment_status": latest if i == 0 else 0, "bill_amount": 120_000, "amount_paid": 10_000}
+        for i in range(6)
+    ]
+    return {"needs_attention": flagged, "risk_band": "High", "months_in_arrears": behind,
+            "history": history}
+
+
+def test_banner_wording_follows_how_far_behind_the_account_is():
+    from views.cardholder import banner_copy
+
+    tone, title, body = banner_copy(_account(6, 2))
+    assert title == "Your account is seriously behind"
+    assert "6 of the last 6 months" in body and "early heads-up" not in body
+    assert "8%" in body  # payments covered a small share of the bills
+
+    assert banner_copy(_account(1, 1))[1] == "Your account has started to fall behind"
+    assert banner_copy(_account(0, 0))[1] == "Your next payment may be at risk"
+    assert banner_copy(_account(0, 0, flagged=False))[0] == "good"

@@ -167,9 +167,9 @@ def test_the_briefing_text_is_written_from_the_counts():
     assert "**Hiro Williams** (account 20164)" in text and "20,235" in text
 
 
-def test_an_empty_briefing_says_nothing_is_waiting():
+def test_an_empty_briefing_says_nothing_is_flagged():
     text = worklist.describe_briefing([{"total": 0}] * 3, None)
-    assert text.startswith("Nothing is waiting")
+    assert text.startswith("Nothing is flagged for review")
 
 
 # --- the API ------------------------------------------------------------------

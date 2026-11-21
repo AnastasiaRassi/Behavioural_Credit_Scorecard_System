@@ -22,19 +22,7 @@ def draw(entries: list[dict], viewer: str) -> None:
         return
 
     cards = [_card(entry, viewer) for entry in entries]
-    show(flatten(f'<div class="thread">{stepper(entries)}{"".join(cards)}</div>'))
-
-
-def stepper(entries: list[dict]) -> str:
-    """Submitted → Under review → Decision issued, for the newest request."""
-    stage = review.case_stage(entries)
-    if stage is None:
-        return ""
-    steps = []
-    for number, label in enumerate(review.CASE_STEPS, start=1):
-        state = "done" if number < stage else "current" if number == stage else "todo"
-        steps.append(f'<li class="case-step case-step--{state}"><span>{number}</span>{label}</li>')
-    return f'<ol class="case-steps">{"".join(steps)}</ol>'
+    show(flatten(f'<div class="thread">{"".join(cards)}</div>'))
 
 
 def status_chip(entries: list[dict]) -> str:

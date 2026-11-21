@@ -35,26 +35,29 @@ WALK_IN_PREFIX = "W-"
 # Invented people. Drawn from a fixed list rather than a generator library so
 # the names are reproducible, reviewable, and add no dependency. Obviously
 # fictional: the dataset's customers are anonymous, so these stand in for the
-# name a real deployment would hold.
-FIRST_NAMES = (
-    "Nour", "Karim", "Layla", "Fadi", "Maya", "Tarek", "Rima", "Jad", "Hiba",
-    "Omar", "Dana", "Ziad", "James", "Sofia", "Wei", "Priya", "Mateo", "Aisha",
-    "Liam", "Yuki", "Elena", "Kwame", "Chloe", "Arjun", "Isabella", "Noah",
-    "Fatima", "Lucas", "Mei", "Olivia", "Diego", "Amara", "Ethan", "Hana", "Pavel",
-    "Zara", "Henrik", "Camila", "Ravi", "Grace", "Mohammed", "Ingrid", "Tomas",
-    "Leila", "Daniel", "Anya", "Samuel", "Nia", "Rami", "Joelle", "Georges",
-    "Carla", "Elie", "Joumana", "Bilal", "Yasmine", "Walid", "Lina", "Hadi",
-    "Salma", "Marwan", "Reem", "Anwar", "Tala", "Samir", "Rana", "Kamal", "Nadine",
-    "Ali", "Aya", "Hassan", "Mira", "Youssef", "Celine", "Ahmad", "Jana", "Rayan",
-    "Lara", "Majd", "Noura", "Rabih", "Sara", "Tony", "Michelle", "Charbel",
-    "Perla", "Mario", "Rita", "Antoine", "Maria", "Peter", "Emma", "Oliver",
-    "Sophie", "Jack", "Hannah", "Henry", "Lea", "Felix", "Clara", "Hugo", "Alice",
-    "Leo", "Nora", "Max", "Ida", "Oscar", "Ella", "Anton", "Mila", "Jonas", "Greta",
-    "Marco", "Giulia", "Luca", "Chiara", "Andrei", "Irina", "Dmitri", "Katya",
-    "Jin", "Sakura", "Hiro", "Aiko", "Min", "Soo", "Jun", "Hyun", "Anil", "Deepa",
-    "Vikram", "Sunita", "Imran", "Nadia", "Tariq", "Samira", "Kofi", "Abena",
-    "Chidi", "Ngozi", "Thabo", "Zola", "Juan", "Lucia", "Pablo", "Valeria",
+# name a real deployment would hold. Split by the dataset's SEX code so a name
+# never contradicts the stored gender; unisex names are left out for that reason.
+MALE_FIRST_NAMES = (
+    "Karim", "Fadi", "Tarek", "Jad", "Omar", "Ziad", "James", "Wei", "Mateo",
+    "Liam", "Kwame", "Arjun", "Noah", "Lucas", "Diego", "Ethan", "Pavel", "Henrik",
+    "Ravi", "Mohammed", "Tomas", "Daniel", "Samuel", "Rami", "Georges", "Elie",
+    "Bilal", "Walid", "Hadi", "Marwan", "Anwar", "Samir", "Kamal", "Ali", "Hassan",
+    "Youssef", "Ahmad", "Rayan", "Majd", "Rabih", "Tony", "Charbel", "Mario",
+    "Antoine", "Peter", "Oliver", "Jack", "Henry", "Felix", "Hugo", "Leo", "Max",
+    "Oscar", "Anton", "Jonas", "Marco", "Luca", "Andrei", "Dmitri", "Hiro", "Kenji",
+    "Anil", "Vikram", "Imran", "Tariq", "Kofi", "Chidi", "Thabo", "Juan", "Pablo",
 )
+FEMALE_FIRST_NAMES = (
+    "Layla", "Maya", "Rima", "Hiba", "Dana", "Sofia", "Priya", "Aisha", "Elena",
+    "Chloe", "Isabella", "Fatima", "Mei", "Olivia", "Amara", "Hana", "Zara",
+    "Camila", "Grace", "Ingrid", "Leila", "Anya", "Nia", "Joelle", "Carla",
+    "Joumana", "Yasmine", "Lina", "Salma", "Reem", "Tala", "Rana", "Nadine", "Aya",
+    "Mira", "Celine", "Jana", "Lara", "Noura", "Sara", "Michelle", "Perla", "Rita",
+    "Maria", "Emma", "Sophie", "Hannah", "Lea", "Clara", "Alice", "Nora", "Ida",
+    "Ella", "Mila", "Greta", "Giulia", "Chiara", "Irina", "Katya", "Sakura", "Aiko",
+    "Deepa", "Sunita", "Nadia", "Samira", "Abena", "Ngozi", "Lucia", "Valeria",
+)
+FIRST_NAMES_BY_SEX = {1: MALE_FIRST_NAMES, 2: FEMALE_FIRST_NAMES}
 LAST_NAMES = (
     "Haddad", "Khoury", "Nassar", "Saab", "Gerges", "Mansour", "Aoun", "Chalhoub",
     "Daher", "Fares", "Rizk", "Sleiman", "Smith", "Garcia", "Chen", "Patel",
@@ -80,18 +83,18 @@ LAST_NAMES = (
 _SCRAMBLE = 7919
 
 
-def invent_name(account_number: str) -> str:
-    """A stable fictional name for an account number.
+def invent_name(account_number: str, sex: int | None) -> str:
+    """A stable fictional name for an account number, matching the dataset's SEX code.
 
     Derived from the number itself, so the same account is always the same person
     and no state has to be kept to make that true. The number is scrambled across
-    every first/last pairing, so consecutive accounts get unrelated names and no
-    pairing is used more than twice per 2x the pair count of accounts.
+    every first/last pairing, so consecutive accounts get unrelated names.
     """
+    first_names = FIRST_NAMES_BY_SEX.get(sex, MALE_FIRST_NAMES + FEMALE_FIRST_NAMES)
     digits = int("".join(filter(str.isdigit, account_number)) or 0)
-    pairs = len(FIRST_NAMES) * len(LAST_NAMES)
+    pairs = len(first_names) * len(LAST_NAMES)
     index = (digits * _SCRAMBLE) % pairs
-    return f"{FIRST_NAMES[index % len(FIRST_NAMES)]} {LAST_NAMES[index // len(FIRST_NAMES)]}"
+    return f"{first_names[index % len(first_names)]} {LAST_NAMES[index // len(first_names)]}"
 
 
 def refresh_names(session: Session) -> int:
@@ -101,14 +104,14 @@ def refresh_names(session: Session) -> int:
     Only customers are touched, so staff and demo logins keep their names.
     """
     rows = session.execute(
-        select(User.id, User.display_name, Customer.account_number).join(
-            Customer, Customer.user_id == User.id
-        )
+        select(User.id, User.display_name, Customer.account_number, UserDetails.sex)
+        .join(Customer, Customer.user_id == User.id)
+        .outerjoin(UserDetails, UserDetails.user_id == User.id)
     ).all()
     stale = [
-        {"id": user_id, "display_name": invent_name(account)}
-        for user_id, current, account in rows
-        if current != invent_name(account)
+        {"id": user_id, "display_name": invent_name(account, sex)}
+        for user_id, current, account, sex in rows
+        if current != invent_name(account, sex)
     ]
     if stale:
         session.execute(update(User), stale)
@@ -137,7 +140,7 @@ def register_from_raw(
     folded = clean(pd.DataFrame([raw])).iloc[0]
 
     user = User(
-        display_name=invent_name(account_number),
+        display_name=invent_name(account_number, int(folded["SEX"])),
         role="cardholder",
         details=UserDetails(
             sex=int(folded["SEX"]),

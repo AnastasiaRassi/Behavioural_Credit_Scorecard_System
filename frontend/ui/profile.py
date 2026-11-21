@@ -47,8 +47,6 @@ _CSS = f"""
     color: #64748B;
 }}
 .ct-stat-value {{ font-size: 1.05rem; font-weight: 600; color: #0F172A; margin-top: .2rem; overflow-wrap: anywhere; }}
-.ct-section-title {{ font-weight: 700; color: #0F172A; margin-bottom: .25rem; }}
-.ct-muted {{ color: #64748B; font-size: 14px; }}
 </style>
 """
 
@@ -98,10 +96,5 @@ def render_page(session: dict, role_label: str) -> None:
         f'<div><div class="ct-card-name">{html.escape(session["display_name"])}</div>'
         f'<span class="ct-pill">{html.escape(role_label)}</span></div></div>'
         f'<div class="ct-grid">{tiles}</div></div>',
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        '<div class="ct-card"><div class="ct-section-title">Settings</div>'
-        '<div class="ct-muted">Preferences will appear here.</div></div>',
         unsafe_allow_html=True,
     )

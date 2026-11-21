@@ -30,6 +30,7 @@ from typing import Callable, Mapping, Sequence
 from app.ai import guardrails, llm_client
 from app.ai.exceptions import GuardrailBlocked
 from app.core.exceptions import failure_line
+from app.core.money import money
 from app.ai.coaching import (
     DISCLAIMER,
     LOWEST_BAND,
@@ -428,9 +429,9 @@ def fact_sheet(view: dict, history: Sequence[Mapping], payload: CoachingPayload)
         "risk_band_for_next_month": view["risk_band"],
         "flagged_for_attention": view["needs_attention"],
         "account": {
-            "credit_limit": f"{view['credit_limit']:,.0f}",
-            "current_balance": f"{view['current_balance']:,.0f}",
-            "last_payment": f"{view['last_payment']:,.0f}",
+            "credit_limit": money(view['credit_limit']),
+            "current_balance": money(view['current_balance']),
+            "last_payment": money(view['last_payment']),
             "months_in_arrears_out_of_last_six": view["months_in_arrears"],
         },
         # The model may say "6 months" because the sheet does; no digit is allowed
@@ -478,8 +479,8 @@ def _month(entry: Mapping) -> dict:
     month = {
         "month": entry["label"],
         "repayment": entry["payment_status_reading"],
-        "bill": f"{entry['bill_amount']:,.0f}",
-        "paid": f"{entry['amount_paid']:,.0f}",
+        "bill": money(entry['bill_amount']),
+        "paid": money(entry['amount_paid']),
     }
     if entry.get("utilisation") is not None:
         month["share_of_limit_used"] = f"{entry['utilisation']:.0%}"
@@ -619,8 +620,8 @@ def template_reply(
 
     if intent == guardrails.ACCOUNT:
         return (
-            f"Your credit limit is {view['credit_limit']:,.0f} and your current balance is "
-            f"{view['current_balance']:,.0f}. Your last payment was {view['last_payment']:,.0f}, "
+            f"Your credit limit is {money(view['credit_limit'])} and your current balance is "
+            f"{money(view['current_balance'])}. Your last payment was {money(view['last_payment'])}, "
             f"and the account was in arrears in {view['months_in_arrears']} of the last six months."
         )
 

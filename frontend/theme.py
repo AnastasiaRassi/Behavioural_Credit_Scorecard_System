@@ -240,25 +240,8 @@ div.inbox-alert--clear {{ background: #F5F5F4; color: {MUTED}; border-color: {GR
     box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.15);
 }}
 
-/* Review record (ui/thread.py): full-width entries, a status stepper and a decision block. */
+/* Review record (ui/thread.py): full-width entries and a decision block. */
 .thread {{ display: flex; flex-direction: column; gap: 0.75rem; margin: 0.4rem 0 1rem; }}
-.case-steps {{
-    display: flex; list-style: none; margin: 0 0 0.25rem; padding: 0; gap: 0.5rem;
-}}
-.case-step {{
-    flex: 1; display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.75rem;
-    border-radius: 10px; font-size: 0.85rem; font-weight: 600;
-    border: 1px solid {GRID}; background: {SURFACE}; color: {MUTED};
-}}
-.case-step span {{
-    flex: none; width: 22px; height: 22px; border-radius: 50%; display: flex;
-    align-items: center; justify-content: center; font-size: 0.75rem;
-    background: #E2E8F0; color: #475569;
-}}
-.case-step--done {{ color: #065F46; }}
-.case-step--done span {{ background: #A7F3D0; color: #065F46; }}
-.case-step--current {{ background: #ECFDF5; border-color: #6EE7B7; color: #065F46; }}
-.case-step--current span {{ background: #008F63; color: #FFFFFF; }}
 .case-entry {{
     padding: 0.85rem 1.1rem; border-radius: 10px; border: 1px solid {GRID};
     background: {SURFACE}; color: {TEXT};

@@ -75,7 +75,7 @@ def _cohort(criteria: dict) -> dict:
 def _briefing() -> dict:
     lead = _cohort({})["rows"][0]
     return {
-        "text": "Not scored yet: **41** getting worse and 2+ months behind.",
+        "text": "Flagged for review, no officer score yet: **41** getting worse and 2+ months behind.",
         "cohorts": [
             {"label": "Getting worse, 2+ months behind",
              "filter": {"min_months_in_arrears": 2, "trajectory": "deteriorating",
@@ -335,16 +335,13 @@ def test_review_opens_the_customer_with_the_unread_alert_and_thread(faked_api):
     assert "Pay 500 this month" in text
 
 
-def test_the_dashboard_links_to_messages_instead_of_a_chat_box(faked_api):
+def test_the_dashboard_has_no_chat_box_or_review_link(faked_api):
     app = _start()
     _command(app, "222")
     app.button(key="officer_pick_id-222").click().run()
 
     assert "officer_note_id-222" not in [area.key for area in app.text_area]
-    app.button(key="officer_message_id-222").click().run()
-
-    assert app.session_state["officer_conversation_id"] == "id-222"
-    assert "No review requests yet" in _text(app)
+    assert "officer_message_id-222" not in [button.key for button in app.button]
 
 
 def test_back_to_worklist_returns_to_the_landing(faked_api):
@@ -421,7 +418,7 @@ def test_rejecting_a_request_declines_it_without_opening_the_chat(faked_api):
 
     assert not app.exception
     assert faked_api.rejected == ["id-111"]
-    assert not app.session_state.filtered_state.get("officer_conversation_id")
+    assert "officer_conversation_id" not in app.session_state or not app.session_state["officer_conversation_id"]
 
 
 def test_the_assistant_says_it_is_not_connected_and_keeps_the_layout(faked_api, monkeypatch):

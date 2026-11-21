@@ -10,6 +10,7 @@ merely declined to draw them, the numbers would still be in the response, one
 devtools panel away. What a role cannot see, it is not sent.
 """
 from app.ai.coaching import coach
+from app.core.money import money
 from app.ml import artifacts
 from app.ml.explainability import describe
 
@@ -190,9 +191,9 @@ def describe_cohort(criteria: dict) -> str:
     if criteria.get("min_months_with_no_payment"):
         parts.append(f"no payment in {criteria['min_months_with_no_payment']}+ months")
     if criteria.get("min_credit_limit") is not None:
-        parts.append(f"limit at least {criteria['min_credit_limit']:,.0f}")
+        parts.append(f"limit at least {money(criteria['min_credit_limit'])}")
     if criteria.get("max_credit_limit") is not None:
-        parts.append(f"limit at most {criteria['max_credit_limit']:,.0f}")
+        parts.append(f"limit at most {money(criteria['max_credit_limit'])}")
     if criteria.get("not_scored"):
         parts.append("not scored yet")
     if criteria.get("scored_band"):
@@ -251,18 +252,19 @@ def describe_briefing(cohorts: list[dict], lead: dict | None) -> str:
     ]
     if not parts:
         return (
-            "Nothing is waiting on a score: everyone in the quick cohorts has already "
-            "been predicted. Ask me for a different group below."
+            "Nothing is flagged for review: an officer has already scored everyone in "
+            "the quick cohorts. Ask me for a different group below."
         )
 
     listed = parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + " and " + parts[-1]
-    text = f"Not scored yet: {listed}."
+    # These are ranked by the overnight model; "scored" means an officer ran one.
+    text = f"Flagged for review, no officer score yet: {listed}."
     if lead:
         who = lead.get("full_name") or f"account {lead['account_number']}"
         text += (
             f" I'd start with **{who}** (account {lead['account_number']}): "
             f"{lead['months_in_arrears']} of 6 months behind and getting worse, with "
-            f"the largest balance in that group at {lead['current_balance']:,.0f}."
+            f"the largest balance in that group at {money(lead['current_balance'])}."
         )
     return text
 

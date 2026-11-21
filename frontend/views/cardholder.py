@@ -25,6 +25,7 @@ import streamlit as st
 import api
 import review
 import theme
+from money import CURRENCY, markdown_safe, money
 from ui import loana, nav, thread
 from ui.components import show, stylesheet
 
@@ -106,7 +107,7 @@ def _dashboard(account: dict) -> None:
     stylesheet("dashboard.css")
     needs_attention = account["needs_attention"]
     _officer_decision(account.get("officer_decision"))
-    _banner(needs_attention, account["risk_band"])
+    _banner(account)
 
     _account(account)
     history_card(account["history"])
@@ -135,23 +136,68 @@ def _officer_decision(decision: dict | None) -> None:
     )
 
 
-def _banner(needs_attention: bool, risk_band: str) -> None:
+# Months behind at which an account is past "early warning" and into recovery.
+SERIOUSLY_BEHIND_MONTHS = 3
+# Payments under this share of what was billed are not keeping pace with the bills.
+LOW_REPAYMENT_SHARE = 0.5
+
+
+def banner_copy(account: dict) -> tuple[str, str, str]:
+    """(tone, title, body) for the status callout, worded to match the account's own record.
+
+    The model's flag says whether to warn; the history says how. An account behind
+    every month is told so plainly, not given an "early heads-up".
+    """
+    history = account.get("history") or []
+    behind = account["months_in_arrears"]
+    latest = history[0]["payment_status"] if history else 0
+    billed = sum(month["bill_amount"] for month in history)
+    paid = sum(month["amount_paid"] for month in history)
+    share = paid / billed if billed > 0 else None
+    window = f"{behind} of the last {len(history) or 6} months"
+
+    if not account["needs_attention"]:
+        if behind == 0:
+            return "good", "Your account looks on track", (
+                "Nothing in your recent repayment history suggests you will have "
+                "difficulty with your next payment."
+            )
+        return "good", "Your account is on track", (
+            f"You were behind in {window}, but your recent payments suggest you "
+            "should manage your next one. Staying up to date keeps it that way."
+        )
+
+    tone = "high" if account["risk_band"] == "High" else "medium"
+    if behind >= SERIOUSLY_BEHIND_MONTHS or latest >= SERIOUSLY_BEHIND_MONTHS:
+        overdue = (
+            f" Your latest payment is {latest} months overdue." if latest > 1 else ""
+        )
+        shortfall = (
+            f" Over that time your payments covered {share:.0%} of what was billed, "
+            "so the balance has kept growing."
+            if share is not None and share < LOW_REPAYMENT_SHARE else ""
+        )
+        return tone, "Your account is seriously behind", (
+            f"Your account has been behind on payments in {window}.{overdue}{shortfall} "
+            "This is not a decision, but catching up on your own is now unlikely. "
+            "Requesting a review lets a loan officer discuss a repayment plan with you."
+        )
+    if behind > 0:
+        return tone, "Your account has started to fall behind", (
+            f"You were behind on payments in {window}. Catching up before the next "
+            "statement is the most effective step, and it is still within reach. "
+            "This is not a decision."
+        )
+    return tone, "Your next payment may be at risk", (
+        "Your payments are up to date, but how your balance and payments have moved "
+        "over the last six months suggests your next payment could be difficult. "
+        "This is not a decision, just an early heads-up while there is still time to act."
+    )
+
+
+def _banner(account: dict) -> None:
     """Status callout: rose for a flagged high band, amber for other flags, mint otherwise."""
-    if not needs_attention:
-        tone = "good"
-        title = "Your account looks on track"
-        body = (
-            "Nothing in your recent repayment history suggests you will have "
-            "difficulty with your next payment."
-        )
-    else:
-        tone = "high" if risk_band == "High" else "medium"
-        title = "Your next payment may be at risk"
-        body = (
-            "Based on how your account has moved over the last six months, you may "
-            "find your next payment difficult. This is not a decision, just an early "
-            "heads-up while there is still time to act."
-        )
+    tone, title, body = banner_copy(account)
     st.markdown(
         f'<div class="account-alert account-alert--{tone}">'
         f'<div class="account-alert-title">{title}</div><p>{body}</p></div>',
@@ -250,9 +296,9 @@ def _account(account: dict) -> None:
     for column, (label, value) in zip(
         st.columns(4),
         [
-            ("Credit limit", f"{account['credit_limit']:,.0f}"),
-            ("Latest statement balance", f"{account['current_balance']:,.0f}"),
-            ("Last payment", f"{account['last_payment']:,.0f}"),
+            ("Credit limit", money(account['credit_limit'])),
+            ("Latest statement balance", money(account['current_balance'])),
+            ("Last payment", money(account['last_payment'])),
             ("Months behind", f"{account['months_in_arrears']} of 6"),
         ],
     ):
@@ -300,7 +346,7 @@ def history_card(history: list[dict], title: str = "Your last six months") -> No
             ),
             yaxis=dict(
                 fixedrange=True, range=[0, top * 1.1],  # a bill is never negative
-                gridcolor=theme.GRID, zeroline=False, tickprefix="$", tickformat="~s",
+                gridcolor=theme.GRID, zeroline=False, tickprefix=CURRENCY, tickformat="~s",
                 tickfont=dict(color=TICK, size=14),
             ),
         )
@@ -325,7 +371,7 @@ def _series(labels: list[str], amounts: list[float], name: str, colour: str) -> 
         fillgradient=dict(
             type="vertical", colorscale=[[0, _rgba(colour, 0)], [1, _rgba(colour, 0.28)]]
         ),
-        hovertemplate=f"{name} ($): %{{y:,.0f}}<extra></extra>",
+        hovertemplate=f"{name}: {CURRENCY}%{{y:,.0f}}<extra></extra>",
     )
     return [glow, line]
 
@@ -407,7 +453,7 @@ def _copilot(token: str, customer_id: str) -> None:
 def _bubble(message: dict) -> None:
     with st.chat_message(message["role"]):
         # Escaped, or a pair of dollar amounts in one reply renders as a formula.
-        st.markdown(message["content"].replace("$", "\$"))
+        st.markdown(markdown_safe(message["content"]))
 
 
 def _consent() -> None:

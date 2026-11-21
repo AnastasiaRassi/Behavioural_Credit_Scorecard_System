@@ -32,6 +32,7 @@ import streamlit as st
 import api
 import review
 from components import BAND_ICONS
+from money import markdown_safe, money
 from ui import loana, nav, thread
 from ui.profile import initials
 from ui.components import card_head, quote, reason_line, show, stylesheet
@@ -281,21 +282,19 @@ def _request_card(item: dict, band: str | None, now: datetime, officer_email: st
         if card["is_truncated"]:
             with st.expander("Read the full note"):
                 show(quote(card["full_note"]))
-        if item["status"] == "pending":
-            approve, reject, _ = st.columns([1.6, 1.6, 4])
-            approve.button(
-                "Approve request", key=f"approve_{item['request_id']}",
-                on_click=_approve, args=(item["customer_id"], officer_email),
-            )
-            reject.button(
-                "Reject request", key=f"reject_{item['request_id']}",
-                on_click=_reject, args=(item["customer_id"], officer_email),
-            )
-        else:
-            st.button(
-                "Open review", key=f"review_{item['request_id']}",
-                on_click=_open_conversation, args=(item["customer_id"],),
-            )
+        # Pending opens by accepting; in review is already accepted, so it just opens.
+        pending = item["status"] == "pending"
+        open_column, reject_column, _ = st.columns([1.6, 1.6, 4])
+        open_column.button(
+            "Open review",
+            key=f"{'approve' if pending else 'review'}_{item['request_id']}",
+            on_click=_approve if pending else _open_conversation,
+            args=(item["customer_id"], officer_email) if pending else (item["customer_id"],),
+        )
+        reject_column.button(
+            "Reject request", key=f"reject_{item['request_id']}",
+            on_click=_reject, args=(item["customer_id"], officer_email),
+        )
 
 
 # --- the landing page -----------------------------------------------------
@@ -325,9 +324,9 @@ def _typing(text: str) -> Iterator[str]:
 def _say(text: str, fresh: bool) -> None:
     """Loana's words: typed out when they are new, plain once they have been read."""
     if fresh:
-        st.write_stream(_typing(text))
+        st.write_stream(_typing(markdown_safe(text)))
     else:
-        st.markdown(text)
+        st.markdown(markdown_safe(text))
 
 
 def _briefing(officer_name: str, waiting: int) -> None:
@@ -525,25 +524,17 @@ def _record_page(customer_id: str, officer_email: str, token: str) -> None:
 
     request = _open_request_for(customer_id)
     _heading(detail)
-    # Reviews live in their own view, so the record only links to it.
-    st.button(
-        f"Review {_first_name(detail)}'s requests →", key=f"officer_message_{customer_id}",
-        type="primary", on_click=_open_conversation, args=(customer_id,),
-    )
     if request:
         _unread_alert(request)
+    # The model's call is the point of the page, so it sits above the fold.
+    _prediction(detail, officer_email)
+    st.divider()
+    if request:
         _evidence(detail, request)
         _plan(detail, token)
     _figures(detail)
     st.divider()
     _history(detail)
-    st.divider()
-    _prediction(detail, officer_email)
-
-
-def _first_name(detail: dict) -> str:
-    name = detail.get("full_name")
-    return name.split()[0] if name else "this customer"
 
 
 # --- the conversation -------------------------------------------------------
@@ -644,7 +635,7 @@ def _evidence(detail: dict, request: dict) -> None:
         st.markdown("**What the model saw**")
         st.caption("The last six months of this account.")
         for sentence in review.model_saw(detail):
-            st.markdown(f"- {sentence}")
+            st.markdown(f"- {markdown_safe(sentence)}")
     with says:
         st.markdown("**What the customer says**")
         show(quote(request["latest"].strip()))
@@ -664,7 +655,7 @@ def _plan(detail: dict, token: str) -> None:
     if plan["steps"]:
         st.markdown(f"To move to {plan['target_band'].lower()} risk:")
         for step in plan["steps"]:
-            st.markdown(f"- {step['description']}")
+            st.markdown(f"- {markdown_safe(step['description'])}")
         if plan["reachable"]:
             st.caption(plan["note"])
         else:
@@ -703,9 +694,9 @@ def _figures(detail: dict) -> None:
     for column, (label, value, explanation) in zip(
         st.columns(5),
         [
-            ("Credit limit", f"{detail['credit_limit']:,.0f}", "The agreed limit."),
-            ("Balance", f"{detail['current_balance']:,.0f}", "Owed this month."),
-            ("Last payment", f"{detail['last_payment']:,.0f}", "Most recent payment."),
+            ("Credit limit", money(detail['credit_limit']), "The agreed limit."),
+            ("Balance", money(detail['current_balance']), "Owed this month."),
+            ("Last payment", money(detail['last_payment']), "Most recent payment."),
             (
                 "Utilisation",
                 f"{utilisation:.0%}" if utilisation is not None else "-",
@@ -752,8 +743,8 @@ def _history(detail: dict) -> None:
                 {
                     "Month": entry["label"],
                     "Repayment status": entry["payment_status_reading"],
-                    "Bill": f"{entry['bill_amount']:,.0f}",
-                    "Paid": f"{entry['amount_paid']:,.0f}",
+                    "Bill": money(entry['bill_amount']),
+                    "Paid": money(entry['amount_paid']),
                     "Utilisation": (
                         f"{entry['utilisation']:.0%}"
                         if entry.get("utilisation") is not None else "-"
@@ -812,22 +803,25 @@ def _as_risk(probability: float) -> str:
 def _show_prediction(result: dict, is_fresh: bool) -> None:
     band = result["risk_band"]
 
-    headline, verdict = st.columns([1, 2])
-    headline.metric("Risk of missing the next payment", _as_risk(result["probability"]))
-    verdict.markdown(
-        f"### {BAND_ICONS[band]} {band} risk\n"
-        f"{'Flagged for attention' if result['flagged'] else 'Not flagged for attention'}."
-    )
-    st.caption(
-        "Scored just now and recorded." if is_fresh
-        else "The last score recorded for this customer."
-    )
+    # Score and reasons side by side so the whole verdict fits without scrolling.
+    score, why = st.columns([2, 3], gap="large")
+    with score:
+        st.metric("Risk of missing the next payment", _as_risk(result["probability"]))
+        st.markdown(
+            f"### {BAND_ICONS[band]} {band} risk\n"
+            f"{'Flagged for attention' if result['flagged'] else 'Not flagged for attention'}."
+        )
+        st.caption(
+            "Scored just now and recorded." if is_fresh
+            else "The last score recorded for this customer."
+        )
 
-    st.markdown("**Why**")
-    for reason in result["reasons"]:
-        raises = reason.get("raises_risk", reason.get("effect", 0) > 0)
-        show(reason_line(reason["description"], raises))
-    st.caption("▲ raises the risk, ▼ lowers it, strongest first.")
+    with why:
+        st.markdown("**Why**")
+        for reason in result["reasons"]:
+            raises = reason.get("raises_risk", reason.get("effect", 0) > 0)
+            show(reason_line(reason["description"], raises))
+        st.caption("▲ raises the risk, ▼ lowers it, strongest first.")
 
 
 def _record(
@@ -881,7 +875,7 @@ def _assistant(customer_id: str) -> None:
         st.caption(ASSISTANT_HELP)
         for message in messages:
             with st.chat_message(message["role"]):
-                st.markdown(message["content"])
+                st.markdown(markdown_safe(message["content"]))
                 if message.get("note"):
                     st.caption(message["note"])
 
@@ -946,9 +940,9 @@ def _chip_label(field: str, value) -> str:
         "trajectory": lambda: f"Trend: {value}",
         "min_months_with_no_payment": lambda: f"No payment in {value}+ months",
         "min_utilisation": lambda: f"Using {value:.0%}+ of limit",
-        "min_credit_limit": lambda: f"Limit at least {value:,.0f}",
-        "max_credit_limit": lambda: f"Limit at most {value:,.0f}",
-        "not_scored": lambda: "Not scored yet",
+        "min_credit_limit": lambda: f"Limit at least {money(value)}",
+        "max_credit_limit": lambda: f"Limit at most {money(value)}",
+        "not_scored": lambda: "No officer score yet",
         "scored_band": lambda: f"Scored {value} risk",
     }[field]()
 
@@ -999,7 +993,7 @@ def _worklist(officer_email: str, unread: dict[str, int]) -> None:
 
     _just_scored()
     _chips(st.session_state.get(COHORT_FILTER_KEY) or {})
-    st.caption(f"{page['description']} Showing {len(page['rows'])} of {page['total']:,}.")
+    st.caption(f"{markdown_safe(page['description'])} Showing {len(page['rows'])} of {page['total']:,}.")
     rows = page["rows"]
     if not rows:
         st.info("Nobody matches. Drop a condition above to widen the group.")
@@ -1057,7 +1051,7 @@ def _worklist_row(row: dict, unread: int = 0) -> None:
             (row["trajectory"] or "-").capitalize(),
             "-" if utilisation is None else f"{utilisation:.0%}",
             f"{row['months_with_no_payment']} of 6",
-            f"{row['current_balance']:,.0f}",
+            markdown_safe(money(row['current_balance'])),
         )):
             column.markdown(value)
         columns[-1].button(

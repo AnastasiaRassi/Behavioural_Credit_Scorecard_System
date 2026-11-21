@@ -153,7 +153,7 @@ def _user_rows(frame: pd.DataFrame, created_at: datetime) -> list[dict]:
     return [
         {
             "id": row.user_id,
-            "display_name": invent_name(row.account_number),
+            "display_name": invent_name(row.account_number, int(row.SEX)),
             "role": "cardholder",
             # No email or password: a dataset entity cannot sign in until
             # someone registers a login for it.

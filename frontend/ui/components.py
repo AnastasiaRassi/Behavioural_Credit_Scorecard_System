@@ -10,6 +10,7 @@ from pathlib import Path
 
 import streamlit as st
 
+from money import html_safe
 from theme import BAND_ICONS
 
 # The two directions a reason can pull. Not the risk-band traffic light: these
@@ -84,4 +85,4 @@ def quote(text: str) -> str:
 
 def reason_line(description: str, raises_risk: bool) -> str:
     arrow, side = ("▲", "up") if raises_risk else ("▼", "down")
-    return f'<span class="officer-arrow--{side}">{arrow}</span> {escape(description)}'
+    return f'<span class="officer-arrow--{side}">{arrow}</span> {html_safe(escape(description))}'

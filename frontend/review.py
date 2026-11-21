@@ -5,6 +5,8 @@ The shapes here are the ones `api.review_requests()` returns.
 """
 from datetime import datetime, timezone
 
+from money import money
+
 OPEN_STATUSES = ("pending", "in_review")
 ACTIONS = {
     "no_action": "No action",
@@ -173,7 +175,7 @@ def model_saw(detail: dict) -> list[str]:
     paid = sum(month["amount_paid"] for month in detail["history"])
     if billed > 0:
         sentences.append(
-            f"Paid {paid:,.0f} against {billed:,.0f} billed ({paid / billed:.0%})."
+            f"Paid {money(paid)} against {money(billed)} billed ({paid / billed:.0%})."
         )
 
     trajectory = highlights.get("trajectory")

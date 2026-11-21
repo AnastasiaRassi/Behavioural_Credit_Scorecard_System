@@ -34,6 +34,7 @@ from app.db.customer_registry import (
     find_by_account_number,
     give_login,
     invent_name,
+    refresh_names,
 )
 from app.db.database import create_all, session_scope
 from app.db.models import Customer, ModelVersion, User
@@ -106,7 +107,9 @@ def live_model() -> dict:
     return {"version": config["model_version"], "trained_on": trained}
 
 
-def demo_cardholders(count: int = DEMO_CARDHOLDERS) -> list[tuple[str, str, str]]:
+def demo_cardholders(
+    session: Session, count: int = DEMO_CARDHOLDERS
+) -> list[tuple[str, str, str]]:
     """(account number, name, email) for a spread of queued customers.
 
     The riskiest, the safest, and the middle. Picked by position in the risk ordering rather than at random, so the same
@@ -129,7 +132,9 @@ def demo_cardholders(count: int = DEMO_CARDHOLDERS) -> list[tuple[str, str, str]
     taken: set[str] = set()
     for row in chosen:
         account_number = row["account_number"]
-        name = invent_name(account_number)
+        customer = find_by_account_number(session, account_number)
+        # The stored name already matches the stored sex; unknown accounts fall back.
+        name = customer.user.display_name if customer else invent_name(account_number, None)
         people.append((account_number, name, email_for(name, account_number, taken)))
     return people
 
@@ -202,7 +207,7 @@ def _give_every_cardholder_a_login(session: Session) -> int:
 
 def _seed_cardholders(session: Session) -> tuple[list[str], list[str], list[str]]:
     added, not_ingested, recredentialed = [], [], []
-    for account_number, name, email in demo_cardholders():
+    for account_number, name, email in demo_cardholders(session):
         customer = find_by_account_number(session, account_number)
         if customer is None:
             not_ingested.append(account_number)
@@ -279,7 +284,7 @@ def _seed_review_request(session: Session) -> list[str]:
     A flagged customer asking for help is the case the feature exists for. Anyone else
     makes theirs from the cardholder screen.
     """
-    people = demo_cardholders()
+    people = demo_cardholders(session)
     if not people:
         return []
 
@@ -298,7 +303,7 @@ def _pregenerate_coaching(session: Session) -> list[str]:
     from app.db import statements
     from app.ml import worklist
 
-    people = demo_cardholders()
+    people = demo_cardholders(session)
     # Keyed by account number, the dataset's id, so the cache survives a database
     # rebuild that mints new customer UUIDs.
     account_numbers = [account_number for account_number, _, _ in people]
@@ -349,6 +354,8 @@ def seed() -> dict:
     create_all()
 
     with session_scope() as session:
+        # Before logins: emails are derived from names.
+        refresh_names(session)
         users, staff_recredentialed = _seed_staff(session)
         _give_every_cardholder_a_login(session)
         cardholders, not_ingested, held_recredentialed = _seed_cardholders(session)

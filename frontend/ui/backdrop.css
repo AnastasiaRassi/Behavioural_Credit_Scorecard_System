@@ -39,7 +39,7 @@
 .st-key-chat_composer [data-baseweb="textarea"], .st-key-chat_composer textarea {
     background: rgba(255, 255, 255, .7);
 }
-.st-key-chat_card .case-entry, .st-key-chat_card .case-step {
+.st-key-chat_card .case-entry {
     border: 1px solid rgba(255, 255, 255, .85);
     backdrop-filter: blur(12px) saturate(150%); -webkit-backdrop-filter: blur(12px) saturate(150%);
     box-shadow: inset 0 1px 1px rgba(255, 255, 255, .9), 0 6px 16px rgba(15, 23, 42, .08);
@@ -49,18 +49,17 @@
 .st-key-chat_card .case-entry--decision {
     background: rgba(240, 253, 244, .85); border-left: 5px solid #008F63;
 }
-.st-key-chat_card .case-step { background: rgba(255, 255, 255, .6); }
-.st-key-chat_card .case-step--current { background: rgba(236, 253, 245, .9); border-color: #6EE7B7; }
 .st-key-chat_chips button { background: rgba(255, 255, 255, .6); border-color: rgba(255, 255, 255, .85); }
 .st-key-chat_chips button:hover { background: rgba(255, 255, 255, .9); border-color: #00A669; }
 .chat-closed { background: rgba(255, 255, 255, .6); border-color: rgba(255, 255, 255, .85); }
 
-/* Review queue cards: the dashboard box (rule above) with an emerald top rule, set out
-   like a case file. The wrapper is the visible box; the keyed block inside holds content. */
-[data-testid="stVerticalBlockBorderWrapper"]:has([class*="st-key-request_card_"]) {
-    border-top: 4px solid #00A669; border-radius: 12px;
+/* Review queue cards, set out like a case file. The keyed block is the bordered box.
+   Solid, not frosted: a translucent box disappeared into the grey backdrop. */
+[class*="st-key-request_card_"] {
+    padding: 0.6rem 0.75rem 0.7rem; border-radius: 12px;
+    background: #FFFFFF; border: 1px solid #CBD5E1; border-top: 4px solid #00A669;
+    box-shadow: 0 4px 14px rgba(15, 23, 42, .10);
 }
-[class*="st-key-request_card_"] { padding: 0.6rem 0.75rem 0.7rem; }
 [class*="st-key-request_card_"] .officer-card-title {
     font-size: 1.1rem; font-weight: 750; color: #0F172A;
 }
@@ -84,6 +83,13 @@
 }
 [class*="st-key-request_card_"] button p { color: #FFFFFF; font-weight: 600; }
 [class*="st-key-request_card_"] button:hover { background: #047857; border-color: #047857; }
+/* Reject is the destructive choice: red, so it never reads as a second "go" button. */
+[class*="st-key-request_card_"] [class*="st-key-reject_"] button {
+    background: #DC2626; border-color: #DC2626;
+}
+[class*="st-key-request_card_"] [class*="st-key-reject_"] button:hover {
+    background: #B91C1C; border-color: #B91C1C;
+}
 
 /* Scrollbars: the dark default strip becomes a thick emerald bar, matching the accent. */
 * { scrollbar-width: auto; scrollbar-color: #00A669 rgba(255, 255, 255, .35); }

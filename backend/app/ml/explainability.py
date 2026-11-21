@@ -16,6 +16,7 @@ from dataclasses import asdict, dataclass
 import numpy as np
 import pandas as pd
 
+from app.core.money import money
 from app.ml.exceptions import ExplanationFailed
 from app.ml.feature_engineering import describe_pay_status
 
@@ -122,12 +123,12 @@ def describe_change(feature: str, before: float, after: float) -> str:
     moved = after - before
 
     if feature == "BILL_AMT1":
-        return f"Bring the card balance down to {after:,.0f}, from {before:,.0f}"
+        return f"Bring the card balance down to {money(after)}, from {money(before)}"
 
     if feature == "PAY_AMT1":
         if before == 0:
-            return f"Put {after:,.0f} into the card this month, instead of nothing"
-        return f"Pay {after:,.0f} into the card this month, {moved:+,.0f} on now"
+            return f"Put {money(after)} into the card this month, instead of nothing"
+        return f"Pay {money(after)} into the card this month, {money(moved, signed=True)} on now"
 
     if feature == "PAY_1":
         if after <= 0 < before:
@@ -136,7 +137,7 @@ def describe_change(feature: str, before: float, after: float) -> str:
         return f"Clear {months} of the months the account is behind"
 
     if feature == "LIMIT_BAL":
-        return f"Raise the credit limit to {after:,.0f}, from {before:,.0f}"
+        return f"Raise the credit limit to {money(after)}, from {money(before)}"
 
     # Nothing else is actionable today, so this is a safety net rather than a
     # branch anyone should hit: say the move plainly instead of guessing at it.
@@ -150,11 +151,11 @@ def describe(feature: str, value: float) -> str:
     "PAY_AMT1 = 0".
     """
     if feature == "LIMIT_BAL":
-        return f"Credit limit of {value:,.0f}"
+        return f"Credit limit of {money(value)}"
     if feature == "remaining_credit":
         if value <= 0:
             return "No credit left on the card"
-        return f"{value:,.0f} of credit still available"
+        return f"{money(value)} of credit still available"
 
     if feature.startswith("PAY_") and not feature.startswith("PAY_AMT"):
         month = feature.split("_")[1]
@@ -200,10 +201,10 @@ def describe(feature: str, value: float) -> str:
         month = feature[-1]
         if value == 0:
             return f"No payment made in month {month}"
-        return f"Paid {value:,.0f} in month {month}"
+        return f"Paid {money(value)} in month {month}"
 
     if feature.startswith("BILL_AMT"):
-        return f"Bill of {value:,.0f} in month {feature[-1]}"
+        return f"Bill of {money(value)} in month {feature[-1]}"
 
     # A difference of two shares, so "at 46%" would misstate it: say which way it moved.
     if feature == "util_trend":
@@ -228,13 +229,13 @@ def describe(feature: str, value: float) -> str:
     # Mean bill minus mean payment, so the sign matters and a bare figure hides it.
     if feature == "pay_to_bill_gap":
         if value > 0:
-            return f"Payments fall short of the average bill by {value:,.0f} a month"
+            return f"Payments fall short of the average bill by {money(value)} a month"
         if value < 0:
-            return f"Payments exceed the average bill by {-value:,.0f} a month"
+            return f"Payments exceed the average bill by {money(-value)} a month"
         return "Payments match the average bill"
 
     if feature in ("bill_mean", "pay_amt_mean"):
-        return f"{feature_meaning(feature).capitalize()}: {value:,.0f}"
+        return f"{feature_meaning(feature).capitalize()}: {money(value)}"
 
     return f"{feature_meaning(feature).capitalize()}: {value:,.2f}"
 
