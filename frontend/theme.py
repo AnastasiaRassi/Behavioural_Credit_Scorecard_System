@@ -35,6 +35,8 @@ TEXT = "#1C1917"
 MUTED = "#78716C"
 GRID = "#E6E2DE"
 SURFACE = "#FFFFFF"
+# Captions sit straight on the grey backdrop, where MUTED is too faint to read.
+CAPTION = "#0F172A"
 
 FONT = (
     '-apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", "Helvetica Neue", '
@@ -52,7 +54,7 @@ html, body, [data-testid="stApp"], .ct-banner,
 /* Warm ecru page; the header is transparent so it shows through. */
 [data-testid="stApp"] {{ background: #FBF9F6; color: {TEXT}; }}
 [data-testid="stApp"] :is(h1, h2, h3, h4, p, li, label) {{ color: {TEXT}; }}
-[data-testid="stCaptionContainer"] p {{ color: {MUTED}; }}
+[data-testid="stCaptionContainer"] p {{ color: {CAPTION}; }}
 [data-testid="stHeader"] {{ background: transparent; }}
 
 /* Loana AI (ui/loana.py): a fixed bubble, or a fixed 380x550 card, bottom-right. */
@@ -261,7 +263,7 @@ div.inbox-alert--clear {{ background: #F5F5F4; color: {MUTED}; border-color: {GR
 .thread-tag--decision {{ background: {ACCENT}; color: #FFFFFF; }}
 .thread-tag--open {{ background: #FDE68A; color: #92400E; }}
 .thread-foot {{ margin-top: 0.4rem; font-size: 0.75rem; color: {MUTED}; font-style: italic; }}
-.thread-empty {{ color: {MUTED}; font-style: italic; margin: 0.4rem 0 0.8rem; }}
+.thread-empty {{ color: {CAPTION}; font-style: italic; margin: 0.4rem 0 0.8rem; }}
 
 .thread-row {{ align-items: flex-end; gap: 0.5rem; }}
 .thread-avatar {{
@@ -510,7 +512,7 @@ h3 {{ font-size: 1.25rem !important; }}
 .officer-arrow--up {{ color: {HIGH}; }}
 .officer-arrow--down {{ color: {LOW}; }}
 
-[data-testid="stCaptionContainer"] p {{ color: {MUTED}; line-height: 1.5; }}
+[data-testid="stCaptionContainer"] p {{ color: {CAPTION}; line-height: 1.5; }}
 hr {{ border-color: {GRID} !important; opacity: 1; }}
 [data-testid="stDataFrame"] {{ border-radius: 8px; overflow: hidden; }}
 
@@ -536,6 +538,15 @@ hr {{ border-color: {GRID} !important; opacity: 1; }}
     background: transparent;
 }}
 .st-key-officer_lookup input::placeholder {{ color: {MUTED}; font-weight: 400; }}
+
+/* Customer page: the emerald action. */
+.st-key-predict_next_payment button {{
+    background: #00A669; border-color: #00A669; color: #FFFFFF;
+}}
+.st-key-predict_next_payment button:hover {{
+    background: #047857; border-color: #047857; color: #FFFFFF;
+}}
+.st-key-predict_next_payment button p {{ color: #FFFFFF; }}
 
 /* Landing hero: room between the sections, and the illustration as a soft card. */
 [data-testid="stHorizontalBlock"]:has([data-testid="stImage"]) {{ gap: 3.5rem; }}

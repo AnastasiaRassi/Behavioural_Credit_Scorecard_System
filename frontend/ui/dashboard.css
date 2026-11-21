@@ -19,4 +19,4 @@ div.account-alert--high { background: rgba(254, 242, 242, .85); }
     backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
 }
 [data-testid="stExpander"] summary p { color: #0F172A; font-size: 1.02rem; font-weight: 700; }
-[data-testid="stCaptionContainer"] p { color: #475569; font-size: 0.98rem; }
+[data-testid="stCaptionContainer"] p { color: #0F172A; font-size: 0.98rem; }

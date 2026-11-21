@@ -494,7 +494,7 @@ def _prediction(detail: dict, officer_email: str) -> None:
     state_key = f"prediction_{detail['customer_id']}"
     fresh = st.session_state.get(state_key)
 
-    if st.button("Predict next payment", type="primary"):
+    if st.button("Predict next payment", type="primary", key="predict_next_payment"):
         try:
             fresh = api.predict(detail["customer_id"], scored_by=officer_email)
         except api.ServiceUnavailable as exception:
