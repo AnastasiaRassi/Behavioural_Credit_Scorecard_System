@@ -1,5 +1,6 @@
 """Scoring endpoints. Routing and persistence only; the maths lives in `ml/`."""
 import io
+import logging
 
 import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
@@ -14,8 +15,10 @@ from app.api.dependencies import (
     user_by_email,
 )
 from app.core import audit
+from app.core.exceptions import AppError
 from app.db import customer_registry
 from app.db.models import Prediction
+from app.ml.exceptions import ScoringFailed
 from app.ml.feature_engineering import RAW_COLUMNS
 from app.schemas.scoring import (
     BatchRow,
@@ -23,6 +26,8 @@ from app.schemas.scoring import (
     ScoreRequest,
     ScoreResponse,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/predictions", tags=["predictions"])
 
@@ -163,7 +168,10 @@ async def score_csv(file: UploadFile):
         try:
             result = scorer.score_one(record[RAW_COLUMNS].to_dict())
         except Exception as exception:
-            rows.append(BatchRow(row=position, error=str(exception)))
+            # The cause goes to the log; the row carries only a code and a safe message.
+            logger.warning("batch row %d: %r", position, exception)
+            error = exception if isinstance(exception, AppError) else ScoringFailed()
+            rows.append(BatchRow(row=position, error=f"{error.code}: {error.user_message}"))
             continue
         scored += 1
         rows.append(

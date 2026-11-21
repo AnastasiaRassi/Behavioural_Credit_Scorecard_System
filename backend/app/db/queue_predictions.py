@@ -27,16 +27,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.customer_registry import find_by_account_number
+from app.db.exceptions import CustomerNotIngested, QueueIdMismatch
 from app.db.models import Customer, ModelVersion, MonthlyStatement, Prediction
 from app.ml.explainability import MONTHS_OBSERVED
-
-
-class CustomerNotIngested(RuntimeError):
-    pass
-
-
-class QueueIdMismatch(RuntimeError):
-    pass
 
 
 def raw_input_from_history(row: dict) -> dict:

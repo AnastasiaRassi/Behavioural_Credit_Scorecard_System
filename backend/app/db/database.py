@@ -4,15 +4,29 @@ The engine is created once per process and cached, like the model artifacts.
 Sessions are per request: `session_scope()` commits on success and rolls back on
 any exception, so a half-written decision never reaches the audit trail.
 """
+import re
 from contextlib import contextmanager
 from functools import lru_cache
 from typing import Iterator
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import (
+    DBAPIError,
+    IntegrityError,
+    InterfaceError,
+    OperationalError,
+    SQLAlchemyError,
+)
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import database_url
+from app.db.exceptions import (
+    DatabaseUnavailable,
+    PersistenceFailed,
+    RecordConflict,
+    SchemaOutOfDate,
+)
 from app.db.models import Base
 
 
@@ -29,21 +43,43 @@ def _session_factory() -> sessionmaker:
     return sessionmaker(bind=engine(), expire_on_commit=False, future=True)
 
 
+_TABLE = re.compile(r"(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+\"?(\w+)", re.IGNORECASE)
+
+
+def translate(exception: SQLAlchemyError) -> Exception:
+    """The typed error for a driver failure, naming the table but never the values."""
+    statement = getattr(exception, "statement", None) or ""
+    match = _TABLE.search(statement)
+    context = {"table": match.group(1) if match else "unknown"}
+    cause = type(getattr(exception, "orig", exception)).__name__
+    if isinstance(exception, (OperationalError, InterfaceError)):
+        return DatabaseUnavailable(f"database unreachable ({cause})", context=context)
+    if isinstance(exception, IntegrityError):
+        return RecordConflict(f"integrity violation ({cause})", context=context)
+    if isinstance(exception, DBAPIError):
+        # `str(exception)` embeds the bound parameters: log only the driver's own reason.
+        reason = str(getattr(exception, "orig", "")).splitlines()[0:2]
+        return PersistenceFailed(f"write rejected ({cause}): {' '.join(reason)}", context=context)
+    return exception
+
+
 @contextmanager
 def session_scope() -> Iterator[Session]:
     session = _session_factory()()
     try:
         yield session
         session.commit()
+    except SQLAlchemyError as exception:
+        session.rollback()
+        translated = translate(exception)
+        if translated is exception:
+            raise
+        raise translated from exception
     except Exception:
         session.rollback()
         raise
     finally:
         session.close()
-
-
-class SchemaOutOfDate(RuntimeError):
-    pass
 
 
 # Columns that only exist in an earlier schema: one where a user_account was both

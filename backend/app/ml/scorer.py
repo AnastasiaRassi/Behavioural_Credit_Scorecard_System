@@ -14,6 +14,13 @@ import numpy as np
 import pandas as pd
 
 from app.ml.calibration import calibrate
+from app.ml.exceptions import (
+    ArtifactCorrupt,
+    ArtifactsMissing,
+    FeatureSchemaMismatch,
+    MissingColumns,
+    ScoringFailed,
+)
 from app.ml.feature_engineering import (
     RAW_COLUMNS,
     SCORED_COLUMNS,
@@ -36,10 +43,6 @@ class ScoreResult:
         return asdict(self)
 
 
-class ArtifactsMissing(RuntimeError):
-    pass
-
-
 @lru_cache(maxsize=1)
 def _load():
     path = project_root() / "backend" / "artifacts"
@@ -52,9 +55,16 @@ def _load():
             f"Missing artifacts {missing} in {path}. Run: python -m app.ml.train"
         )
 
-    models = joblib.load(model_path)
-    with open(config_path, encoding="utf-8") as fh:
-        config = json.load(fh)
+    try:
+        models = joblib.load(model_path)
+        with open(config_path, encoding="utf-8") as fh:
+            config = json.load(fh)
+    except Exception as exception:
+        raise ArtifactCorrupt(
+            f"Cannot load model artifacts from {path}: {exception!r}. "
+            "Re-run: python -m app.ml.train",
+            context={"path": str(path)},
+        ) from exception
     return models, config
 
 
@@ -77,7 +87,9 @@ class CreditScorer:
         """
         missing = [c for c in SCORED_COLUMNS if c not in frame.columns]
         if missing:
-            raise ValueError(f"Missing required columns: {missing}")
+            raise MissingColumns(
+                f"Missing required columns: {missing}", context={"columns": missing}
+            )
 
         # Protected columns are taken when offered and ignored otherwise. They
         # are dropped below either way, so requiring them would block scoring a
@@ -89,17 +101,24 @@ class CreditScorer:
 
         unexpected = set(features.columns) ^ set(self.feature_names)
         if unexpected:
-            raise ValueError(
+            raise FeatureSchemaMismatch(
                 f"Feature mismatch against the trained model: {sorted(unexpected)}. "
-                "Retrain with python -m app.ml.train"
+                "Retrain with python -m app.ml.train",
+                context={"features": sorted(unexpected)},
             )
         return features[self.feature_names]
 
     # ---- scoring ---------------------------------------------------------
     def probabilities(self, frame: pd.DataFrame) -> np.ndarray:
         features = self.prepare(frame)
-        raw = np.mean([m.predict_proba(features)[:, 1] for m in self.models], axis=0)
-        return calibrate(raw)
+        try:
+            raw = np.mean([m.predict_proba(features)[:, 1] for m in self.models], axis=0)
+            return calibrate(raw)
+        except Exception as exception:
+            raise ScoringFailed(
+                f"model inference failed on {len(features)} row(s): {exception!r}",
+                context={"rows": len(features)},
+            ) from exception
 
     def band(self, probability: float) -> str:
         if probability < self.band_edges["low_max"]:

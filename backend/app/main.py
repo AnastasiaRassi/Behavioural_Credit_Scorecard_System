@@ -21,7 +21,8 @@ import uuid
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 
 from app.api import (
     admin,
@@ -35,9 +36,11 @@ from app.api import (
     roles,
     sessions,
 )
+from app.core.exceptions import AppError
 from app.core.logging_config import configure_logging, request_id
 from app.db.database import create_all
 from app.ml import artifacts
+from app.ml.exceptions import ArtifactsMissing
 
 configure_logging()
 logger = logging.getLogger(__name__)
@@ -57,7 +60,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
             config["trained"],
             config.get("threshold_f1_optimal"),
         )
-    except artifacts.ArtifactsMissing as exception:
+    except ArtifactsMissing as exception:
         logger.error("startup: artifacts missing, scoring will return 503: %s", exception)
     yield
     logger.info("shutdown")
@@ -73,32 +76,75 @@ app = FastAPI(
     version="1.0.0",
 )
 
+def _error_body(code: str, message: str) -> dict:
+    # `detail` stays for callers written against FastAPI's default shape.
+    return {"code": code, "message": message, "detail": message, "request_id": request_id.get()}
+
+
+@app.exception_handler(AppError)
+async def app_error_handler(request: Request, exception: AppError) -> JSONResponse:
+    """One log line with the code and context; the traceback only for our own faults."""
+    if exception.status >= 500:
+        logger.error(
+            "%s %s -> %s", request.method, request.url.path, exception.log_line(),
+            exc_info=exception,
+        )
+    else:
+        logger.warning("%s %s -> %s", request.method, request.url.path, exception.log_line())
+    return JSONResponse(
+        status_code=exception.status,
+        content=_error_body(exception.code, exception.user_message),
+        headers={"X-Request-ID": request_id.get()},
+    )
+
+
+@app.exception_handler(HTTPException)
+async def http_error_handler(request: Request, exception: HTTPException) -> JSONResponse:
+    message = exception.detail if isinstance(exception.detail, str) else "Request failed."
+    headers = {**(exception.headers or {}), "X-Request-ID": request_id.get()}
+    return JSONResponse(
+        status_code=exception.status_code,
+        content=_error_body(f"HTTP_{exception.status_code}", message),
+        headers=headers,
+    )
+
+
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     """One line per request: method, path, status, time. The query string is left out
-    because it carries emails and search terms."""
+    because it carries emails and search terms.
+
+    Anything uncaught below ends here: logged with its traceback and answered with a
+    reference the caller can quote, instead of a bare 500."""
     token = request_id.set(uuid.uuid4().hex[:8])
     started = time.perf_counter()
     client = request.client.host if request.client else "-"
     try:
-        response = await call_next(request)
-    except Exception:
-        logger.exception("%s %s -> unhandled error client=%s", request.method, request.url.path, client)
-        raise
-    finally:
+        try:
+            response = await call_next(request)
+        except Exception as exception:
+            logger.exception(
+                "%s %s -> INTERNAL_ERROR %s client=%s",
+                request.method, request.url.path, type(exception).__name__, client,
+            )
+            response = JSONResponse(
+                status_code=500,
+                content=_error_body("INTERNAL_ERROR", "Something went wrong on our side."),
+            )
         elapsed_ms = int((time.perf_counter() - started) * 1000)
-    # Health checks poll constantly; keep them out of the INFO stream.
-    level = logging.DEBUG if request.url.path == "/health" else (
-        logging.WARNING if response.status_code >= 400 else logging.INFO
-    )
-    logger.log(
-        level,
-        "%s %s -> %s %dms client=%s",
-        request.method, request.url.path, response.status_code, elapsed_ms, client,
-    )
-    response.headers["X-Request-ID"] = request_id.get()
-    request_id.reset(token)
-    return response
+        # Health checks poll constantly; keep them out of the INFO stream.
+        level = logging.DEBUG if request.url.path == "/health" else (
+            logging.WARNING if response.status_code >= 400 else logging.INFO
+        )
+        logger.log(
+            level,
+            "%s %s -> %s %dms client=%s",
+            request.method, request.url.path, response.status_code, elapsed_ms, client,
+        )
+        response.headers["X-Request-ID"] = request_id.get()
+        return response
+    finally:
+        request_id.reset(token)
 
 
 app.include_router(sessions.router)
@@ -118,7 +164,7 @@ def health() -> dict:
     """Whether the service can actually serve: artifacts present, model live."""
     try:
         config = artifacts.scoring_config()
-    except artifacts.ArtifactsMissing as exception:
+    except ArtifactsMissing as exception:
         return {"status": "unprovisioned", "detail": str(exception)}
 
     return {

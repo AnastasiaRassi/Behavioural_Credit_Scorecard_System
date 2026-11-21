@@ -29,6 +29,7 @@ Run `python -m app.ml.counterfactuals` for a demonstration on one customer.
 """
 from __future__ import annotations
 
+import logging
 import time
 from dataclasses import asdict, dataclass, field
 from typing import Iterable, Mapping, Protocol, Sequence
@@ -38,6 +39,8 @@ import pandas as pd
 
 from app.ml.feature_engineering import SCORED_COLUMNS
 from app.ml.scorer import CreditScorer
+
+logger = logging.getLogger(__name__)
 
 # Search budget. Generous enough to find recourse on hard cases, bounded so an API
 # request cannot hang on one.
@@ -601,6 +604,7 @@ class CounterfactualExplainer:
         try:
             outcome = self.search.search(record, policy, ceiling, model, deadline)
         except Exception as error:  # a failed strategy must not deny the customer an answer
+            logger.warning("counterfactuals: %s failed", self.search.name, exc_info=True)
             outcome = SearchOutcome(dict(record), float("nan"), False, 0, str(error))
             notes.append(f"{self.search.name} failed: {error}")
 

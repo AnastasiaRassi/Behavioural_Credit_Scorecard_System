@@ -11,6 +11,8 @@ whichever endpoint feeds them.
 import json
 import logging
 import os
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -18,6 +20,27 @@ import urllib.request
 import streamlit as st
 
 logger = logging.getLogger(__name__)
+
+
+def _log_to_file() -> None:
+    """Mirror this module's warnings into the shared log dir, so the dashboard's side
+    of a failure sits next to the API's instead of only in the container's stdout."""
+    if any(getattr(h, "_frontend_file", False) for h in logger.handlers):
+        return
+    folder = "testing" if os.environ.get("APP_ENV") == "test" else "app"
+    path = Path(__file__).resolve().parents[1] / "backend" / "logs" / folder
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+        handler = RotatingFileHandler(path / "frontend.log", maxBytes=2_000_000, backupCount=5, encoding="utf-8")
+    except OSError:
+        return  # a read-only mount must not take the dashboard down
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+    handler._frontend_file = True
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
+
+
+_log_to_file()
 
 # The only thing a screen says when the service fails, whatever the cause.
 UNREACHABLE = "CrediTrait can't connect right now. Try again in a moment."
@@ -44,12 +67,23 @@ class ServiceUnavailable(RuntimeError):
     in front of a loan officer tells them nothing they can act on.
     """
 
-    def __init__(self, technical: str, status: int | None = None):
-        super().__init__(UNREACHABLE)
+    def __init__(
+        self,
+        technical: str,
+        status: int | None = None,
+        code: str | None = None,
+        request_id: str | None = None,
+    ):
+        # The code and request id are what a person can quote and an engineer can
+        # search for in the API log; neither says anything about the cause.
+        reference = " · ".join(part for part in (request_id, code) if part)
+        super().__init__(f"{UNREACHABLE} (ref {reference})" if reference else UNREACHABLE)
         # Carried so a caller can tell a rejected credential from a dead service
         # without parsing the message.
         self.status = status
         self.technical = technical
+        self.code = code
+        self.request_id = request_id
 
 
 class SignInRejected(RuntimeError):
@@ -74,22 +108,35 @@ def _request(
             return json.load(response)
     except urllib.error.HTTPError as exception:
         detail = exception.read().decode()[:400]
-        technical = f"{exception.code} from {method or 'GET'} {url}: {detail}"
+        code, request_id = _error_reference(detail, exception.headers)
+        technical = f"{exception.code} {code or ''} ref={request_id or '-'} from {method or 'GET'} {url}: {detail}"
         logger.warning("%s", technical)
-        raise ServiceUnavailable(technical, status=exception.code) from exception
+        raise ServiceUnavailable(
+            technical, status=exception.code, code=code, request_id=request_id
+        ) from exception
     except TimeoutError as exception:
         # A read that outlives the timeout raises this bare, not wrapped in URLError.
         # The chat turn is the call most likely to, so it must not take the page down.
         technical = f"no reply from {method or 'GET'} {url} within {timeout}s"
         logger.warning("%s", technical)
-        raise ServiceUnavailable(technical) from exception
+        raise ServiceUnavailable(technical, code="API_TIMEOUT") from exception
     except urllib.error.URLError as exception:
         technical = (
             f"cannot reach the API at {BASE_URL} ({exception}). "
             f"Start it with: {START_COMMAND}"
         )
         logger.warning("%s", technical)
-        raise ServiceUnavailable(technical) from exception
+        raise ServiceUnavailable(technical, code="API_UNREACHABLE") from exception
+
+
+def _error_reference(body: str, headers) -> tuple[str | None, str | None]:
+    """The API's error code and request id: from its JSON body, else its header."""
+    try:
+        parsed = json.loads(body)
+    except ValueError:
+        parsed = {}
+    parsed = parsed if isinstance(parsed, dict) else {}
+    return parsed.get("code"), parsed.get("request_id") or headers.get("X-Request-ID")
 
 
 def _get(path: str, **params):

@@ -18,6 +18,7 @@ from typing import Mapping, Sequence
 import openai
 
 from app.ai import local_llm
+from app.ai.exceptions import error_for
 from app.ai.local_llm import LlmCall
 from app.core.config import openai_api_key, openai_model
 
@@ -33,9 +34,11 @@ TEMPERATURE = 0.0
 
 def chat(messages: Sequence[Mapping[str, str]]) -> LlmCall:
     """The model's reply to `messages`, or a call with no text if it could not be produced."""
-    if openai_api_key() is None:
-        return local_llm.chat(messages)
-    return _openai_chat(messages)
+    call = local_llm.chat(messages) if openai_api_key() is None else _openai_chat(messages)
+    if call.failure:
+        # One typed line per failed call, so a failure has a code to search for.
+        logger.warning("%s", error_for(call.failure, call.model, call.latency_ms).log_line())
+    return call
 
 
 @lru_cache(maxsize=1)

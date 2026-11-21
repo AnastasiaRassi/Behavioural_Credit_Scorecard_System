@@ -16,6 +16,7 @@ from hashlib import sha256
 from time import time
 
 from app.core.config import session_secret
+from app.core.exceptions import AuthError
 
 # Bumped if the payload layout changes, so an old token fails the scheme check
 # rather than being misread by new code.
@@ -26,7 +27,7 @@ SCHEME = "v1"
 LIFETIME_SECONDS = 8 * 60 * 60
 
 
-class InvalidSession(ValueError):
+class InvalidSession(AuthError, ValueError):
     """The token is malformed, was tampered with, or has expired."""
 
 

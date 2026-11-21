@@ -35,6 +35,7 @@ from sklearn.impute import SimpleImputer
 from sklearn.metrics import silhouette_score
 from sklearn.preprocessing import StandardScaler
 
+from app.ml.exceptions import ArtifactsMissing
 from app.ml.feature_engineering import PROTECTED, build_splits, project_root
 
 SEED = 42
@@ -76,10 +77,6 @@ class SegmentProfile:
 
     def to_dict(self) -> dict:
         return asdict(self)
-
-
-class ArtifactsMissing(RuntimeError):
-    pass
 
 
 def artifacts_dir() -> Path:

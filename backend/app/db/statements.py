@@ -14,6 +14,7 @@ import pandas as pd
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.db.exceptions import CustomerNotFound, IncompleteHistory
 from app.db.models import MONTHS_OBSERVED, Customer, MonthlyStatement
 from app.ml.feature_engineering import (
     AMT_COLS,
@@ -39,14 +40,6 @@ DETAIL_COLUMNS = {
     "education": ("EDUCATION", int),
     "marriage": ("MARRIAGE", int),
 }
-
-
-class CustomerNotFound(LookupError):
-    pass
-
-
-class IncompleteHistory(RuntimeError):
-    pass
 
 
 def monthly_statements(session: Session, customer_id: uuid.UUID) -> pd.DataFrame:

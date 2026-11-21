@@ -42,6 +42,7 @@ from app.db.models import (
     UserDetails,
 )
 from app.db.customer_registry import invent_name, refresh_names
+from app.db.exceptions import SourceUnavailable
 from app.db.models.base import now
 from app.ml.feature_engineering import TARGET, clean, project_root
 
@@ -51,10 +52,6 @@ from app.ml.feature_engineering import TARGET, clean, project_root
 BATCH_ROWS = 10_000
 
 SOURCE_ID_COLUMN = "ID"
-
-
-class SourceUnavailable(FileNotFoundError):
-    pass
 
 
 @dataclass

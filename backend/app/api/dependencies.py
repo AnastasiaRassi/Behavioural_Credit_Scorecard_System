@@ -15,15 +15,17 @@ from functools import lru_cache
 from typing import Iterator
 
 from fastapi import Depends, Header, HTTPException, status
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.core import audit, sessions
-from app.db.database import _session_factory
+from app.db.database import _session_factory, translate
+from app.db.exceptions import NoLiveModel
 from app.db.models import Customer, ModelVersion, Prediction, User
 from app.ml.counterfactuals import CounterfactualExplainer
 from app.ml import worklist
 from app.ml.explainability import Explainer
-from app.ml.scorer import ArtifactsMissing, CreditScorer
+from app.ml.scorer import CreditScorer
 
 logger = logging.getLogger(__name__)
 
@@ -37,17 +39,11 @@ ACCOUNT_READERS: tuple[str, ...] = ("officer", "engineer")
 @lru_cache(maxsize=1)
 def get_scorer() -> CreditScorer:
     started = time.perf_counter()
-    try:
-        scorer = CreditScorer()
-        logger.info("scorer loaded in %.1fs", time.perf_counter() - started)
-        return scorer
-    except ArtifactsMissing as exception:
-        logger.error("scorer: artifacts missing: %s", exception)
-        # 503 rather than 500: the service is correctly built but not provisioned,
-        # and the message says which command fixes it.
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exception)
-        ) from exception
+    # A missing or unreadable artifact raises a 503 `AppError` the API handler
+    # logs once, with the command that fixes it.
+    scorer = CreditScorer()
+    logger.info("scorer loaded in %.1fs", time.perf_counter() - started)
+    return scorer
 
 
 @lru_cache(maxsize=1)
@@ -66,6 +62,12 @@ def get_session() -> Iterator[Session]:
     try:
         yield session
         session.commit()
+    except SQLAlchemyError as exception:
+        session.rollback()
+        translated = translate(exception)
+        if translated is exception:
+            raise
+        raise translated from exception
     except Exception:
         session.rollback()
         raise
@@ -77,11 +79,7 @@ def live_model_version(session: Session) -> ModelVersion:
     """The registered live model, or a 503 telling the caller to seed it."""
     version = session.query(ModelVersion).filter_by(is_live=True).one_or_none()
     if version is None:
-        logger.error("no live model version registered; run: python -m app.db.seed")
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="No live model version registered. Run: python -m app.db.seed",
-        )
+        raise NoLiveModel("No live model version registered. Run: python -m app.db.seed")
     return version
 
 

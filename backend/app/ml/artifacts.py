@@ -8,11 +8,8 @@ import json
 from functools import lru_cache
 from pathlib import Path
 
+from app.ml.exceptions import ArtifactCorrupt, ArtifactsMissing
 from app.ml.feature_engineering import project_root
-
-
-class ArtifactsMissing(RuntimeError):
-    pass
 
 
 def artifacts_dir() -> Path:
@@ -27,8 +24,15 @@ def read(name: str):
             f"Missing artifact {name} in {artifacts_dir()}. "
             "Run: python -m app.ml.train"
         )
-    with open(path, encoding="utf-8") as handle:
-        return json.load(handle)
+    try:
+        with open(path, encoding="utf-8") as handle:
+            return json.load(handle)
+    except (OSError, ValueError) as exception:
+        raise ArtifactCorrupt(
+            f"Artifact {name} in {artifacts_dir()} cannot be read: {exception}. "
+            "Re-run: python -m app.ml.train",
+            context={"artifact": name},
+        ) from exception
 
 
 def scoring_config() -> dict:

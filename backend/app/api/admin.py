@@ -66,12 +66,8 @@ def behavioural_segments() -> dict:
 
     503 when segmentation has not been run, since the model works without it.
     """
-    try:
-        config = artifacts.segments()
-    except artifacts.ArtifactsMissing as exception:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exception)
-        ) from exception
+    # A missing artifact is a 503 `AppError`, answered by the API's handler.
+    config = artifacts.segments()
 
     return {
         "k": config["k"],

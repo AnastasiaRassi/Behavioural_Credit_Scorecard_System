@@ -11,9 +11,11 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from app.core.exceptions import ConfigError
 
-class ConfigurationMissing(RuntimeError):
-    pass
+
+class ConfigurationMissing(ConfigError, RuntimeError):
+    code = "CONFIGURATION_MISSING"
 
 
 def project_root() -> Path:
