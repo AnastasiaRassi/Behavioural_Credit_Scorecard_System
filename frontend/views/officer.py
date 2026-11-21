@@ -31,6 +31,7 @@ import streamlit as st
 
 import api
 import review
+from components import BAND_ICONS
 from money import markdown_safe, money
 from ui import loana, nav, thread
 from ui.profile import initials
@@ -820,7 +821,7 @@ def _assistant(customer_id: str) -> None:
         ):
             asked = question
 
-    asked = st.chat_input("Ask about this customer", key="officer_ask") or asked
+    asked = st.chat_input("Ask about this customer", key="officer_ask") or asked or loana.take_pending()
     if not asked:
         return
 

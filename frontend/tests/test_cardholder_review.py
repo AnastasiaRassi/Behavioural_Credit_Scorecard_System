@@ -162,6 +162,25 @@ def test_an_unscored_cardholder_is_told_so_rather_than_shown_an_outage(faked_api
     assert not app.error
 
 
+def test_the_overview_links_to_a_prediction_page_that_never_shows_the_probability(
+    faked_api, monkeypatch
+):
+    reasons = [{"feature": "PAY_1", "description": "Last month was late", "raises_risk": True}]
+    monkeypatch.setattr(
+        api, "cardholder", lambda customer_id, token: {**_account(), "reasons": reasons}
+    )
+    app = AppTest.from_function(_dashboard_app, default_timeout=TIMEOUT).run()
+    assert "Low risk. See what is driving it." in _markdown(app)
+
+    app.button(key="open_prediction").click().run()
+    assert app.session_state["active_view"] == "prediction"
+    text = _markdown(app)
+    assert "Why this score" in text and "Last month was late" in text
+    assert "Low risk" in text and "%" not in text
+    assert "▲ raises the risk" in _captions(app)
+    assert app.button(key="predict_next_payment") is not None
+
+
 def test_an_unpredicted_account_shows_the_button_and_no_band(faked_api, monkeypatch):
     asked = []
     state = {"predicted": False}

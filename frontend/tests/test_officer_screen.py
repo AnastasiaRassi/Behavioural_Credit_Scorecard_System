@@ -517,10 +517,7 @@ def test_the_record_links_to_the_prediction_page_which_runs_the_model(faked_api)
         c.value for c in app.caption
     )
 
-    app.button(key="nav_toggle") if False else None
-    _show(app, "dashboard")
-    app.session_state["active_view"] = "customer"
-    app.run()
+    _show(app, "customer")
     assert "High risk · 70% chance of missing the next payment" in _text(app)
 
 

@@ -30,6 +30,27 @@ def test_drawer_switches_views_and_stays_open():
     assert "view=dashboard" in _text(app)
 
 
+def test_risk_prediction_sits_between_the_overview_and_officer_reviews():
+    app = AppTest.from_function(_app, default_timeout=TIMEOUT).run()
+    app.button(key="nav_toggle").click().run()
+
+    keys = [button.key for button in app.button if button.key.startswith("nav_")]
+    assert keys.index("nav_prediction") == keys.index("nav_dashboard") + 1
+    assert keys.index("nav_chat") == keys.index("nav_prediction") + 1
+
+    app.button(key="nav_prediction").click().run()
+    assert "view=prediction" in _text(app)
+
+
+def test_officer_gets_risk_prediction_only_under_an_opened_customer():
+    app = AppTest.from_function(_officer_app, default_timeout=TIMEOUT).run()
+    app.button(key="nav_toggle").click().run()
+
+    keys = [button.key for button in app.button if button.key.startswith("nav_")]
+    assert keys.index("nav_prediction") > keys.index("nav_customer")
+    assert keys.index("nav_prediction") < keys.index("nav_chat")
+
+
 def test_profile_item_opens_the_profile_view():
     app = AppTest.from_function(_app, default_timeout=TIMEOUT).run()
     app.button(key="nav_toggle").click().run()
