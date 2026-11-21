@@ -174,14 +174,28 @@ def _give_every_cardholder_a_login(session: Session) -> int:
             select(User.email).where(User.email.isnot(None), User.role != "cardholder")
         )
     }
+    # A holder keeps an email that still fits their name, so namesakes never swap.
+    kept = {}
+    for user_id, name, email, _, account_number in rows:
+        handle = name.lower().replace(" ", ".")
+        fits = {f"{handle}@example.test", f"{handle}.{account_number}@example.test"}
+        if email in fits and email not in taken:
+            taken.add(email)
+            kept[user_id] = email
     updates = []
     for user_id, name, email, password_hash, account_number in rows:
-        wanted = email_for(name, account_number, taken)
+        wanted = kept.get(user_id) or email_for(name, account_number, taken)
         if email != wanted or password_hash is None:
             updates.append(
                 {"id": user_id, "email": wanted, "password_hash": password_hash or shared_hash}
             )
     if updates:
+        # Uniqueness is checked per row mid-batch, so park changed rows on a unique
+        # placeholder first; a direct move onto an address another row is leaving would fail.
+        parked = [
+            {**row, "email": f"reassigning.{row['id']}@example.test"} for row in updates
+        ]
+        session.execute(update(User), parked)
         session.execute(update(User), updates)
     return len(updates)
 
