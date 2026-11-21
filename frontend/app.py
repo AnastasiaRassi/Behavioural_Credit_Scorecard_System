@@ -13,6 +13,7 @@ the account. Which screens open is therefore decided by the database, not by the
 person at the keyboard, and this module never sees a role it was not told.
 """
 import base64
+import json
 import sys
 from collections.abc import Callable
 from pathlib import Path
@@ -49,29 +50,47 @@ RESTORE_TRIED_KEY = "session_restore_tried"
 JUST_SIGNED_IN_KEY = "just_signed_in"
 
 
-def _cookie_script(
-    token: str | None, max_age: int = 8 * 60 * 60, reload: bool = False
-) -> None:
-    """Set or clear the token cookie in the browser (Streamlit can't write cookies)."""
-    value = f"{token}; path=/; max-age={max_age}; SameSite=Strict" if token else (
-        "; path=/; max-age=0"
-    )
-    then = "window.parent.location.reload();" if reload else ""
-    components.html(
-        f"<script>window.parent.document.cookie='{COOKIE}='+'{value}';{then}</script>",
-        height=0,
+def _browser_script(js: str) -> None:
+    components.html(f"<script>{js}</script>", height=0)
+
+
+def _store_token(token: str, reload: bool = False) -> None:
+    """Keep the token in this tab's sessionStorage, so other tabs stay separate."""
+    then = "p.location.reload();" if reload else ""
+    _browser_script(
+        "const p=window.parent;"
+        f"p.sessionStorage.setItem('{COOKIE}',{json.dumps(token)});"
+        f"p.document.cookie='{COOKIE}=; path=/; max-age=0';{then}"
     )
 
 
-def _restore_session() -> dict | None:
-    """Reload keeps the user in: re-validate the token cookie against the API."""
+def _clear_token() -> None:
+    _browser_script(
+        "const p=window.parent;p.sessionStorage.removeItem('" + COOKIE + "');"
+        f"p.document.cookie='{COOKIE}=; path=/; max-age=0';"
+    )
+
+
+def _hand_over_token() -> None:
+    """Fresh page: pass this tab's token to the server via a 30s cookie, then reload."""
+    _browser_script(
+        "const p=window.parent;"
+        f"const t=p.sessionStorage.getItem('{COOKIE}');"
+        f"if(t&&!p.document.cookie.includes('{COOKIE}=')){{"
+        f"p.document.cookie='{COOKIE}='+t+'; path=/; max-age=30; SameSite=Strict';"
+        "p.location.reload();}"
+    )
+
+
+def _restore_session() -> tuple[dict | None, bool]:
+    """Re-validate the handed-over token; the bool says whether one was offered."""
     token = st.context.cookies.get(COOKIE)
     if not token:
-        return None
+        return None, False
     try:
-        return api.resume(token)
+        return api.resume(token), True
     except api.ServiceUnavailable:
-        return None
+        return None, True
 
 
 def _seed_location(session: dict) -> None:
@@ -98,15 +117,19 @@ def _sync_location() -> None:
 def main() -> None:
     session = st.session_state.get(SESSION_KEY)
     if session is None and st.session_state.pop(CLEAR_COOKIE_KEY, False):
-        _cookie_script(None)
+        _clear_token()
     elif session is None and not st.session_state.get(RESTORE_TRIED_KEY):
-        # st.context.cookies is frozen at page load, so a later rerun would "restore"
-        # the account that just signed out. Try once per page load only.
+        # Try once per page load: st.context.cookies is frozen at load, so a later
+        # rerun would "restore" the account that just signed out.
         st.session_state[RESTORE_TRIED_KEY] = True
-        session = _restore_session()
+        session, offered = _restore_session()
         if session is not None:
             st.session_state[SESSION_KEY] = session
             _seed_location(session)
+        elif offered:
+            _clear_token()  # stale token: drop it so we don't reload forever
+        else:
+            _hand_over_token()
 
     if session is None:
         st.query_params.clear()
@@ -116,10 +139,10 @@ def main() -> None:
     if st.session_state.pop(JUST_SIGNED_IN_KEY, False):
         # Reload once after signing in: Streamlit otherwise leaves the old form drawn
         # over the next screen. The fresh page restores the session from the cookie.
-        _cookie_script(session["token"], reload=True)
+        _store_token(session["token"], reload=True)
         st.stop()
 
-    _cookie_script(session["token"])
+    _store_token(session["token"])
     _sync_location()
 
     # Drawn by the screen, not here: the officer and cardholder screens put it at
