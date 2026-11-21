@@ -137,6 +137,9 @@ body:has(.st-key-signin_card) [data-testid="stMainBlockContainer"] {
     border: 1px solid rgba(52, 211, 153, 0.35);
     transition: background-color 0.2s ease, border-color 0.2s ease;
 }
+/* Streamlit adds a hover anchor-link icon to headings. */
+.feature-card h3 a,
+.feature-card h3 [data-testid="stHeaderActionElements"] { display: none !important; }
 .feature-card h3 {
     margin: 0 0 4px;
     font-size: 18px;
