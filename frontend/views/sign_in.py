@@ -133,27 +133,27 @@ _FEATURES = (
         '<path d="M12 3l1.9 4.6L18.5 9.5l-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9z"/>'
         '<path d="M19 15l.8 1.9 1.9.8-1.9.8L19 20.5l-.8-1.9-1.9-.8 1.9-.8z"/>',
         "AI that explains itself",
-        "Ask Loana AI why a decision was made and get a plain-language answer "
-        "built from the customer's own record.",
+        "Use Loana AI to understand the reasoning behind every score "
+        "with clear explanations tied to real account behaviour.",
     ),
     (
         '<path d="M12 3l8 3v6c0 4.5-3.2 7.8-8 9-4.8-1.2-8-4.5-8-9V6z"/>'
         '<path d="M8.5 12.2l2.4 2.4 4.6-4.8"/>',
         "Careful, fair decisions",
-        "Calibrated scoring with the reasons behind every result, "
-        "audited so no group is treated unfairly.",
+        "Calibrated risk signals backed by clear reasoning and "
+        "fairness checks across customer groups.",
     ),
     (
         '<path d="M3 20h18"/><path d="M5 16l4-5 4 3 6-8"/><path d="M15 6h4v4"/>',
         "Track loans and behaviour",
-        "Follow repayments and spending month by month, and spot "
-        "trouble before it becomes a default.",
+        "See payment trends and credit usage over time so early "
+        "warning signs never go unnoticed.",
     ),
     (
         '<path d="M4 5h16v11H9l-5 4z"/><path d="M8 9.5h8M8 12.5h5"/>',
         "Chat with AI or a person",
-        "Ask Loana AI for an instant answer, or message your loan officer "
-        "and get a reply from a real person.",
+        "Get quick answers from Loana AI, or start a direct thread with "
+        "a loan officer when a closer look is needed.",
     ),
 )
 

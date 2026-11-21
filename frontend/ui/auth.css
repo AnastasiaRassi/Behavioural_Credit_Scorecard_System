@@ -107,9 +107,20 @@ body:has(.st-key-signin_card) [data-testid="stMainBlockContainer"] {
     grid-template-columns: 44px 1fr;
     column-gap: 18px;
     align-items: start;
-    padding: 22px 0;
+    padding: 22px 14px;
+    margin: 0 -14px;
     color: #FFFFFF;
     border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 14px;
+    transition: background-color 0.2s ease, box-shadow 0.2s ease;
+}
+.feature-card:hover {
+    background: rgba(255, 255, 255, 0.09);
+    box-shadow: 0 0 22px rgba(110, 240, 184, 0.14);
+}
+.feature-card:hover svg {
+    background: rgba(16, 185, 129, 0.3);
+    border-color: rgba(52, 211, 153, 0.6);
 }
 .feature-card:first-child { padding-top: 0; }
 .feature-card:last-child { padding-bottom: 0; border-bottom: 0; }
@@ -123,6 +134,7 @@ body:has(.st-key-signin_card) [data-testid="stMainBlockContainer"] {
     color: #6EF0B8;
     background: rgba(16, 185, 129, 0.18);
     border: 1px solid rgba(52, 211, 153, 0.35);
+    transition: background-color 0.2s ease, border-color 0.2s ease;
 }
 .feature-card h3 {
     margin: 0 0 4px;
