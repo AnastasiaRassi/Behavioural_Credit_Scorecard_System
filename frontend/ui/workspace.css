@@ -1,0 +1,18 @@
+/* Staff screens hold a lot of loose text: give it a soft white panel on the gradient. */
+[data-testid="stMainBlockContainer"] {
+    background: rgba(255, 255, 255, .88); border-radius: 16px;
+    margin: 0 1rem 1rem; max-width: calc(100% - 2rem);
+}
+
+/* Messages view: each waiting customer is a frosted glass card, like the sidebar. */
+[class*="st-key-request_card_"] {
+    background: rgba(255, 255, 255, 0.45); border: 1px solid rgba(255, 255, 255, 0.75);
+    border-radius: 24px; padding: 1rem 1.1rem;
+    backdrop-filter: blur(20px) saturate(160%); -webkit-backdrop-filter: blur(20px) saturate(160%);
+    box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.9), 0 12px 32px rgba(15, 23, 42, 0.08);
+}
+[class*="st-key-request_card_"] button {
+    background: rgba(255, 255, 255, 0.38); border: 1px solid rgba(255, 255, 255, 0.7);
+    border-radius: 14px; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+[class*="st-key-request_card_"] button:hover { background: rgba(255, 255, 255, 0.72); }

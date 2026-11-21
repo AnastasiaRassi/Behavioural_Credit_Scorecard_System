@@ -1,0 +1,22 @@
+/* Account overview: frosted cards (backdrop.css), slate text, emerald accents. */
+[data-testid="stMetric"] { border-top: 4px solid #00A669; }
+[data-testid="stMetricLabel"] p { color: #475569 !important; font-size: 0.9rem !important; font-weight: 700; }
+[data-testid="stMetricValue"] { color: #0F172A; font-weight: 750; }
+
+.history-title { color: #0F172A; font-size: 1.45rem; }
+.history-hint { color: #475569; font-size: 1.02rem; font-weight: 500; }
+
+/* Status callouts keep their meaning (mint, amber, rose) but sit on frosted glass. */
+div.account-alert { backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); font-size: 1.05rem; }
+div.account-alert--good { background: rgba(236, 253, 245, .82); border-left-color: #00A669; }
+div.account-alert--medium { background: rgba(255, 251, 235, .85); }
+div.account-alert--high { background: rgba(254, 242, 242, .85); }
+.account-alert-title { font-size: 1.15rem; }
+
+.loana-hint {
+    background: rgba(255, 255, 255, .72); color: #0F172A; font-size: 1.05rem; font-weight: 600;
+    border: 1px solid rgba(255, 255, 255, .85); border-left: 4px solid #00A669;
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+}
+[data-testid="stExpander"] summary p { color: #0F172A; font-size: 1.02rem; font-weight: 700; }
+[data-testid="stCaptionContainer"] p { color: #475569; font-size: 0.98rem; }

@@ -1,7 +1,4 @@
-"""Top-right "More Actions..." menu and the profile page it opens.
-
-The menu is drawn inside the fixed `top_actions` container in app.py.
-"""
+"""The profile page and the report-an-issue dialog, both opened from the nav drawer."""
 import html
 import logging
 
@@ -10,10 +7,6 @@ import streamlit as st
 LOGGER = logging.getLogger(__name__)
 
 PROFILE_OPEN_KEY = "profile_open"
-MENU_KEY = "profile_menu"
-VISIT_KEY = "profile_visit"
-REPORT_KEY = "profile_report"
-SIGN_OUT_KEY = "sign_out"
 
 # Hardcoded for the demo UI: one bank and one officer for every cardholder.
 BANK_NAME = "Cedar Crest Bank"
@@ -28,24 +21,6 @@ ISSUE_KINDS = ("Something is broken", "Something looks wrong", "Feedback or idea
 
 _CSS = f"""
 <style>
-.st-key-{MENU_KEY} button {{
-    background: #FFFFFF; border: 1px solid #E6E2DE; border-radius: 8px;
-    padding: 6px 12px; min-height: 0; transition: background .15s, border-color .15s;
-}}
-.st-key-{MENU_KEY} button p {{ font-size: 13px; font-weight: 500; color: #1C1917; }}
-.st-key-{MENU_KEY} button:hover, .st-key-{MENU_KEY} button:focus-visible {{
-    background: rgba(28,25,23,.05); border-color: rgba(28,25,23,.35);
-}}
-[data-testid="stPopoverBody"] {{
-    min-width: 270px; padding: .6rem; background: #FFFFFF;
-    border: 1px solid #E5E7EB; border-radius: 12px;
-    box-shadow: 0 10px 15px -3px rgba(0,0,0,.1), 0 4px 6px -4px rgba(0,0,0,.1);
-}}
-[data-testid="stPopoverBody"] hr {{ margin: .5rem 0; border-color: #E5E7EB; }}
-.ct-profile-card {{
-    display: flex; align-items: center; gap: .75rem; padding: .7rem .75rem;
-    background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 10px;
-}}
 .ct-profile-badge {{
     flex: none; width: 40px; height: 40px; border-radius: 50%; background: #059669;
     color: #FFFFFF; display: flex; align-items: center; justify-content: center;
@@ -79,31 +54,6 @@ _CSS = f"""
 .ct-stat-value {{ font-size: 1.05rem; font-weight: 600; color: #0F172A; margin-top: .2rem; overflow-wrap: anywhere; }}
 .ct-section-title {{ font-weight: 700; color: #0F172A; margin-bottom: .25rem; }}
 .ct-muted {{ color: #64748B; font-size: 14px; }}
-.st-key-{VISIT_KEY} button, .st-key-{REPORT_KEY} button, .st-key-{SIGN_OUT_KEY} button {{
-    justify-content: flex-start; gap: .6rem; border-radius: 8px; box-shadow: none;
-    transition: background .15s, border-color .15s;
-}}
-.st-key-{VISIT_KEY} button, .st-key-{REPORT_KEY} button {{
-    border: none; background: transparent;
-}}
-.st-key-{VISIT_KEY} button p, .st-key-{REPORT_KEY} button p {{
-    color: #374151; font-weight: 500;
-}}
-.st-key-{VISIT_KEY} button:hover, .st-key-{REPORT_KEY} button:hover {{ background: #F3F4F6; }}
-/* Icons sit in small tinted tiles. */
-.st-key-{VISIT_KEY} [data-testid="stIconMaterial"],
-.st-key-{REPORT_KEY} [data-testid="stIconMaterial"],
-.st-key-{SIGN_OUT_KEY} [data-testid="stIconMaterial"] {{
-    width: 30px; height: 30px; border-radius: 8px; font-size: 18px;
-    display: inline-flex; align-items: center; justify-content: center;
-}}
-.st-key-{VISIT_KEY} [data-testid="stIconMaterial"] {{ background: #ECFDF5; color: #059669; }}
-.st-key-{REPORT_KEY} [data-testid="stIconMaterial"] {{ background: #FFF7ED; color: #D97706; }}
-/* Muted red, so signing out reads as the way out and not as a risk verdict. */
-.st-key-{SIGN_OUT_KEY} button {{ background: #FEF2F2; border: 1px solid #FECACA; }}
-.st-key-{SIGN_OUT_KEY} button p {{ color: #B91C1C; font-weight: 600; }}
-.st-key-{SIGN_OUT_KEY} [data-testid="stIconMaterial"] {{ background: #FEE2E2; color: #B91C1C; }}
-.st-key-{SIGN_OUT_KEY} button:hover {{ background: #FEE2E2; border-color: #FCA5A5; }}
 </style>
 """
 
@@ -120,33 +70,12 @@ def is_open() -> bool:
     return bool(st.session_state.get(PROFILE_OPEN_KEY))
 
 
-def _set_open(value: bool) -> None:
+def set_open(value: bool) -> None:
     st.session_state[PROFILE_OPEN_KEY] = value
 
 
-def render(display_name: str, role_label: str, on_sign_out) -> None:
-    """The trigger and its popover; `on_sign_out` runs when Sign out is clicked."""
-    st.markdown(_CSS, unsafe_allow_html=True)
-    with st.popover("More Actions", key=MENU_KEY):
-        st.markdown(
-            f'<div class="ct-profile-card"><div class="ct-profile-badge">'
-            f"{html.escape(initials(display_name))}</div><div>"
-            f'<div class="ct-profile-name">{html.escape(display_name)}</div>'
-            f'<div class="ct-profile-role">{html.escape(role_label)}</div></div></div>',
-            unsafe_allow_html=True,
-        )
-        st.button(
-            ":material/person: Visit Profile", key=VISIT_KEY,
-            on_click=_set_open, args=(True,), width="stretch",
-        )
-        if st.button(":material/flag: Report an Issue", key=REPORT_KEY, width="stretch"):
-            _report_dialog(display_name)
-        st.divider()
-        st.button(":material/logout: Sign Out", key=SIGN_OUT_KEY, on_click=on_sign_out, width="stretch")
-
-
 @st.dialog("Report an issue")
-def _report_dialog(display_name: str) -> None:
+def report_dialog(display_name: str) -> None:
     kind = st.selectbox("What kind of issue?", ISSUE_KINDS)
     details = st.text_area("What happened?", placeholder="Describe it in a sentence or two.")
     if st.button("Send report", type="primary", disabled=not details.strip()):
@@ -158,11 +87,8 @@ def _report_dialog(display_name: str) -> None:
 
 def render_page(session: dict, role_label: str) -> None:
     """Who is signed in, and a place for preferences."""
-    st.button(
-        ":material/arrow_back: Back", key="profile_back",
-        on_click=_set_open, args=(False,),
-    )
-    st.markdown('<div class="ct-page-title">Your profile</div>', unsafe_allow_html=True)
+    st.markdown(_CSS, unsafe_allow_html=True)
+    st.markdown('<div class="page-title">Your profile</div>', unsafe_allow_html=True)
 
     fields = [("Email", session["email"])]
     if session.get("account_number"):

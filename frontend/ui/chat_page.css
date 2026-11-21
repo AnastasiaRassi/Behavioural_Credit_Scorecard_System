@@ -1,0 +1,27 @@
+/* Messages view: the card fills the screen under the banner, only the thread scrolls. */
+[data-testid="stMain"], [data-testid="stApp"] { overflow: hidden !important; }
+[data-testid="stMainBlockContainer"] {
+    height: 100vh; box-sizing: border-box;
+    padding: calc(84px + 0.9rem) 1rem 1rem var(--nav-pad, 1rem) !important;
+}
+/* The card takes what is left under the back button row (56px + margin). */
+.st-key-chat_card {
+    display: flex; flex-direction: column; max-width: none !important;
+    height: calc(100vh - 84px - 0.9rem - 56px - 0.75rem - 1rem);
+}
+[data-testid="stLayoutWrapper"]:has(> .st-key-chat_messages) { flex: 1; min-height: 0; }
+.st-key-chat_messages { height: 100% !important; overflow-y: auto; padding: 0.75rem 1.5rem; }
+
+.chat-head { padding: 1rem 1.5rem; }
+.chat-head b { font-size: 1.15rem; }
+.chat-status { font-size: 0.85rem; }
+.st-key-chat_card .thread-card { max-width: 60%; padding: 0.85rem 1.1rem; }
+.st-key-chat_card .thread-body { font-size: 1.08rem; }
+.st-key-chat_card .thread-meta { font-size: 0.88rem; }
+.chat-empty b { font-size: 1.3rem; }
+.chat-empty span { max-width: 620px; font-size: 1.05rem; }
+.st-key-chat_chips button p { font-size: 1rem; }
+.st-key-chat_composer { padding: 1rem 1.5rem; }
+.st-key-chat_composer textarea { font-size: 1.08rem; }
+.st-key-review_send_ button, [class*="st-key-review_send_"] button { min-height: 52px; }
+[class*="st-key-review_send_"] button p { font-size: 1.05rem; }

@@ -29,7 +29,8 @@ if str(HERE) not in sys.path:
 import api  # noqa: E402
 import theme  # noqa: E402
 from tabs import drift, explain, fairness, performance, registry, segmentation, threshold  # noqa: E402
-from ui import profile  # noqa: E402
+from ui import drawer, nav, profile  # noqa: E402
+from ui.components import stylesheet  # noqa: E402
 from views import cardholder, officer, sign_in  # noqa: E402
 
 # The signed-in session: the token plus who the API says the caller is.
@@ -100,6 +101,9 @@ def _seed_location(session: dict) -> None:
         st.session_state[profile.PROFILE_OPEN_KEY] = True
     elif session["role"] == "officer" and params.get("customer"):
         st.session_state[officer.CUSTOMER_KEY] = params["customer"]
+        st.session_state[nav.VIEW_KEY] = nav.CUSTOMER
+    elif params.get("view") == nav.CHAT:
+        st.session_state[nav.VIEW_KEY] = nav.CHAT
 
 
 def _sync_location() -> None:
@@ -107,8 +111,10 @@ def _sync_location() -> None:
     wanted = {}
     if profile.is_open():
         wanted["page"] = "profile"
-    elif st.session_state.get(officer.CUSTOMER_KEY):
+    elif nav.current() == nav.CUSTOMER and st.session_state.get(officer.CUSTOMER_KEY):
         wanted["customer"] = str(st.session_state[officer.CUSTOMER_KEY])
+    elif nav.current() == nav.CHAT:
+        wanted["view"] = nav.CHAT
     if dict(st.query_params) != wanted:
         st.query_params.clear()
         st.query_params.update(wanted)
@@ -144,6 +150,9 @@ def main() -> None:
 
     _store_token(session["token"])
     _sync_location()
+    stylesheet("backdrop.css")
+    if session["role"] == "engineer" and not profile.is_open():
+        stylesheet("workspace.css")
 
     # Drawn by the screen, not here: the officer and cardholder screens put it at
     # the top of their main column so Loana's card can start at the top of the page.
@@ -152,6 +161,7 @@ def main() -> None:
 
     if profile.is_open():
         header()
+        nav.back_button("Back to Dashboard" if session["role"] == "cardholder" else "Back")
         profile.render_page(session, LABELS.get(session["role"], session["role"]))
     elif session["role"] == "officer":
         _officer(session, header)
@@ -204,22 +214,26 @@ def _banner_html() -> str:
     return (
         "<style>"
         # Fixed to the viewport, so column and container padding can't box it in.
-        # The pale bar matches the logo's white edge pixels so they vanish.
+        # Cool slate bar; the logo's white edge pixels vanish via multiply blend.
         ".ct-banner{position:fixed;top:0;left:0;right:0;width:100vw;height:84px;"
         "z-index:1000000;display:flex;align-items:center;gap:1rem;"
-        "padding:0 1.75rem;margin:0;border-radius:0;box-sizing:border-box;"
-        "background:#FFFFFF;border-bottom:1px solid #E2E8F0;"
-        "border-top:3px solid #059669;box-shadow:0 1px 3px rgba(15,23,42,.06)}"
+        "padding:0 1.75rem 0 5.25rem;margin:0;border-radius:0;box-sizing:border-box;"
+        "background:rgba(255,255,255,.45);backdrop-filter:blur(20px) saturate(160%);"
+        "-webkit-backdrop-filter:blur(20px) saturate(160%);border-bottom:1px solid rgba(255,255,255,.75);"
+        "border-top:3px solid #00A669;"
+        "box-shadow:inset 0 -1px 1px rgba(255,255,255,.7),0 8px 24px rgba(15,23,42,.06)}"
         ".ct-banner img{height:56px;width:auto;display:block;background:transparent!important;"
         "border:none!important;box-shadow:none!important;padding:0!important;"
         "border-radius:0!important;mix-blend-mode:multiply}"
         ".ct-banner span{font-family:'Inter',sans-serif;font-weight:600;"
-        "font-size:clamp(1rem,2vw,1.5rem);letter-spacing:.5px;color:#1C1917;"
+        "font-size:clamp(1rem,2vw,1.5rem);letter-spacing:.5px;color:#0F172A;"
         "text-transform:uppercase;line-height:1;white-space:nowrap}"
-        # Badge and actions: one row on the banner's right, ghost-style buttons.
-        ".st-key-top_actions{position:fixed;top:0;right:1.75rem;height:84px;"
+        # Page actions (officer back button) and the page crumb: the banner's right side.
+        ".st-key-top_actions{position:fixed;top:0;right:13.5rem;height:84px;"
         "z-index:1000001;display:flex;flex-direction:row;align-items:center;"
         "gap:.5rem;width:auto!important}"
+        ".ct-crumb{position:fixed;top:0;right:1.75rem;height:84px;z-index:1000001;display:flex;"
+        "align-items:center;font-weight:700;font-size:1.05rem;color:#0F172A}"
         ".st-key-top_actions>*{width:auto!important;flex:none}"
         ".st-key-top_actions p{margin:0;font-size:13px;color:rgba(28,25,23,.65)}"
         # Ghost style for the back button only; the profile menu styles itself.
@@ -230,24 +244,51 @@ def _banner_html() -> str:
         ".st-key-officer_close button:hover,.st-key-officer_close button:focus-visible{"
         "background:rgba(28,25,23,.08);border-color:rgba(28,25,23,.5)}"
         # Content starts below the bar.
-        '[data-testid="stMainBlockContainer"]{padding-top:7rem!important}'
+        '[data-testid="stMainBlockContainer"]{padding-top:calc(84px + 1rem)!important}'
+        # Style-only and fixed-position markdown would each add a flex gap above the page.
+        '[data-testid="stElementContainer"]:has(>[data-testid="stMarkdown"] [data-testid="stMarkdownContainer"]>style:only-child){display:none}'
+        '[data-testid="stElementContainer"]:has(.ct-banner),[data-testid="stElementContainer"]:has(.ct-crumb){position:absolute}'
         "</style>"
         f'<div class="ct-banner"><img src="data:image/png;base64,{icon}" alt="CrediTrait">'
         "<span>Explainable Credit Decisioning</span></div>"
     )
 
 
+def _crumb(session: dict) -> str:
+    """The page name shown at the banner's right."""
+    if session["role"] == "officer":
+        return nav.OFFICER_TITLES.get(nav.current(), "")
+    if profile.is_open() or session["role"] == "cardholder":
+        return nav.TITLES.get(nav.current(), "")
+    return "Model monitoring"
+
+
 def _signed_in_bar(session: dict) -> None:
     """The banner, then who you are and the way back out, on every screen."""
     st.markdown(_banner_html(), unsafe_allow_html=True)
+    crumb = _crumb(session)
+    if crumb:
+        st.markdown(f'<div class="ct-crumb">{crumb}</div>', unsafe_allow_html=True)
 
     # Pinned into the banner's right side by the .st-key-top_actions rules in _banner_html.
     with st.container(key="top_actions"):
-        if session["role"] == "officer" and not profile.is_open():
-            officer.back_button()
-        profile.render(
-            session["display_name"], LABELS.get(session["role"], session["role"]), _sign_out
+        drawer.render(
+            session["display_name"], LABELS.get(session["role"], session["role"]), _sign_out,
+            items=_nav_items(session),
+            customer_label=officer.customer_label() if session["role"] == "officer" else None,
+            on_close_customer=officer.close_customer,
+            messages_badge=officer.waiting_count() if session["role"] == "officer" else 0,
+            conversation_label=officer.conversation_label() if session["role"] == "officer" else None,
+            on_close_conversation=officer.close_conversation,
         )
+
+
+def _nav_items(session: dict) -> tuple[nav.Item, ...]:
+    if session["role"] == "officer":
+        return nav.OFFICER_ITEMS
+    if session["role"] == "cardholder" and session["customer_id"] is not None:
+        return nav.ACCOUNT_ITEMS
+    return ()
 
 
 def _sign_out() -> None:
@@ -255,7 +296,8 @@ def _sign_out() -> None:
     # Cached reads go with it: they were fetched for this caller.
     st.session_state.pop(SESSION_KEY, None)
     st.session_state[CLEAR_COOKIE_KEY] = True
-    st.session_state.pop(profile.PROFILE_OPEN_KEY, None)
+    for key in (profile.PROFILE_OPEN_KEY, nav.VIEW_KEY, nav.DRAWER_KEY):
+        st.session_state.pop(key, None)
     st.cache_data.clear()
 
 
@@ -269,19 +311,16 @@ def _officer(session: dict, header: Callable[[], None]) -> None:
 
 
 def _cardholder(session: dict, header: Callable[[], None]) -> None:
-    def titled() -> None:
+    if session["customer_id"] is None:
         header()
         st.subheader("Your account")
-
-    if session["customer_id"] is None:
-        titled()
         st.info(
             "This account is not registered against a customer yet, so there is "
             "no scored account to show. Link it with: "
             "`cd backend && python -m app.db.seed`"
         )
         return
-    cardholder.render(session["token"], session["customer_id"], titled)
+    cardholder.render(session["token"], session["customer_id"], header)
 
 
 def _engineer() -> None:

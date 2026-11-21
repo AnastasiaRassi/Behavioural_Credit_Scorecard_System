@@ -1,13 +1,9 @@
-"""The sign-in screen: a 40/60 split, the logo on the left and the form on the right.
+"""The sign-in screen: one frosted-glass card centred on the dashboard's gradient.
 
-The left 40% is a solid panel holding the CrediTrait logo. The right 60% is a
-faint office photograph with the sign-in card floating over it. The card holds
-the form and nothing else.
-
-Layout and colour live in `ui/login.css`, which is injected here with the photograph
-and logo inlined as base64 so the page needs no static file server. Every rule in
-it is held behind `body:has(.st-key-signin_card)`, so none of it reaches the
-dashboard once a session exists.
+The card holds the logo, the form and nothing else. Its styling lives in
+`ui/auth.css`, injected by `ui/auth_style.py`, and every rule in it is held behind
+`body:has(.st-key-signin_card)`, so none of it reaches the dashboard once a
+session exists.
 
 Nothing here touches a credential: `render` is handed the function that does,
 and shows whatever that function says went wrong.
@@ -16,18 +12,11 @@ Known limit: the message clears on the next attempt rather than on the first
 keystroke. Enter has to submit the form, that needs `st.form`, and Streamlit
 does not rerun on a widget change inside one, so there is no edit to react to.
 """
-import base64
 from collections.abc import Callable
-from functools import lru_cache
-from pathlib import Path
 
 import streamlit as st
 
-
-HERE = Path(__file__).resolve().parent
-CSS_PATHS = (HERE.parent / "ui" / "login.css", HERE.parent / "ui" / "landing.css")
-PHOTO_PATH = HERE.parent / "assets" / "login-bg.jpg"
-LOGO_PATH = HERE.parent / "assets" / "creditrait-logo.png"
+from ui import auth_style
 
 PRODUCT_NAME = "CrediTrait"
 
@@ -69,7 +58,7 @@ def render(attempt: Callable[[str, str], tuple[str, str] | None]) -> None:
     `attempt` owns the credentials and returns None on success, or the field at
     fault and the one line to show. Nothing here sees a token.
     """
-    st.markdown(_stylesheet(), unsafe_allow_html=True)
+    auth_style.inject()
 
     # Set on the run before this one, by a submit. Popped here
     # so a reload cannot replay it.
@@ -77,7 +66,7 @@ def render(attempt: Callable[[str, str], tuple[str, str] | None]) -> None:
     failure = st.session_state.get(ERROR_KEY)
 
     with st.container(key="hero"):
-        st.markdown(_brand_panel(), unsafe_allow_html=True)
+        st.markdown(_showcase(), unsafe_allow_html=True)
 
         # Widgets cannot live inside raw HTML, so the card is a keyed container
         # and the stylesheet reaches it through the .st-key-signin_card class.
@@ -124,9 +113,58 @@ def render(attempt: Callable[[str, str], tuple[str, str] | None]) -> None:
 
 def _card_header() -> str:
     return _flatten(f"""
+<div class="signin-logo" role="img" aria-label="{PRODUCT_NAME}"></div>
 <h2 class="signin-title">Welcome Back</h2>
 <p class="signin-subtitle">Enter your credentials to access {PRODUCT_NAME}</p>
 """)
+
+
+def _icon(path: str) -> str:
+    return (
+        '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+        'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" '
+        f'aria-hidden="true">{path}</svg>'
+    )
+
+
+# (icon, title, line). Written for the person signing in, not the engineer.
+_FEATURES = (
+    (
+        '<path d="M12 3l1.9 4.6L18.5 9.5l-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9z"/>'
+        '<path d="M19 15l.8 1.9 1.9.8-1.9.8L19 20.5l-.8-1.9-1.9-.8 1.9-.8z"/>',
+        "AI that explains itself",
+        "Ask Loana AI why a decision was made and get a plain-language answer "
+        "built from the customer's own record.",
+    ),
+    (
+        '<path d="M12 3l8 3v6c0 4.5-3.2 7.8-8 9-4.8-1.2-8-4.5-8-9V6z"/>'
+        '<path d="M8.5 12.2l2.4 2.4 4.6-4.8"/>',
+        "Careful, fair decisions",
+        "Calibrated scoring with the reasons behind every result, "
+        "audited so no group is treated unfairly.",
+    ),
+    (
+        '<path d="M3 20h18"/><path d="M5 16l4-5 4 3 6-8"/><path d="M15 6h4v4"/>',
+        "Track loans and behaviour",
+        "Follow repayments and spending month by month, and spot "
+        "trouble before it becomes a default.",
+    ),
+    (
+        '<path d="M4 5h16v11H9l-5 4z"/><path d="M8 9.5h8M8 12.5h5"/>',
+        "Chat with AI or a person",
+        "Ask Loana AI for an instant answer, or message your loan officer "
+        "and get a reply from a real person.",
+    ),
+)
+
+
+def _showcase() -> str:
+    """Four glass cards over the photograph; styled in ui/auth.css."""
+    cards = "".join(
+        f'<div class="feature-card">{_icon(icon)}<h3>{title}</h3><p>{line}</p></div>'
+        for icon, title, line in _FEATURES
+    )
+    return f'<div class="signin-showcase">{cards}</div>'
 
 
 def _alert(field: str, message: str) -> str:
@@ -134,39 +172,6 @@ def _alert(field: str, message: str) -> str:
     return _flatten(f"""
 <div class="signin-error" data-field="{field}" role="alert">
 {_ALERT_ICON}<span>{message}</span>
-</div>
-""")
-
-
-@lru_cache(maxsize=1)
-def _stylesheet() -> str:
-    """The stylesheet with the photograph and logo inlined. Read once per process."""
-    for path in (*CSS_PATHS, PHOTO_PATH, LOGO_PATH):
-        if not path.exists():
-            raise FileNotFoundError(
-                f"Missing {path}. The sign-in screen ships with it; restore it "
-                "from version control."
-            )
-
-    photo = base64.b64encode(PHOTO_PATH.read_bytes()).decode("ascii")
-    logo = base64.b64encode(LOGO_PATH.read_bytes()).decode("ascii")
-    css = "\n".join(path.read_text(encoding="utf-8") for path in CSS_PATHS)
-    # Declared once and referenced as var(...): inlining the data URI at each use
-    # put a copy of the image in the markup per use, on every rerun.
-    root = (
-        ":root { "
-        f'--login-photo: url("data:image/jpeg;base64,{photo}"); '
-        f'--brand-logo: url("data:image/png;base64,{logo}"); }}'
-    )
-    return f"<style>{root}\n{css}</style>"
-
-
-def _brand_panel() -> str:
-    """The left 40%: the logo, centred. A background image, so it costs no markup."""
-    return _flatten(f"""
-<span id="top"></span>
-<div class="brand-panel">
-<div class="brand-logo" role="img" aria-label="{PRODUCT_NAME}"></div>
 </div>
 """)
 

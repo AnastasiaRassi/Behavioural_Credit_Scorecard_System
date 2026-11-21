@@ -23,8 +23,8 @@ import streamlit as st
 
 import api
 import theme
-from ui import loana, thread
-from ui.components import show
+from ui import loana, nav, thread
+from ui.components import show, stylesheet
 
 # Features a cardholder can act on this month (read by the officer screen). A reason
 # they cannot change is not advice, it is an accusation.
@@ -46,6 +46,14 @@ ACTIONABLE = {
 }
 
 REVIEW_COMMENT_MAX = 2000
+TICK = "#475569"  # slate, matching the sidebar's text
+
+# Starters for an empty conversation; clicking one fills the box, it never sends.
+QUICK_PROMPTS = (
+    "I have a question about my latest statement.",
+    "I'd like to talk about a payment plan.",
+    "Something on my account looks wrong.",
+)
 
 # Fixed questions for the two preset buttons. They go through the same chat endpoint,
 # guards and log as anything typed.
@@ -84,20 +92,30 @@ def render(
         return
 
     header()
-    _main(account, token, customer_id)
+    if nav.current() == nav.CHAT:
+        _chat_view(token, customer_id)
+        return
+    _dashboard(account)
     loana.dock(lambda: _copilot(token, customer_id))
 
 
-def _main(account: dict, token: str, customer_id: str) -> None:
+def _dashboard(account: dict) -> None:
     """The account itself: the banner, the figures, the history and what to do about it."""
+    stylesheet("dashboard.css")
     needs_attention = account["needs_attention"]
     _banner(needs_attention, account["risk_band"])
 
     _account(account)
     history_card(account["history"])
     _ask_loana(needs_attention)
-    _human_review(token, customer_id)
     _consent()
+
+
+def _chat_view(token: str, customer_id: str) -> None:
+    """The conversation with the loan officer, as the whole workspace."""
+    stylesheet("chat_page.css")
+    nav.back_button()
+    _human_review(token, customer_id)
 
 
 def _banner(needs_attention: bool, risk_band: str) -> None:
@@ -130,7 +148,6 @@ def _human_review(token: str, customer_id: str) -> None:
     Offered to everyone, flagged or not. A decision closes the conversation;
     writing again reopens it.
     """
-    st.markdown("**Messages with your loan officer**")
     try:
         entries = api.cardholder_thread(customer_id, token)
     except api.ServiceUnavailable:
@@ -147,14 +164,18 @@ def _human_review(token: str, customer_id: str) -> None:
             '<div class="chat-head"><div class="thread-avatar">LO</div>'
             f"<b>Conversation with Loan Officer</b>{badge}</div>"
         )
-        thread.draw(entries, "cardholder")
-        if closed:
-            show(
-                '<div class="chat-closed"><b>This conversation is closed</b>'
-                "<span>Write below if you would like to reopen it.</span></div>"
-            )
-        elif entries:
-            st.caption("Sent. Your loan officer will look at your account and reply here.")
+        with st.container(key="chat_messages"):
+            if entries:
+                thread.draw(entries, "cardholder")
+            else:
+                _empty_state(customer_id)
+            if closed:
+                show(
+                    '<div class="chat-closed"><b>This conversation is closed</b>'
+                    "<span>Write below if you would like to reopen it.</span></div>"
+                )
+            elif entries:
+                st.caption("Sent. Your loan officer will look at your account and reply here.")
 
         with st.container(key="chat_composer"):
             box, send = st.columns([5, 1], vertical_alignment="bottom")
@@ -164,7 +185,7 @@ def _human_review(token: str, customer_id: str) -> None:
                 placeholder="Write a message to your loan officer...",
                 max_chars=REVIEW_COMMENT_MAX,
                 label_visibility="collapsed",
-                height=68,
+                height=80,
             )
             send.button(
                 "Send", key=f"review_send_{customer_id}", type="primary",
@@ -173,6 +194,26 @@ def _human_review(token: str, customer_id: str) -> None:
         problem = st.session_state.pop(f"review_problem_{customer_id}", None)
         if problem:
             st.error(problem)
+
+
+def _empty_state(customer_id: str) -> None:
+    """Icon, a reassuring note and a few starters, before anything has been sent."""
+    show(
+        '<div class="chat-empty"><div class="chat-empty-icon">&#9993;</div>'
+        "<b>No messages yet</b>"
+        "<span>Anything you write here goes to the loan officer reviewing your account. "
+        "They will reply in this conversation.</span></div>"
+    )
+    with st.container(key="chat_chips"):
+        for index, prompt in enumerate(QUICK_PROMPTS):
+            st.button(
+                prompt, key=f"chip_{customer_id}_{index}",
+                on_click=_fill, args=(customer_id, prompt),
+            )
+
+
+def _fill(customer_id: str, prompt: str) -> None:
+    st.session_state[f"review_comment_{customer_id}"] = prompt
 
 
 def _send(token: str, customer_id: str) -> None:
@@ -213,6 +254,7 @@ def history_card(history: list[dict], title: str = "Your last six months") -> No
     # The API sends most recent first; the timeline reads oldest to newest.
     months = sorted(history, key=lambda month: month["month"], reverse=True)
     labels = [month["label"] for month in months]
+    top = max([m["bill_amount"] for m in months] + [m["amount_paid"] for m in months] + [1])
 
     with st.container(border=True, key="history_card"):
         st.markdown(
@@ -230,22 +272,27 @@ def history_card(history: list[dict], title: str = "Your last six months") -> No
             ]
         )
         figure.update_layout(
-            height=340,
+            height=290,
             margin=dict(l=56, r=40, t=8, b=44),
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
-            font=dict(family=theme.FONT, color=theme.TEXT, size=13),
+            font=dict(family=theme.FONT, color=theme.TEXT, size=15),
             hovermode="x unified",
             hoverlabel=dict(bgcolor="#FFFFFF", bordercolor=theme.GRID, font_size=13),
-            legend=dict(orientation="h", x=0, y=1.08, bgcolor="rgba(0,0,0,0)"),
-            xaxis=dict(showgrid=False, showline=False, tickfont=dict(color=theme.MUTED)),
+            legend=dict(orientation="h", x=0, y=1.1, bgcolor="rgba(0,0,0,0)", font=dict(size=15)),
+            dragmode=False,  # no box-zoom or pan; hover still works
+            xaxis=dict(
+                showgrid=False, showline=False, tickfont=dict(color=TICK, size=14),
+                fixedrange=True,
+            ),
             yaxis=dict(
+                fixedrange=True, range=[0, top * 1.1],  # a bill is never negative
                 gridcolor=theme.GRID, zeroline=False, tickprefix="$", tickformat="~s",
-                tickfont=dict(color=theme.MUTED),
+                tickfont=dict(color=TICK, size=14),
             ),
         )
         st.plotly_chart(
-            figure, width="stretch", theme=None, config={"displayModeBar": False},
+            figure, width="stretch", theme=None, config={"displayModeBar": False, "scrollZoom": False, "doubleClick": False},
             key="history_chart",
         )
 
@@ -346,7 +393,8 @@ def _copilot(token: str, customer_id: str) -> None:
 
 def _bubble(message: dict) -> None:
     with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+        # Escaped, or a pair of dollar amounts in one reply renders as a formula.
+        st.markdown(message["content"].replace("$", "\$"))
         if message.get("note"):
             st.caption(message["note"])
 

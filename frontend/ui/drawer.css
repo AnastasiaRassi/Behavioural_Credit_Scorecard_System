@@ -1,0 +1,118 @@
+/* Sidebar: a floating frosted-glass capsule. Tokens first, rules below. */
+.st-key-nav_panel {
+    --glass-bg: rgba(255, 255, 255, 0.45);
+    --glass-rim: rgba(255, 255, 255, 0.75);
+    --glass-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.9), 0 12px 32px rgba(15, 23, 42, 0.08);
+    --pill-bg: rgba(255, 255, 255, 0.38);
+    --pill-bg-hover: rgba(255, 255, 255, 0.72);
+    --pill-rim: rgba(255, 255, 255, 0.7);
+    --pill-shine: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    --ink: #0F172A;
+    --ink-soft: #475569;
+    --accent: #00A669;
+}
+
+/* Toggle: always a light button with a dark icon, so it never vanishes on a dark fill. */
+.st-key-nav_toggle { position: fixed; top: 21px; left: 1.75rem; z-index: 1000002; width: auto !important; }
+.st-key-nav_toggle button {
+    width: 44px; height: 44px; padding: 0; border-radius: 12px;
+    background: #F1F5F9; border: 1px solid #CBD5E1; color: #0F172A;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, .12); transition: background .15s, transform .1s;
+}
+.st-key-nav_toggle button:hover, .st-key-nav_toggle button:focus-visible {
+    background: #E2E8F0; border-color: #94A3B8;
+}
+.st-key-nav_toggle button:active { transform: scale(.95); }
+.st-key-nav_toggle button *, .st-key-nav_toggle [data-testid="stIconMaterial"] { color: #0F172A !important; }
+.st-key-nav_toggle [data-testid="stIconMaterial"] { font-size: 28px; }
+
+/* Capsule: detached 14px from the edges, full height, footer pinned to the bottom. */
+.st-key-nav_panel {
+    position: fixed; top: calc(84px + 14px); left: 14px; bottom: 14px;
+    width: min(320px, calc(100vw - 28px)); z-index: 1000001; overflow-y: auto;
+    display: flex; flex-direction: column; gap: .5rem; padding: 1.1rem 1rem;
+    background: var(--glass-bg); border: 1px solid var(--glass-rim); border-radius: 24px;
+    backdrop-filter: blur(20px) saturate(160%); -webkit-backdrop-filter: blur(20px) saturate(160%);
+    box-shadow: var(--glass-shadow);
+    animation: nav-in .18s ease-out;
+}
+@keyframes nav-in { from { transform: translateX(-24px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+.nav-user {
+    display: flex; align-items: center; gap: .75rem; padding: .8rem;
+    background: rgba(255, 255, 255, .6); border: 1px solid var(--glass-rim); border-radius: 16px;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .9);
+}
+.nav-badge {
+    flex: none; width: 42px; height: 42px; border-radius: 50%;
+    background: linear-gradient(135deg, #00A669, #047857); color: #FFFFFF;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 14px; box-shadow: inset 0 1px 1px rgba(255, 255, 255, .45);
+}
+.nav-name { font-weight: 700; font-size: 1.02rem; color: #0F172A; line-height: 1.3; }
+.nav-role { font-size: 0.85rem; font-weight: 500; color: #475569; }
+.nav-label {
+    margin: 1.25rem 0 .85rem .25rem; padding: .35rem 0; line-height: 1.4; font-size: 0.78rem;
+    font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #047857;
+}
+
+/* Items: glossy glass pills, icon and label at the left edge. */
+.st-key-nav_panel button {
+    justify-content: flex-start; gap: .6rem; border-radius: 14px; padding: .6rem .9rem;
+    transition: background .18s, box-shadow .18s, border-color .18s, transform .1s;
+}
+.st-key-nav_panel button:active { transform: scale(.985); }
+.st-key-nav_panel button p { font-size: 0.95rem; font-weight: 500; }
+.st-key-nav_panel button[data-testid="stBaseButton-primary"] p { font-weight: 600; }
+.st-key-nav_panel button > div, .st-key-nav_panel button > div > div {
+    justify-content: flex-start; text-align: left; width: 100%;
+}
+.st-key-nav_panel button[data-testid="stBaseButton-secondary"] {
+    background: var(--pill-bg); border: 1px solid var(--pill-rim); box-shadow: var(--pill-shine);
+}
+.st-key-nav_panel button[data-testid="stBaseButton-secondary"] p,
+.st-key-nav_panel button[data-testid="stBaseButton-secondary"] [data-testid="stIconMaterial"] {
+    color: var(--ink-soft);
+}
+.st-key-nav_panel button[data-testid="stBaseButton-secondary"]:hover {
+    background: var(--pill-bg-hover);
+    box-shadow: var(--pill-shine), 0 4px 14px rgba(15, 23, 42, .1);
+}
+.st-key-nav_panel button[data-testid="stBaseButton-secondary"]:hover p,
+.st-key-nav_panel button[data-testid="stBaseButton-secondary"]:hover [data-testid="stIconMaterial"] {
+    color: var(--ink);
+}
+
+/* Active route: dark glossy sheen with an emerald edge and a soft glow. */
+.st-key-nav_panel button[data-testid="stBaseButton-primary"] {
+    background: linear-gradient(135deg, #0F172A, #1E293B);
+    border: 1px solid #0F172A; border-left: 4px solid var(--accent);
+    box-shadow: inset 0 1px 1px rgba(255, 255, 255, .35), 0 6px 16px rgba(15, 23, 42, .3),
+                0 0 14px rgba(0, 166, 105, .25);
+}
+.st-key-nav_panel button[data-testid="stBaseButton-primary"] p,
+.st-key-nav_panel button[data-testid="stBaseButton-primary"] [data-testid="stIconMaterial"] {
+    color: #FFFFFF;
+}
+
+/* Footer: divider and Sign Out, pushed to the bottom of the capsule. */
+[data-testid="stLayoutWrapper"]:has(> .st-key-nav_footer) { margin-top: auto; }
+.st-key-nav_footer { gap: .5rem; }
+.st-key-nav_footer hr { border-color: rgba(15, 23, 42, .1); margin: .25rem 0; }
+.st-key-nav_sign_out button[data-testid="stBaseButton-secondary"] {
+    background: rgba(254, 226, 226, .6); border-color: rgba(252, 165, 165, .8);
+}
+.st-key-nav_sign_out button p, .st-key-nav_sign_out [data-testid="stIconMaterial"] { color: #B91C1C !important; }
+.st-key-nav_sign_out button[data-testid="stBaseButton-secondary"]:hover { background: rgba(254, 202, 202, .85); }
+
+/* Opened customer: its own block, indented under Filter Users with a guide line. */
+.st-key-nav_customer_block, .st-key-nav_conversation_block { margin-left: 1.4rem; width: auto !important; border-left: 2px solid rgba(15, 23, 42, .15); padding-left: .6rem; }
+.st-key-nav_customer_block button p, .st-key-nav_conversation_block button p { font-size: 0.9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st-key-nav_customer_close button, .st-key-nav_conversation_close button { padding: .4rem; justify-content: center; min-height: 0; }
+
+/* Unread bubble beside Messages; the number is set per run in drawer.py. */
+.st-key-nav_chat button::after {
+    margin-left: auto; min-width: 22px; height: 22px; padding: 0 6px; box-sizing: border-box;
+    border-radius: 11px; background: #DC2626; color: #FFFFFF; font-size: .78rem; font-weight: 700;
+    line-height: 22px; text-align: center; box-shadow: 0 0 0 2px rgba(255, 255, 255, .8);
+}

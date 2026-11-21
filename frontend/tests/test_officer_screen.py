@@ -121,11 +121,17 @@ def faked_api(monkeypatch):
 def _app() -> None:
     from views import officer
 
-    officer.render("officer@example.com", "token", officer.back_button)
+    officer.render("officer@example.com", "token")
 
 
 def _start() -> AppTest:
     return AppTest.from_function(_app, default_timeout=TIMEOUT).run()
+
+
+def _show(app: AppTest, view: str) -> None:
+    """What clicking a drawer entry does."""
+    app.session_state["active_view"] = view
+    app.run()
 
 
 def _open_chat(app: AppTest) -> None:
@@ -152,10 +158,10 @@ def test_landing_is_search_requests_and_an_empty_worklist_beside_loana(faked_api
         "Find a customer by ID or name..."
     )
     text = _text(app)
-    assert "Maya Haddad" in text and "3 days" in text
-    assert "1 customer is waiting for a reply" in text
-    assert app.button(key="inbox_id-111") is not None
+    assert "waiting for a reply" not in text
+    assert "inbox_id-111" not in [button.key for button in app.button]
     assert "Worklist" in text and "Triage assistant" in text
+    assert "Customers asking for a human review" not in text
     assert "No customers pulled in yet" in " ".join(i.value for i in app.info)
     # Loana here pulls cohorts; the per-customer chat only exists on a record.
     assert app.chat_input(key="officer_triage_ask") is not None
@@ -199,9 +205,8 @@ def test_a_just_scored_customer_opens_their_analysis_and_the_worklist_survives(f
     assert not app.exception
     assert app.session_state["officer_customer_id"] == "id-222"
 
-    app.button(key="officer_close").click().run()
+    _show(app, "dashboard")
 
-    assert app.session_state["officer_customer_id"] is None
     assert app.session_state["officer_cohort"]["total"] == 41
     assert app.button(key="officer_scored_id-222") is not None
 
@@ -240,11 +245,12 @@ def test_a_search_lists_matches_and_opens_nothing_until_one_is_picked(faked_api)
 
 def test_review_opens_the_customer_with_the_unread_alert_and_thread(faked_api):
     app = _start()
+    _show(app, "chat")
 
     app.button(key="review_r1").click().run()
 
     assert not app.exception
-    assert app.session_state["officer_customer_id"] == "id-111"
+    assert app.session_state["officer_conversation_id"] == "id-111"
     text = _text(app)
     assert "1 unanswered message from this customer" in text
     assert "What the model saw" in text and "What the customer says" in text
@@ -255,15 +261,16 @@ def test_review_opens_the_customer_with_the_unread_alert_and_thread(faked_api):
     )
     assert "Awaiting reply" in text
     assert "Reply with a decision" in text
-    assert "Back to worklist" in app.button(key="officer_close").label
 
 
-def test_the_inbox_shortcut_opens_the_waiting_customer(faked_api):
+def test_open_conversation_opens_it_in_the_drawer_not_as_a_customer(faked_api):
     app = _start()
+    _show(app, "chat")
 
-    app.button(key="inbox_id-111").click().run()
+    app.button(key=[b.key for b in app.button if b.key.startswith("review_")][0]).click().run()
 
-    assert app.session_state["officer_customer_id"] == "id-111"
+    assert app.session_state["officer_conversation_id"] == "id-111"
+    assert "officer_customer_id" not in app.session_state or not app.session_state["officer_customer_id"]
 
 
 def test_a_customer_link_in_the_address_never_opens_a_customer(faked_api):
@@ -279,6 +286,7 @@ def test_recording_a_review_outcome_needs_a_justification_and_names_the_customer
     faked_api,
 ):
     app = _start()
+    _show(app, "chat")
     app.button(key="review_r1").click().run()
 
     app.button(key="officer_record_id-111").click().run()
@@ -305,6 +313,7 @@ def test_the_assistant_says_it_is_not_connected_and_keeps_the_layout(faked_api, 
 
     monkeypatch.setattr(api, "officer_chat", unreachable)
     app = _start()
+    _show(app, "chat")
     app.button(key="review_r1").click().run()
     _open_chat(app)
 
@@ -322,6 +331,7 @@ def test_chat_history_is_kept_per_customer(faked_api, monkeypatch):
         lambda customer_id, messages: {"reply": f"About {customer_id}", "note": ""},
     )
     app = _start()
+    _show(app, "chat")
     app.button(key="review_r1").click().run()
     _open_chat(app)
     app.chat_input(key="officer_ask").set_value("Why flagged?").run()
@@ -330,7 +340,7 @@ def test_chat_history_is_kept_per_customer(faked_api, monkeypatch):
         "Why flagged?", "About id-111",
     ]
 
-    app.button(key="officer_close").click().run()
+    _show(app, "dashboard")
     app.text_input(key="officer_lookup").set_value("222").run()
     app.button(key="officer_pick_id-222").click().run()
 
@@ -342,11 +352,11 @@ def test_chat_history_is_kept_per_customer(faked_api, monkeypatch):
 
 def test_the_prediction_survives_closing_and_reopening_the_customer(faked_api):
     app = _start()
+    _show(app, "chat")
     app.button(key="review_r1").click().run()
     app.session_state["prediction_id-111"] = {"probability": 0.5}
 
-    app.button(key="officer_close").click().run()
-    assert app.session_state["officer_customer_id"] is None
+    _show(app, "dashboard")
     assert "Worklist" in _text(app)
 
     app.text_input(key="officer_lookup").set_value("111").run()
@@ -356,7 +366,7 @@ def test_the_prediction_survives_closing_and_reopening_the_customer(faked_api):
     assert app.session_state["prediction_id-111"] == {"probability": 0.5}
 
 
-def test_a_large_backlog_is_capped_on_the_landing(faked_api, monkeypatch):
+def test_a_large_backlog_is_capped_in_messages(faked_api, monkeypatch):
     backlog = [
         {
             "request_id": f"r{number}", "customer_id": f"id-{number}",
@@ -369,9 +379,9 @@ def test_a_large_backlog_is_capped_on_the_landing(faked_api, monkeypatch):
     monkeypatch.setattr(api, "review_requests", lambda: backlog)
     monkeypatch.setattr(api, "customer_detail", lambda customer_id: {"latest_prediction": None})
     app = _start()
+    _show(app, "chat")
 
     assert not app.exception
-    text = _text(app)
-    assert ">99+</span>" in text and "5,000 customers are waiting" in text
+    assert "5000 waiting" in " ".join(c.value for c in app.caption)
     assert len([b for b in app.button if b.key.startswith("review_")]) == 10
     assert "4,990 more are waiting" in " ".join(c.value for c in app.caption)

@@ -52,8 +52,12 @@ def faked_api(monkeypatch):
 
 
 def _app() -> None:
+    import streamlit as st
+
+    from ui import nav
     from views import cardholder
 
+    st.session_state.setdefault(nav.VIEW_KEY, nav.CHAT)
     cardholder.render("token", "id-1")
 
 
@@ -110,3 +114,13 @@ def test_message_bodies_are_escaped(faked_api):
     app = _start()
 
     assert "<script>" not in _markdown(app)
+
+
+def test_a_quick_prompt_fills_the_box_without_sending(faked_api):
+    sent, _ = faked_api
+    app = _start()
+
+    app.button(key=f"chip_{ID}_0").click().run()
+
+    assert "statement" in app.text_area(key=f"review_comment_{ID}").value
+    assert sent == []

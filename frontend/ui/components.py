@@ -3,7 +3,10 @@
 Each returns one line of markup: Streamlit renders through Markdown, and an
 indented line after a blank one becomes a code fence.
 """
+import base64
+from functools import lru_cache
 from html import escape
+from pathlib import Path
 
 import streamlit as st
 
@@ -29,6 +32,21 @@ def flatten(markup: str) -> str:
 def show(markup: str) -> None:
     """Draw markup from this module. The one place that opts into raw HTML."""
     st.markdown(markup, unsafe_allow_html=True)
+
+
+BACKDROP = Path(__file__).resolve().parent.parent / "assets" / "gradient-bg.jpg"
+
+
+@lru_cache(maxsize=1)
+def _backdrop_uri() -> str:
+    return "data:image/jpeg;base64," + base64.b64encode(BACKDROP.read_bytes()).decode("ascii")
+
+
+def stylesheet(name: str) -> None:
+    """Inject ui/<name>.css for the view being drawn; `__BACKDROP__` is the gradient photo."""
+    css = Path(__file__).with_name(name).read_text(encoding="utf-8")
+    css = css.replace("__BACKDROP__", _backdrop_uri())
+    st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
 
 
 def band_badge(band: str | None) -> str:

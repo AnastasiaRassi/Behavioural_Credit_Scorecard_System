@@ -60,8 +60,9 @@ html, body, [data-testid="stApp"], .ct-banner,
     position: fixed;
     right: 1.5rem;
     bottom: 1.5rem;
-    z-index: 1000;
+    z-index: 1000002;
     width: auto;
+    opacity: 1 !important;
 }}
 /* A pill: the invitation on the left, the avatar (a CSS background, so the button
    stays a real button) on the right. */
@@ -70,9 +71,10 @@ html, body, [data-testid="stApp"], .ct-banner,
     height: 112px;
     min-height: 0;
     padding: 0 132px 0 1.6rem;
-    border: 3px solid {LOANA};
+    border: 3px solid #00A669;
     border-radius: 999px;
-    background-color: #FFFFFF;
+    background-color: #FFFFFF !important;
+    opacity: 1 !important;
     background-size: auto 100%;
     background-repeat: no-repeat;
     background-position: right 8px center;
@@ -83,13 +85,13 @@ html, body, [data-testid="stApp"], .ct-banner,
 .st-key-loana_launch button p {{
     font-size: 1.05rem;
     font-weight: 600;
-    color: #1C1917;
+    color: #0F172A;
     white-space: nowrap;
 }}
 .st-key-loana_launch button:hover {{
     transform: scale(1.05);
-    border-color: {LOANA_INK};
-    box-shadow: 0 12px 28px rgba(7, 59, 45, 0.42);
+    border-color: #34D399;
+    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.3), 0 0 16px rgba(0, 166, 105, 0.35);
 }}
 @keyframes loana-nudge {{
     0%, 100% {{ transform: none; }}
@@ -268,14 +270,16 @@ div.inbox-alert--clear {{ background: #F5F5F4; color: {MUTED}; border-color: {GR
     font-size: 0.72rem; font-weight: 700;
 }}
 
-/* Cardholder chat card (views/cardholder.py): header, history, composer in one box. */
+/* Cardholder messages (views/cardholder.py): header, scrolling thread and composer
+   in one rounded card. */
 .st-key-chat_card {{
-    max-width: 760px; gap: 0; background: #F9FAFB; border: 1px solid #E5E7EB;
-    border-radius: 12px; overflow: hidden;
+    width: 100%; max-width: 920px; gap: 0; overflow: hidden;
+    background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 16px;
+    box-shadow: 0 10px 30px -12px rgba(15, 23, 42, 0.35);
 }}
 .chat-head {{
-    display: flex; align-items: center; gap: 0.6rem; padding: 0.75rem 1rem;
-    background: #FFFFFF; border-bottom: 1px solid #E5E7EB; color: {TEXT};
+    display: flex; align-items: center; gap: 0.6rem; padding: 0.85rem 1.1rem;
+    background: #F8FAFC; border-bottom: 1px solid #E2E8F0; color: {TEXT};
 }}
 .chat-head b {{ font-size: 0.95rem; }}
 .chat-status {{
@@ -284,25 +288,41 @@ div.inbox-alert--clear {{ background: #F5F5F4; color: {MUTED}; border-color: {GR
 }}
 .chat-status--active {{ background: #D1FAE5; color: #065F46; }}
 .chat-status--closed {{ background: #F3F4F6; color: #4B5563; }}
-.st-key-chat_card .thread {{ margin: 0; padding: 1rem; }}
-.st-key-chat_card .thread-empty {{ margin: 0; padding: 1.25rem 1rem; text-align: center; }}
-.st-key-chat_card .thread-card {{ max-width: 68%; }}
+.st-key-chat_messages {{ min-height: 360px; padding: 0.5rem 1.1rem; background: #FFFFFF; }}
+.st-key-chat_card .thread {{ margin: 0; padding: 0.5rem 0; }}
+.st-key-chat_card .thread-card {{ max-width: 70%; }}
 .st-key-chat_card .thread-row--mine .thread-card {{ background: #ECFDF5; border-color: #A7F3D0; }}
-.st-key-chat_card .thread-row--theirs .thread-card {{ background: #FFFFFF; border-color: #E5E7EB; }}
+.st-key-chat_card .thread-row--theirs .thread-card {{ background: #F1F5F9; border-color: #E2E8F0; }}
 .st-key-chat_card .thread-row--theirs .thread-card--decision {{ border-left-color: {ACCENT}; }}
+.chat-empty {{
+    display: flex; flex-direction: column; align-items: center; gap: 0.35rem;
+    padding: 1.5rem 1rem 0.75rem; text-align: center; color: #334155;
+}}
+.chat-empty-icon {{
+    width: 56px; height: 56px; border-radius: 50%; background: #D1FAE5; color: #047857;
+    display: flex; align-items: center; justify-content: center; font-size: 1.6rem;
+}}
+.chat-empty b {{ font-size: 1.05rem; color: {TEXT}; }}
+.chat-empty span {{ max-width: 460px; font-size: 0.9rem; color: {MUTED}; }}
+.st-key-chat_chips {{ align-items: center; gap: 0.5rem; }}
+.st-key-chat_chips button {{
+    border-radius: 999px; padding: 0.3rem 1rem; min-height: 0;
+    background: #F0FDF4; border: 1px solid #A7F3D0;
+}}
+.st-key-chat_chips button p {{ font-size: 0.85rem; font-weight: 600; color: #065F46; }}
+.st-key-chat_chips button:hover {{ background: #D1FAE5; border-color: #059669; }}
 .chat-closed {{
     display: flex; flex-direction: column; align-items: center; gap: 0.1rem;
-    margin: 0 1rem 0.75rem; padding: 0.6rem 1rem; text-align: center;
+    margin: 0.5rem 0; padding: 0.6rem 1rem; text-align: center;
     background: #F3F4F6; border: 1px solid #E5E7EB; border-radius: 10px; color: #374151;
 }}
 .chat-closed span {{ font-size: 0.8rem; color: {MUTED}; }}
-.st-key-chat_card [data-testid="stCaptionContainer"] {{ padding: 0 1rem 0.6rem; }}
+.st-key-chat_card [data-testid="stCaptionContainer"] {{ padding: 0.2rem 0 0.4rem; }}
 .st-key-chat_composer {{
-    padding: 0.75rem 1rem; background: #FFFFFF; border-top: 1px solid #E5E7EB;
+    padding: 0.8rem 1.1rem; background: #F8FAFC; border-top: 1px solid #E2E8F0;
 }}
-.st-key-chat_composer [data-baseweb="textarea"], .st-key-chat_composer textarea {{
-    border-radius: 12px; }}
-.st-key-chat_composer textarea {{ padding: 0.6rem 0.85rem; }}
+.st-key-chat_composer textarea {{ resize: none !important; padding: 0.6rem 0.85rem; }}
+.st-key-chat_composer [data-baseweb="textarea"],
 .st-key-chat_composer [data-testid="stTextAreaRootElement"] {{ border-radius: 12px; }}
 [class*="st-key-review_send_"] button {{
     background: #059669; border: 1px solid #059669; color: #FFFFFF; border-radius: 10px;
@@ -310,7 +330,7 @@ div.inbox-alert--clear {{ background: #F5F5F4; color: {MUTED}; border-color: {GR
 }}
 [class*="st-key-review_send_"] button p {{ color: #FFFFFF; font-weight: 600; }}
 [class*="st-key-review_send_"] button:hover {{ background: #047857; border-color: #047857; }}
-.st-key-chat_card [data-testid="stAlert"] {{ margin: 0 1rem 1rem; }}
+.st-key-chat_card [data-testid="stAlert"] {{ margin: 0 1.1rem 1rem; }}
 
 /* Cardholder timeline card (views/cardholder.py). */
 .st-key-history_card {{
@@ -347,7 +367,7 @@ div.inbox-alert--clear {{ background: #F5F5F4; color: {MUTED}; border-color: {GR
 
 /* Shorter run-in at the top. The page uses the full width: the cardholder screen is
    two columns, and a 1180px cap left the copilot column too narrow to read. The
-   sign-in page sets its own width (ui/login.css). */
+   sign-in page sets its own width (ui/auth.css). */
 [data-testid="stMainBlockContainer"] {{
     padding-top: 3rem;
     padding-bottom: 2rem;

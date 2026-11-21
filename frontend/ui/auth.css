@@ -1,0 +1,412 @@
+/* The sign-in screen. Injected by ui/auth_style.py, which fills in __BACKDROP__
+   (the dashboard's mesh gradient) and __LOGO__.
+
+   Every rule that touches a Streamlit element is held behind
+   `body:has(.st-key-signin_card)`: the card only exists while this screen is
+   drawn, so nothing here can follow a signed-in session onto the dashboard. */
+
+@import url("https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&display=swap");
+
+:root {
+    --ink: #0F172A;
+    --slate: #475569;
+    --field-line: rgba(100, 116, 139, 0.35);
+    --emerald: #00A669;
+    --emerald-deep: #059669;
+    --emerald-text: #047857;
+    --alert-ink: #8A3B2E;
+    --alert-edge: #B4442E;
+    --alert-wash: #FBEFEC;
+    --font: "Archivo", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+/* --- canvas: the dashboard's gradient, full viewport -------------------- */
+
+body:has(.st-key-signin_card) [data-testid="stApp"] {
+    background: url("__BACKDROP__") center / cover fixed;
+    font-family: var(--font);
+}
+body:has(.st-key-signin_card) [data-testid="stMain"],
+body:has(.st-key-signin_card) [data-testid="stMainBlockContainer"],
+body:has(.st-key-signin_card) [data-testid="stBottomBlockContainer"] {
+    background: transparent !important;
+}
+/* No editor chrome on a sign-in page. */
+body:has(.st-key-signin_card) [data-testid="stHeader"],
+body:has(.st-key-signin_card) [data-testid="stToolbar"],
+body:has(.st-key-signin_card) [data-testid="stAppDeployButton"],
+body:has(.st-key-signin_card) [data-testid="stMainMenu"],
+body:has(.st-key-signin_card) [data-testid="stStatusWidget"],
+body:has(.st-key-signin_card) [data-testid="stDecoration"],
+body:has(.st-key-signin_card) [data-testid="stSidebar"],
+body:has(.st-key-signin_card) [data-testid="stSidebarCollapsedControl"],
+body:has(.st-key-signin_card) footer {
+    display: none !important;
+}
+body:has(.st-key-signin_card) [data-testid="stMainBlockContainer"] {
+    max-width: none !important;
+    padding: 0 !important;
+}
+
+/* Login on the left 42%, the photograph on the right 58%. */
+.st-key-hero {
+    position: relative;
+    isolation: isolate;
+    min-height: 100vh;
+    box-sizing: border-box;
+    padding: 32px 16px;
+    padding-right: 58%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+.st-key-hero::before,
+.st-key-hero::after {
+    content: "";
+    /* Fixed, so the photograph fills the viewport whatever offsets Streamlit's
+       wrappers add above the hero. */
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    z-index: -1;
+    pointer-events: none;
+}
+.st-key-hero::before {
+    left: 42%;
+    right: 0;
+    background: linear-gradient(rgba(17, 24, 39, 0.35), rgba(17, 24, 39, 0.35)),
+        var(--login-photo) center / cover no-repeat;
+    -webkit-mask-image: linear-gradient(to right, transparent, #000 90px);
+    mask-image: linear-gradient(to right, transparent, #000 90px);
+}
+/* The seam: a strip that blurs the photograph's edge, so the glass side
+   melts into the photo instead of ending on a line. */
+.st-key-hero::after {
+    left: 42%;
+    width: 120px;
+    backdrop-filter: blur(26px);
+    -webkit-backdrop-filter: blur(26px);
+    -webkit-mask-image: linear-gradient(to right, #000, #000 30%, transparent);
+    mask-image: linear-gradient(to right, #000, #000 30%, transparent);
+}
+
+/* --- feature cards over the photograph ---------------------------------- */
+
+.signin-showcase {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 42%;
+    right: 0;
+    box-sizing: border-box;
+    padding: 32px 48px 32px 110px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 22px;
+    align-content: center;
+    pointer-events: none;
+}
+/* Thick emerald separator between the login and the photograph. */
+.signin-showcase::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 10px;
+    background: linear-gradient(180deg, var(--emerald), var(--emerald-text));
+    box-shadow: 0 0 18px rgba(0, 166, 105, 0.45);
+}
+/* The sidebar's glass, with a lit green edge. */
+.feature-card {
+    padding: 22px 22px 20px;
+    color: #FFFFFF;
+    background: rgba(255, 255, 255, 0.16);
+    border: 1px solid rgba(52, 232, 160, 0.75);
+    border-radius: 20px;
+    backdrop-filter: blur(18px) saturate(160%);
+    -webkit-backdrop-filter: blur(18px) saturate(160%);
+    box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.5),
+        inset 0 0 18px rgba(52, 232, 160, 0.18),
+        0 0 22px rgba(0, 197, 136, 0.45);
+}
+.feature-card svg {
+    display: block;
+    margin-bottom: 12px;
+    color: #6EF0B8;
+    filter: drop-shadow(0 0 6px rgba(52, 232, 160, 0.7));
+}
+.feature-card h3 {
+    margin: 0 0 6px;
+    font-size: 17px;
+    font-weight: 700;
+    line-height: 1.25;
+    color: #FFFFFF;
+    text-shadow: 0 1px 6px rgba(0, 0, 0, 0.35);
+}
+.feature-card p {
+    margin: 0;
+    font-size: 14.5px;
+    line-height: 1.5;
+    color: rgba(255, 255, 255, 0.92);
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+}
+
+/* --- the glass card ----------------------------------------------------- */
+
+.st-key-signin_card {
+    width: 100%;
+    max-width: 440px;
+    margin: 0 auto;
+    padding: 36px 36px 32px;
+    background: rgba(255, 255, 255, 0.78);
+    border: 1px solid rgba(255, 255, 255, 0.85);
+    border-radius: 24px;
+    backdrop-filter: blur(20px) saturate(150%);
+    -webkit-backdrop-filter: blur(20px) saturate(150%);
+    box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.9),
+        0 20px 50px rgba(15, 23, 42, 0.14);
+    animation: card-in 300ms ease-out both;
+}
+@keyframes card-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: none; }
+}
+
+/* Streamlit sets its own family from the theme, so assert one over the card. */
+.st-key-signin_card,
+.st-key-signin_card * {
+    font-family: var(--font) !important;
+}
+/* Except icon glyphs: the show/hide control is a ligature and would print its name. */
+.st-key-signin_card [data-testid="stIconMaterial"] {
+    font-family: "Material Symbols Rounded" !important;
+}
+
+.signin-logo {
+    width: 190px;
+    max-width: 70%;
+    aspect-ratio: 435 / 329;
+    margin: 0 auto 14px;
+    background: var(--brand-logo) center / contain no-repeat;
+}
+.signin-title {
+    margin: 0 0 6px;
+    text-align: center;
+    font-size: 26px;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+    color: var(--ink);
+}
+.signin-subtitle {
+    margin: 0 0 22px;
+    text-align: center;
+    font-size: 15px;
+    line-height: 1.5;
+    color: var(--slate);
+}
+
+/* --- fields ------------------------------------------------------------- */
+
+.st-key-signin_card [data-testid="stForm"] {
+    border: none;
+    padding: 0;
+}
+.st-key-field_email,
+.st-key-field_password {
+    gap: 0 !important;
+}
+.st-key-signin_card .stTextInput { margin-bottom: 10px; }
+.st-key-signin_card .stTextInput label { margin-bottom: 8px; }
+.st-key-signin_card .stTextInput label p {
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.5;
+    color: var(--ink);
+    text-transform: none;
+    letter-spacing: 0;
+}
+.st-key-signin_card [data-testid="stTextInputRootElement"] {
+    height: 48px;
+    background: rgba(255, 255, 255, 0.7);
+    border: 1px solid var(--field-line);
+    border-radius: 12px;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.st-key-signin_card [data-testid="stTextInputRootElement"]:hover {
+    border-color: var(--emerald-deep);
+}
+.st-key-signin_card [data-testid="stTextInputRootElement"]:focus-within {
+    border-color: var(--emerald);
+    box-shadow: 0 0 0 3px rgba(0, 166, 105, 0.25);
+}
+.st-key-signin_card [data-testid="stTextInputRootElement"] input {
+    height: 46px;
+    padding: 0 14px;
+    font-size: 16px;
+    color: var(--ink);
+    caret-color: var(--emerald-text);
+}
+.st-key-signin_card [data-testid="stTextInputRootElement"] input::placeholder {
+    color: #8A99A8;
+}
+.st-key-signin_card [data-testid="stTextInputRootElement"] button {
+    color: var(--slate);
+    background: transparent;
+}
+.st-key-signin_card [data-testid="InputInstructions"] { display: none; }
+
+/* --- remember / forgot -------------------------------------------------- */
+
+.st-key-signin_row {
+    align-items: center;
+    margin: 4px 0 10px;
+}
+.st-key-signin_row label p {
+    font-size: 15px;
+    color: var(--slate);
+}
+.signin-forgot {
+    display: block;
+    text-align: right;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--emerald-text) !important;
+    text-decoration: none;
+}
+.signin-forgot:hover { text-decoration: underline; }
+
+/* --- the glossy CTA ----------------------------------------------------- */
+
+/* Streamlit shrink-wraps the container a button sits in. */
+.st-key-signin_card [data-testid="stElementContainer"]:has(
+    [data-testid="stFormSubmitButton"]
+) {
+    width: 100% !important;
+}
+.st-key-signin_card [data-testid="stFormSubmitButton"] {
+    margin-top: 6px;
+    width: 100% !important;
+    display: block !important;
+}
+.st-key-signin_card [data-testid="stFormSubmitButton"] button {
+    position: relative;
+    overflow: hidden;
+    width: 100% !important;
+    height: 50px;
+    background: linear-gradient(180deg, var(--emerald) 0%, var(--emerald-deep) 100%);
+    border: 1px solid #048A5B;
+    border-radius: 12px;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45),
+        0 8px 18px -6px rgba(5, 150, 105, 0.6);
+    transition: filter 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+}
+/* The specular highlight: a soft white sheen over the top half. */
+.st-key-signin_card [data-testid="stFormSubmitButton"] button::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 50% 0;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.32), rgba(255, 255, 255, 0));
+    pointer-events: none;
+}
+/* Streamlit colours the label's inner <p>, which beats the button's own colour. */
+.st-key-signin_card [data-testid="stFormSubmitButton"] button p,
+.st-key-signin_card [data-testid="stFormSubmitButton"] button:hover p,
+.st-key-signin_card [data-testid="stFormSubmitButton"] button:disabled p {
+    position: relative;
+    color: #FFFFFF !important;
+    font-size: 16px;
+    font-weight: 700;
+}
+.st-key-signin_card [data-testid="stFormSubmitButton"] button:hover {
+    filter: brightness(1.06);
+    transform: translateY(-1px);
+}
+.st-key-signin_card [data-testid="stFormSubmitButton"] button:active {
+    transform: none;
+}
+.st-key-signin_card [data-testid="stFormSubmitButton"] button:disabled {
+    opacity: 0.7;
+    cursor: default;
+    filter: none;
+    transform: none;
+}
+
+body:has(.st-key-signin_card) :focus-visible {
+    outline: 2px solid var(--emerald-text);
+    outline-offset: 2px;
+    border-radius: 12px;
+}
+
+/* --- the one failure line ----------------------------------------------- */
+
+.signin-error {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin: 2px 0 12px;
+    padding: 10px 12px;
+    background: var(--alert-wash);
+    border-radius: 10px;
+    font-size: 15px;
+    line-height: 1.45;
+    color: var(--alert-ink);
+}
+.signin-error svg {
+    flex: 0 0 14px;
+    margin-top: 3px;
+}
+/* The field at fault, named by the message's own data-field. */
+.st-key-signin_card:has(.signin-error[data-field="email"]) .st-key-field_email
+    [data-testid="stTextInputRootElement"],
+.st-key-signin_card:has(.signin-error[data-field="password"]) .st-key-field_password
+    [data-testid="stTextInputRootElement"],
+.st-key-signin_card:has(.signin-error[data-field="both"]) .st-key-field_email
+    [data-testid="stTextInputRootElement"],
+.st-key-signin_card:has(.signin-error[data-field="both"]) .st-key-field_password
+    [data-testid="stTextInputRootElement"] {
+    border-color: var(--alert-edge);
+}
+
+/* Streamlit's own alert, if one is ever raised inside the card. */
+.st-key-signin_card [data-testid="stAlertContainer"] {
+    margin-top: 12px;
+    padding: 10px 12px;
+    background: var(--alert-wash);
+    border: 1px solid var(--alert-edge);
+    border-radius: 10px;
+    color: var(--ink);
+    font-size: 15px;
+    box-shadow: none;
+}
+
+/* --- small screens ------------------------------------------------------ */
+
+/* The page fits one screen, so there is no scroll to expose the edge. */
+@media (min-height: 700px) {
+    body:has(.st-key-signin_card) [data-testid="stMain"] { overflow: hidden; }
+}
+@media (max-width: 1150px) {
+    .signin-showcase { grid-template-columns: 1fr; gap: 12px; padding-left: 90px; }
+    .feature-card p { display: none; }
+}
+
+/* Narrow: no room for two halves, so the card sits on the gradient alone. */
+@media (max-width: 900px) {
+    .st-key-hero { padding-right: 16px; }
+    .st-key-hero::before,
+    .st-key-hero::after,
+    .signin-showcase { display: none; }
+}
+@media (max-height: 760px) {
+    .signin-logo { width: 150px; margin-bottom: 8px; }
+    .st-key-signin_card { padding: 26px 32px 24px; }
+}
+@media (max-width: 640px) {
+    .st-key-signin_card { padding: 28px 22px 24px; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .st-key-signin_card { animation: none; }
+}

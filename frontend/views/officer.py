@@ -29,13 +29,11 @@ import streamlit as st
 import api
 import review
 from components import BAND_ICONS
-from ui import loana, thread
+from ui import loana, nav, thread
 from ui.components import card_head, quote, reason_line, show
 from views.cardholder import ACTIONABLE, history_card
 
 ACTIONS = review.ACTIONS
-# Customers named in the landing alert; the full cards below list the rest.
-INBOX_SHORTCUTS = 4
 # Badges past these read as "99+" / "9+", so a backlog cannot break the layout.
 BADGE_CAP = 99
 UNREAD_CAP = 9
@@ -48,6 +46,7 @@ MAX_PREDICT = 10
 CERTAINTY_CAP = 0.99
 
 CUSTOMER_KEY = "officer_customer_id"
+CONVERSATION_KEY = "officer_conversation_id"
 TRIAGE_CHAT_KEY = "officer_triage_chat"
 TRIAGE_INPUT_KEY = "officer_triage_ask"
 TRIAGE_PANEL_KEY = "officer_triage"
@@ -113,15 +112,59 @@ def render(
     """`header` draws the page bar: full width on the landing, in the main column after."""
     _keep_widget_state()
 
-    customer_id = st.session_state.get(CUSTOMER_KEY)
-    if not customer_id:
-        header()
-        _landing(officer_email)
-        return
-
     header()
-    _record_page(customer_id, officer_email, token)
-    loana.dock(lambda: _assistant(customer_id))
+    customer_id = st.session_state.get(CUSTOMER_KEY)
+    view = nav.current()
+    if view == nav.CUSTOMER and customer_id:
+        _record_page(customer_id, officer_email, token)
+        loana.dock(lambda: _assistant(customer_id))
+    elif view == nav.CONVERSATION and st.session_state.get(CONVERSATION_KEY):
+        conversation_id = st.session_state[CONVERSATION_KEY]
+        _record_page(conversation_id, officer_email, token)
+        loana.dock(lambda: _assistant(conversation_id))
+    elif view == nav.CHAT:
+        _messages(_all_requests())
+    else:
+        _landing(officer_email)
+
+
+def close_customer() -> None:
+    """Drop the opened customer from the drawer; leave their page if it is showing."""
+    if nav.current() == nav.CUSTOMER:
+        st.session_state[nav.VIEW_KEY] = nav.DASHBOARD
+    st.session_state[CUSTOMER_KEY] = None
+
+
+def close_conversation() -> None:
+    """Drop the opened conversation from the drawer; back to Messages if it is showing."""
+    if nav.current() == nav.CONVERSATION:
+        st.session_state[nav.VIEW_KEY] = nav.CHAT
+    st.session_state[CONVERSATION_KEY] = None
+
+
+def conversation_label() -> str | None:
+    """The opened conversation's customer name for the drawer, or None."""
+    return _name_of(st.session_state.get(CONVERSATION_KEY))
+
+
+def waiting_count() -> int:
+    """Customers waiting for a reply: the red bubble beside Messages in the drawer."""
+    return len(review.conversations(_all_requests()))
+
+
+def customer_label() -> str | None:
+    """The opened customer's name for the drawer, or None when nobody is open."""
+    return _name_of(st.session_state.get(CUSTOMER_KEY))
+
+
+def _name_of(customer_id: str | None) -> str | None:
+    if not customer_id:
+        return None
+    try:
+        detail = api.customer_detail(customer_id)
+    except api.ServiceUnavailable:
+        return "Customer"
+    return detail.get("full_name") or f"Customer {detail['account_number']}"
 
 
 def _keep_widget_state() -> None:
@@ -142,17 +185,14 @@ def _select(customer_id: str | None) -> None:
         return
     st.session_state[CUSTOMER_KEY] = customer_id
     st.session_state.pop(NOTICE_KEY, None)
+    if customer_id:
+        nav.go(nav.CUSTOMER)
 
 
-def back_button() -> None:
-    """The way out of a customer page; app.py pins it into the header bar."""
-    if st.session_state.get(CUSTOMER_KEY):
-        st.button("Back to worklist", key="officer_close", on_click=_close_profile)
-
-
-def _close_profile() -> None:
-    _select(None)
-    st.session_state[LOOKUP_KEY] = ""
+def _open_conversation(customer_id: str) -> None:
+    st.session_state[CONVERSATION_KEY] = customer_id
+    st.session_state.pop(NOTICE_KEY, None)
+    nav.go(nav.CONVERSATION)
 
 
 # --- review requests ------------------------------------------------------
@@ -164,32 +204,6 @@ def _all_requests() -> list[dict]:
         return api.review_requests()
     except api.ServiceUnavailable:
         return []
-
-
-def _inbox_alert(requests: list[dict]) -> None:
-    """Top of the landing page: who is waiting for a reply, one click from their thread."""
-    waiting = review.conversations(requests)
-    if not waiting:
-        show('<div class="inbox-alert inbox-alert--clear">✓ No customers are waiting '
-             "for a reply.</div>")
-        return
-
-    unread = sum(item["unread"] for item in waiting)
-    people = "customer is" if len(waiting) == 1 else "customers are"
-    show(
-        f'<div class="inbox-alert"><span class="inbox-badge">'
-        f"{review.capped(len(waiting), BADGE_CAP)}</span>"
-        f"<div><b>🔔 {len(waiting):,} {people} waiting for a reply</b> · {unread:,} unread "
-        f"message{'' if unread == 1 else 's'}. Recording a decision answers them and "
-        "closes the conversation.</div></div>"
-    )
-    for column, item in zip(st.columns(INBOX_SHORTCUTS), waiting[:INBOX_SHORTCUTS]):
-        name = item.get("full_name") or f"Customer {item['account_number']}"
-        column.button(
-            f"🔔 {name} ({review.capped(item['unread'], UNREAD_CAP)})",
-            key=f"inbox_{item['customer_id']}",
-            on_click=_select, args=(item["customer_id"],), width="stretch",
-        )
 
 
 def _requests(requests: list[dict]) -> None:
@@ -226,7 +240,7 @@ def _band(customer_id: str) -> str | None:
 def _request_card(item: dict, band: str | None, now: datetime) -> None:
     card = review.card_data({**item, "reason": item["latest"]}, band, now)
     unread = item["unread"]
-    with st.container(border=True):
+    with st.container(border=True, key=f"request_card_{item['request_id']}"):
         show(card_head(
             card["name"],
             f"Account {card['account']} · waiting {card['waiting']} · "
@@ -240,7 +254,7 @@ def _request_card(item: dict, band: str | None, now: datetime) -> None:
                 show(quote(card["full_note"]))
         st.button(
             "Open conversation", key=f"review_{item['request_id']}",
-            on_click=_select, args=(item["customer_id"],),
+            on_click=_open_conversation, args=(item["customer_id"],),
         )
 
 
@@ -252,7 +266,6 @@ def _landing(officer_email: str) -> None:
     # Search and worklist share the wide column and Loana sticks beside it, so the
     # table headers and her input are on screen at load. Review requests follow.
     requests = _all_requests()
-    _inbox_alert(requests)
 
     worklist, assistant = st.columns([7, 3], gap="large")
     with worklist:
@@ -266,7 +279,10 @@ def _landing(officer_email: str) -> None:
     with assistant, st.container(border=True, key=TRIAGE_PANEL_KEY):
         _triage()
 
-    st.divider()
+
+
+def _messages(requests: list[dict]) -> None:
+    """Messages view: every conversation waiting on the officer."""
     _requests(requests)
 
 
