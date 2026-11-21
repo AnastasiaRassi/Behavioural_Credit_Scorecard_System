@@ -4,7 +4,12 @@ The suite runs against a local Postgres when one is there and skips when it is
 not, so a machine without a database still runs everything else. A database on
 the pre-separation schema is skipped the same way, with the command that fixes it.
 """
-import pytest
+import os
+
+# Before any app import: routes this run's logs to logs/test/, away from the live app's.
+os.environ["APP_ENV"] = "test"
+
+import pytest  # noqa: E402
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
 from sqlalchemy.exc import OperationalError
