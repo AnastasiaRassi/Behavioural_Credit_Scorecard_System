@@ -29,13 +29,15 @@ from app.ml import artifacts, worklist
 logger = logging.getLogger(__name__)
 
 # Recorded with every reply; bump whenever SYSTEM_PROMPT changes.
-PROMPT_VERSION = "v4-officer"
+PROMPT_VERSION = "v5-officer"
 
 SYSTEM_PROMPT = """You are Loana AI, an assistant in CrediTrait, a credit card prototype. You help a loan officer understand one existing customer's account.
 Everything you know is in FACTS below. It comes from a risk model that estimates whether the customer's next payment will be missed, and from a search for the smallest change this month that would improve the rating.
 
+FACTS describe one customer, named under "customer" with their account number. If asked who this is, give that name and account number.
+
 Rules:
-1. Tone: calm, objective and concise. Refer to "the customer", never "applicant".
+1. Tone: calm, objective and concise. Refer to "the customer", never "applicant" (the name only when asked who they are).
 2. Use only the FACTS. Quote amounts exactly as written there. Never invent or estimate a number, percentage, amount, date or scenario.
 3. Changes: only the steps listed under one_month_counterfactual.steps. If the steps list is empty, say plainly that no single-month action clears this risk band.
 4. The rating is a band. FACTS do not include a probability; if asked for one, say the officer can read it in the prediction panel.
@@ -53,6 +55,7 @@ def answer(
     stored_prediction=None,
     record: Mapping[str, float] | None = None,
     on_turn: Callable[[TurnRecord], None] | None = None,
+    identity: Mapping[str, str] | None = None,
 ) -> ChatReply:
     """The assistant's next turn for one customer. Always returns a reply.
 
@@ -61,6 +64,9 @@ def answer(
     view = worklist.cardholder_view(row, stored_prediction=stored_prediction, record=record)
     payload = build_payload(view["risk_band"], view["reasons"], record)
     sheet = fact_sheet(view, row.get("history") or [], payload)
+    if identity:
+        # So the officer can confirm who the assistant is talking about.
+        sheet["customer"] = dict(identity)
     segment = row.get("segment")
     if segment:
         sheet["behavioural_segment"] = {

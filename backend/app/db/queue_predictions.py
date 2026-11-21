@@ -102,6 +102,18 @@ def latest_by_customer(
     return latest
 
 
+def latest_band_by_account(session: Session) -> dict[str, str]:
+    """The band of each account's newest stored prediction, for accounts that have one."""
+    latest: dict[str, str] = {}
+    for account_number, band in session.execute(
+        select(Customer.account_number, Prediction.risk_band)
+        .join(Prediction, Prediction.subject_customer_id == Customer.id)
+        .order_by(Prediction.created_at.desc())
+    ):
+        latest.setdefault(account_number, band)
+    return latest
+
+
 def scored_account_numbers(session: Session) -> set[str]:
     """Account numbers with at least one stored prediction."""
     return set(

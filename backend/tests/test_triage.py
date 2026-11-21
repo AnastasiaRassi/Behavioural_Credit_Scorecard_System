@@ -128,6 +128,50 @@ def test_an_off_topic_request_gets_no_cohort(monkeypatch):
     assert (turn.source, turn.filter) == ("model", None)
 
 
+def test_scored_band_keeps_only_that_latest_band(rows):
+    first, second = rows[0]["account_number"], rows[1]["account_number"]
+    bands = {first: "Low", second: "High"}
+    chosen = worklist.select_cohort(rows, {"scored_band": "Low"}, set(bands), bands)
+    assert [r["account_number"] for r in chosen] == [first]
+    assert "a Low risk score from an officer" in worklist.describe_cohort({"scored_band": "Low"})
+
+
+def test_low_risk_becomes_a_band_filter(monkeypatch):
+    sent = {"filter": {"scored_band": "Low"}}
+    monkeypatch.setattr(llm_client, "chat", lambda m: _llm(json.dumps(sent)))
+    turn = triage_assistant.interpret(_ask("show me low risk users"))
+    assert turn.filter.scored_band == "Low"
+    assert turn.llm_model == "test-model" and turn.latency_ms == 5
+
+
+# --- the briefing -------------------------------------------------------------
+
+
+def test_the_briefing_counts_each_quick_cohort(rows):
+    cohorts, lead = worklist.briefing(rows, set())
+    for cohort, (label, criteria) in zip(cohorts, worklist.QUICK_COHORTS):
+        assert cohort["label"] == label
+        assert cohort["total"] == len(worklist.select_cohort(rows, criteria, set()))
+    if lead:
+        worse = worklist.select_cohort(rows, worklist.QUICK_COHORTS[0][1], set())
+        assert lead["current_balance"] == max(r["current_balance"] for r in worse)
+
+
+def test_the_briefing_text_is_written_from_the_counts():
+    cohorts = [{"total": 14}, {"total": 0}, {"total": 40}]
+    lead = {"full_name": "Hiro Williams", "account_number": "20164",
+            "months_in_arrears": 4, "current_balance": 20235.0}
+    text = worklist.describe_briefing(cohorts, lead)
+    assert "**14** getting worse" in text and "**40** using 90%+" in text
+    assert "no payment" not in text
+    assert "**Hiro Williams** (account 20164)" in text and "20,235" in text
+
+
+def test_an_empty_briefing_says_nothing_is_waiting():
+    text = worklist.describe_briefing([{"total": 0}] * 3, None)
+    assert text.startswith("Nothing is waiting")
+
+
 # --- the API ------------------------------------------------------------------
 
 
@@ -145,6 +189,68 @@ def test_the_cohort_endpoint_respects_the_limit(client):
     assert len(body["rows"]) <= 5 <= body["total"]
     assert all(r["months_in_arrears"] >= 2 for r in body["rows"])
     assert all("probability" not in r for r in body["rows"])
+
+
+def test_the_briefing_endpoint_names_a_lead_with_a_customer_id(client):
+    body = _cohort_or_skip(client.get("/officer/briefing"))
+    assert len(body["cohorts"]) == len(worklist.QUICK_COHORTS)
+    if body["lead"]:
+        assert body["lead"]["customer_id"] and body["lead"]["full_name"] in body["text"]
+    assert "probability" not in str(body)
+
+
+def test_triage_turns_are_logged_with_the_officer(client, api_session, monkeypatch):
+    from app.db.models import TriageTurn, User
+
+    sent = {"filter": {"min_months_in_arrears": 2, "limit": 3}}
+    monkeypatch.setattr(llm_client, "chat", lambda m: _llm(json.dumps(sent)))
+    officer = api_session.query(User).filter_by(email=OFFICER_EMAIL).one_or_none()
+    if officer is None:
+        pytest.skip("officer not seeded; run: python -m app.db.seed")
+
+    body = _cohort_or_skip(client.post(
+        "/officer/triage", json={"messages": _ask("2+ months behind"), "asked_by": OFFICER_EMAIL}
+    ))
+
+    logged = api_session.query(TriageTurn).order_by(TriageTurn.created_at.desc()).first()
+    assert logged.user_message == "2+ months behind"
+    assert logged.officer_id == officer.id
+    assert logged.filter["min_months_in_arrears"] == 2
+    assert logged.matched == body["cohort"]["total"]
+    assert (logged.source, logged.llm_model) == ("model", "test-model")
+
+
+def test_a_failed_triage_turn_is_logged_with_the_discarded_text(client, api_session, monkeypatch):
+    from app.db.models import TriageTurn
+
+    monkeypatch.setattr(llm_client, "chat", lambda m: _llm("not json at all"))
+    response = client.post("/officer/triage", json={"messages": _ask("anything")})
+    if response.status_code == 503:
+        pytest.skip("database not available")
+
+    logged = api_session.query(TriageTurn).order_by(TriageTurn.created_at.desc()).first()
+    assert logged.source == "template" and logged.fallback_reason == "triage_not_json"
+    assert logged.rejected_reply == "not json at all" and logged.officer_id is None
+
+
+def test_the_briefing_is_built_once_a_day_and_rebuilt_when_stale(client, api_session):
+    from datetime import date, timedelta
+
+    from app.db.models import DailyBriefing
+
+    first = _cohort_or_skip(client.get("/officer/briefing"))
+    stored = api_session.get(DailyBriefing, date.today())
+    assert stored is not None and stored.payload["text"] == first["text"]
+
+    # Today's copy is served as stored, even if the counts have since moved.
+    stored.payload = {**stored.payload, "text": "stored copy"}
+    api_session.flush()
+    assert client.get("/officer/briefing").json()["text"] == "stored copy"
+
+    # A copy from yesterday is stale: today's request builds a new one.
+    stored.day = date.today() - timedelta(days=1)
+    api_session.flush()
+    assert client.get("/officer/briefing").json()["text"] != "stored copy"
 
 
 def test_the_cohort_endpoint_rejects_unknown_fields(client):

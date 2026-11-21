@@ -9,6 +9,7 @@ database once an officer predicts or decides on it.
 """
 import uuid
 from dataclasses import asdict
+from datetime import date
 
 from app.ai import officer_assistant, triage_assistant
 from app.api.cardholders import account_for
@@ -24,12 +25,13 @@ from app.api.dependencies import (
 )
 from app.db.exceptions import CustomerNotIngested
 from app.db import chat_log, customer_registry, queue_predictions, reviews
-from app.db.models import Customer, Decision, User
+from app.db.models import Customer, DailyBriefing, Decision, User
 from app.ml import artifacts, worklist
 from app.schemas.decisions import DecisionCreate, DecisionOut
 from app.schemas.reviews import ReviewRequestOut, ThreadEntry
 from app.schemas.scoring import ScoreResponse
 from app.schemas.worklist import (
+    Briefing,
     BulkPredictRequest,
     ChatReply,
     ChatRequest,
@@ -43,6 +45,7 @@ from app.schemas.worklist import (
 )
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy import case
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 router = APIRouter(prefix="/officer", tags=["officer"])
@@ -301,9 +304,8 @@ def predict_selected(request: BulkPredictRequest, session: Session = Depends(get
 def _cohort(session: Session, criteria: TriageFilter) -> CohortPage:
     """The customers a filter selects, with their latest officer-run score if any."""
     dumped = criteria.model_dump()
-    matching = worklist.select_cohort(
-        worklist.all_rows(), dumped, queue_predictions.scored_account_numbers(session)
-    )
+    bands = queue_predictions.latest_band_by_account(session)
+    matching = worklist.select_cohort(worklist.all_rows(), dumped, set(bands), bands)
     page = _with_customer_ids(session, matching[: criteria.limit])
     latest = queue_predictions.latest_by_customer(
         session, [uuid.UUID(row["customer_id"]) for row in page]
@@ -323,6 +325,39 @@ def _cohort(session: Session, criteria: TriageFilter) -> CohortPage:
     )
 
 
+@router.get("/briefing", response_model=Briefing)
+def read_briefing(session: Session = Depends(get_session)):
+    """What Loana opens the landing with: each quick cohort's size and who to start with.
+
+    Built once per day and stored; a copy from an earlier day is stale and rebuilt.
+    """
+    today = date.today()
+    stored = session.get(DailyBriefing, today)
+    if stored is not None:
+        return Briefing.model_validate(stored.payload)
+
+    briefing = _build_briefing(session)
+    try:
+        # A savepoint: two first visits of the day can race, and the loser keeps
+        # its own freshly built copy rather than failing the page.
+        with session.begin_nested():
+            session.add(DailyBriefing(day=today, payload=briefing.model_dump(mode="json")))
+    except IntegrityError:
+        pass
+    return briefing
+
+
+def _build_briefing(session: Session) -> Briefing:
+    cohorts, lead = worklist.briefing(
+        worklist.all_rows(), queue_predictions.scored_account_numbers(session)
+    )
+    if lead:
+        lead = _with_customer_ids(session, [lead])[0]
+    return Briefing(
+        text=worklist.describe_briefing(cohorts, lead), cohorts=cohorts, lead=lead
+    )
+
+
 @router.post("/cohort", response_model=CohortPage)
 def read_cohort(criteria: TriageFilter, session: Session = Depends(get_session)):
     """A cohort from an explicit filter: the quick cohorts, or a filter Loana proposed."""
@@ -335,13 +370,29 @@ def read_cohort(criteria: TriageFilter, session: Session = Depends(get_session))
 def triage(request: TriageRequest, session: Session = Depends(get_session)):
     """Loana's triage turn: the officer's request becomes a filter, then a cohort.
 
-    Not written to the chat log yet: chat_turn rows belong to one customer, and a
-    triage request is about none.
+    Logged to `triage_turn`, not `chat_turn`: a triage request is about no customer.
     """
     if request.messages[-1].role != "user":
         raise InvalidRequest("messages must end with the officer's request")
+    officer = user_by_email(session, request.asked_by, "officer") if request.asked_by else None
 
     turn = triage_assistant.interpret([m.model_dump() for m in request.messages])
+    cohort = _cohort(session, turn.filter) if turn.filter else None
+    chat_log.record_triage(session, {
+        "officer_id": officer.id if officer else None,
+        "user_message": request.messages[-1].content,
+        "reply": turn.reply,
+        "filter": turn.filter.model_dump(exclude_none=True) if turn.filter else None,
+        "matched": cohort.total if cohort else None,
+        "source": turn.source,
+        "fallback_reason": turn.failure,
+        "rejected_reply": turn.rejected_reply,
+        "llm_model": turn.llm_model,
+        "prompt_version": triage_assistant.PROMPT_VERSION,
+        "latency_ms": turn.latency_ms,
+        "prompt_tokens": turn.prompt_tokens,
+        "completion_tokens": turn.completion_tokens,
+    })
     audit.event(
         "triage",
         turns=len(request.messages),
@@ -353,7 +404,7 @@ def triage(request: TriageRequest, session: Session = Depends(get_session)):
         source=turn.source,
         note=turn.note,
         filter=turn.filter,
-        cohort=_cohort(session, turn.filter) if turn.filter else None,
+        cohort=cohort,
     )
 
 
@@ -454,11 +505,16 @@ def chat_about_customer(
         raise InvalidRequest("messages must end with the officer's question")
 
     row, stored, record = account_for(customer_id, session)
+    customer, _ = queued_account(session, customer_id)
     audit.event("officer_chat", customer=customer_id, turns=len(request.messages))
     return officer_assistant.answer(
         row,
         [message.model_dump() for message in request.messages],
         stored_prediction=stored,
         record=record,
+        identity={
+            "name": customer.user.display_name,
+            "account_number": customer.account_number,
+        },
         on_turn=lambda turn: chat_log.record(session, asdict(turn)),
     ).to_dict()

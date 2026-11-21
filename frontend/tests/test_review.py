@@ -176,3 +176,18 @@ def test_capped_counts_stop_at_the_cap():
     assert review.capped(5, 99) == "5"
     assert review.capped(99, 99) == "99"
     assert review.capped(5000, 99) == "99+"
+
+
+def _entry(kind, status=None) -> dict:
+    return {"kind": kind, "status": status}
+
+
+@pytest.mark.parametrize("entries, stage", [
+    ([], None),
+    ([_entry("message", "pending")], 1),
+    ([_entry("message", "in_review")], 2),
+    ([_entry("message", "resolved"), _entry("decision")], 3),
+    ([_entry("message", "resolved"), _entry("decision"), _entry("message", "pending")], 1),
+])
+def test_case_stage_follows_the_newest_request(entries, stage):
+    assert review.case_stage(entries) == stage

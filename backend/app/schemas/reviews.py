@@ -35,5 +35,13 @@ class ThreadEntry(BaseModel):
     body: str
     # Decisions only.
     action: str | None = None
-    # Messages only: pending, in_review or resolved.
+    # Decisions only: the risk level the officer set, if they set one.
+    band: str | None = None
+    # Messages only: pending, in_review, resolved or rejected.
     status: str | None = None
+
+
+class ReviewAction(BaseModel):
+    """Who is accepting or declining a customer's open requests."""
+
+    decided_by: str = Field(max_length=255, description="Email of the officer")

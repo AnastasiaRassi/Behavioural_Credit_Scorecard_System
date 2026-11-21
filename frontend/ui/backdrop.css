@@ -31,7 +31,7 @@
     box-shadow: inset 0 1px 1px rgba(255, 255, 255, .9), 0 10px 28px rgba(15, 23, 42, .1);
 }
 
-/* Messages: the same glass, down to the bubbles. */
+/* Review requests: the same glass, down to the entries. */
 .st-key-chat_messages { background: transparent; }
 .chat-head, .st-key-chat_composer {
     background: rgba(255, 255, 255, .35); border-color: rgba(255, 255, 255, .7);
@@ -39,21 +39,51 @@
 .st-key-chat_composer [data-baseweb="textarea"], .st-key-chat_composer textarea {
     background: rgba(255, 255, 255, .7);
 }
-.st-key-chat_card .thread-card {
+.st-key-chat_card .case-entry, .st-key-chat_card .case-step {
     border: 1px solid rgba(255, 255, 255, .85);
     backdrop-filter: blur(12px) saturate(150%); -webkit-backdrop-filter: blur(12px) saturate(150%);
     box-shadow: inset 0 1px 1px rgba(255, 255, 255, .9), 0 6px 16px rgba(15, 23, 42, .08);
 }
-.st-key-chat_card .thread-row--mine .thread-card {
-    background: rgba(209, 250, 229, .6); border-radius: 20px 20px 6px 20px;
+.st-key-chat_card .case-entry--request { background: rgba(255, 255, 255, .7); }
+.st-key-chat_card .case-entry--open { background: rgba(255, 251, 235, .8); border-color: #FDE68A; }
+.st-key-chat_card .case-entry--decision {
+    background: rgba(240, 253, 244, .85); border-left: 5px solid #008F63;
 }
-.st-key-chat_card .thread-row--theirs .thread-card {
-    background: rgba(255, 255, 255, .7); border-radius: 20px 20px 20px 6px;
-}
-.st-key-chat_card .thread-row--theirs .thread-card--decision { border-left: 4px solid #00A669; }
+.st-key-chat_card .case-step { background: rgba(255, 255, 255, .6); }
+.st-key-chat_card .case-step--current { background: rgba(236, 253, 245, .9); border-color: #6EE7B7; }
 .st-key-chat_chips button { background: rgba(255, 255, 255, .6); border-color: rgba(255, 255, 255, .85); }
 .st-key-chat_chips button:hover { background: rgba(255, 255, 255, .9); border-color: #00A669; }
 .chat-closed { background: rgba(255, 255, 255, .6); border-color: rgba(255, 255, 255, .85); }
+
+/* Review queue cards: the dashboard box (rule above) with an emerald top rule, set out
+   like a case file. The wrapper is the visible box; the keyed block inside holds content. */
+[data-testid="stVerticalBlockBorderWrapper"]:has([class*="st-key-request_card_"]) {
+    border-top: 4px solid #00A669; border-radius: 12px;
+}
+[class*="st-key-request_card_"] { padding: 0.6rem 0.75rem 0.7rem; }
+[class*="st-key-request_card_"] .officer-card-title {
+    font-size: 1.1rem; font-weight: 750; color: #0F172A;
+}
+[class*="st-key-request_card_"] .officer-card-meta {
+    font-size: 0.78rem; font-weight: 600; letter-spacing: 0.05em;
+    text-transform: uppercase; color: #475569; margin-top: 0.3rem;
+}
+[class*="st-key-request_card_"] .officer-quote {
+    margin: 0.9rem 0 0.4rem; padding: 0.75rem 1rem; border-radius: 8px;
+    background: rgba(241, 245, 249, .8); border: 1px solid #E2E8F0; border-left: 3px solid #0F172A;
+    color: #1E293B; font-size: 0.98rem; font-style: normal;
+}
+[class*="st-key-request_card_"] .officer-quote::before {
+    content: "Customer message"; display: block; margin-bottom: 0.25rem;
+    font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em;
+    text-transform: uppercase; color: #64748B;
+}
+[class*="st-key-request_card_"] button {
+    background: #0F172A; border: 1px solid #0F172A; border-radius: 8px;
+    padding: 0.35rem 1.2rem; transition: background 0.15s;
+}
+[class*="st-key-request_card_"] button p { color: #FFFFFF; font-weight: 600; }
+[class*="st-key-request_card_"] button:hover { background: #047857; border-color: #047857; }
 
 /* Scrollbars: the dark default strip becomes a thick emerald bar, matching the accent. */
 * { scrollbar-width: auto; scrollbar-color: #00A669 rgba(255, 255, 255, .35); }

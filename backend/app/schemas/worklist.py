@@ -124,6 +124,9 @@ class TriageFilter(BaseModel):
     min_credit_limit: float | None = Field(default=None, ge=0)
     max_credit_limit: float | None = Field(default=None, ge=0)
     not_scored: bool | None = Field(default=None, description="Only customers nobody has predicted yet")
+    scored_band: Literal["Low", "Medium", "High"] | None = Field(
+        default=None, description="Only customers whose latest officer-run prediction is this band"
+    )
     sort_by: Literal[
         "months_in_arrears", "utilisation_now", "current_balance", "months_with_no_payment"
     ] = "months_in_arrears"
@@ -153,10 +156,25 @@ class CohortPage(BaseModel):
     rows: list[CohortRow]
 
 
+class BriefingCohort(BaseModel):
+    label: str
+    filter: TriageFilter
+    total: int = Field(description="Matching customers, unscored")
+
+
+class Briefing(BaseModel):
+    """Loana's opening on the officer landing: counts and a place to start."""
+
+    text: str = Field(description="Written from the counts, never by the LLM")
+    cohorts: list[BriefingCohort]
+    lead: CohortRow | None = Field(default=None, description="Who to open first, if anyone")
+
+
 class TriageRequest(BaseModel):
     """The triage conversation so far, ending with the officer's request."""
 
     messages: list["ChatMessage"] = Field(min_length=1, max_length=40)
+    asked_by: str | None = Field(default=None, description="Email of the officer asking, for the log")
 
 
 class TriageReply(BaseModel):

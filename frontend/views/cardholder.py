@@ -12,7 +12,7 @@ self-fulfilling, and commits the lender to specific reasons the moment it acts.
 Pre-delinquency contact is framed as assistance.
 
 The page stays visual: the figures, the bill-against-payment timeline, and the
-thread with the loan officer (ui/thread.py). Reasons and what would help are
+human review request page (ui/thread.py). Reasons and what would help are
 Loana's to explain, on request, in a floating chat in the corner (ui/loana.py).
 Loana's wording and the repayment history it draws on come from the API.
 """
@@ -50,9 +50,9 @@ TICK = "#475569"  # slate, matching the sidebar's text
 
 # Starters for an empty conversation; clicking one fills the box, it never sends.
 QUICK_PROMPTS = (
-    "I have a question about my latest statement.",
-    "I'd like to talk about a payment plan.",
-    "Something on my account looks wrong.",
+    "I would like my latest statement reviewed.",
+    "I would like to discuss my repayment options.",
+    "I believe there is an error on my account.",
 )
 
 # Fixed questions for the two preset buttons. They go through the same chat endpoint,
@@ -112,7 +112,7 @@ def _dashboard(account: dict) -> None:
 
 
 def _chat_view(token: str, customer_id: str) -> None:
-    """The conversation with the loan officer, as the whole workspace."""
+    """The human review request page, as the whole workspace."""
     stylesheet("chat_page.css")
     nav.back_button()
     _human_review(token, customer_id)
@@ -143,26 +143,21 @@ def _banner(needs_attention: bool, risk_band: str) -> None:
 
 
 def _human_review(token: str, customer_id: str) -> None:
-    """Messages with the loan officer: the shared thread, then a box to write in.
+    """Request a human review: the case record, then a form to submit a request.
 
-    Offered to everyone, flagged or not. A decision closes the conversation;
-    writing again reopens it.
+    Offered to everyone, flagged or not. A decision completes the review;
+    submitting again opens a new one.
     """
     try:
         entries = api.cardholder_thread(customer_id, token)
     except api.ServiceUnavailable:
-        st.caption("Messages are unavailable right now.")
+        st.caption("Review requests are unavailable right now.")
         return
 
     closed = bool(entries) and entries[-1]["kind"] == "decision"
-    badge = (
-        '<span class="chat-status chat-status--closed">Closed</span>' if closed
-        else '<span class="chat-status chat-status--active">Active</span>'
-    )
     with st.container(key="chat_card"):
         show(
-            '<div class="chat-head"><div class="thread-avatar">LO</div>'
-            f"<b>Conversation with Loan Officer</b>{badge}</div>"
+            f'<div class="chat-head"><b>Request a human review</b>{thread.status_chip(entries)}</div>'
         )
         with st.container(key="chat_messages"):
             if entries:
@@ -171,25 +166,25 @@ def _human_review(token: str, customer_id: str) -> None:
                 _empty_state(customer_id)
             if closed:
                 show(
-                    '<div class="chat-closed"><b>This conversation is closed</b>'
-                    "<span>Write below if you would like to reopen it.</span></div>"
+                    '<div class="chat-closed"><b>This review is complete</b>'
+                    "<span>Submit a new request below if you would like another review.</span></div>"
                 )
-            elif entries:
-                st.caption("Sent. Your loan officer will look at your account and reply here.")
 
         with st.container(key="chat_composer"):
-            box, send = st.columns([5, 1], vertical_alignment="bottom")
-            box.text_area(
-                "Your message for the loan officer",
+            st.text_area(
+                "What would you like reviewed?",
                 key=f"review_comment_{customer_id}",
-                placeholder="Write a message to your loan officer...",
+                placeholder="Describe what you would like a loan officer to look at.",
                 max_chars=REVIEW_COMMENT_MAX,
-                label_visibility="collapsed",
                 height=80,
             )
-            send.button(
-                "Send", key=f"review_send_{customer_id}", type="primary",
-                on_click=_send, args=(token, customer_id), width="stretch",
+            st.button(
+                "Submit request", key=f"review_send_{customer_id}", type="primary",
+                on_click=_send, args=(token, customer_id),
+            )
+            st.caption(
+                "A loan officer will review your request and reply on this page. "
+                "No decision is made automatically."
             )
         problem = st.session_state.pop(f"review_problem_{customer_id}", None)
         if problem:
@@ -197,12 +192,13 @@ def _human_review(token: str, customer_id: str) -> None:
 
 
 def _empty_state(customer_id: str) -> None:
-    """Icon, a reassuring note and a few starters, before anything has been sent."""
+    """Icon, what happens next and a few starters, before anything has been submitted."""
     show(
-        '<div class="chat-empty"><div class="chat-empty-icon">&#9993;</div>'
-        "<b>No messages yet</b>"
-        "<span>Anything you write here goes to the loan officer reviewing your account. "
-        "They will reply in this conversation.</span></div>"
+        '<div class="chat-empty"><div class="chat-empty-icon">&#128196;</div>'
+        "<b>No review requests yet</b>"
+        "<span>Ask a loan officer to look again at your account or at a rating. "
+        "Your request goes to the officer reviewing your account, and their decision "
+        "will appear here.</span></div>"
     )
     with st.container(key="chat_chips"):
         for index, prompt in enumerate(QUICK_PROMPTS):
@@ -217,12 +213,12 @@ def _fill(customer_id: str, prompt: str) -> None:
 
 
 def _send(token: str, customer_id: str) -> None:
-    """A callback, so the box can be cleared once the message is sent."""
+    """A callback, so the box can be cleared once the request is submitted."""
     key = f"review_comment_{customer_id}"
     comment = st.session_state.get(key, "").strip()
     if not comment:
         st.session_state[f"review_problem_{customer_id}"] = (
-            "Please write a message so the loan officer knows what to look at."
+            "Please describe what you would like reviewed."
         )
         return
     try:
@@ -347,7 +343,7 @@ def _copilot(token: str, customer_id: str) -> None:
     conversation = st.session_state.setdefault(
         key,
         {
-            "messages": [{"role": "assistant", "content": GREETING, "note": "", "local": True}],
+            "messages": [{"role": "assistant", "content": GREETING, "local": True}],
             "disclaimer": DISCLAIMER,
         },
     )
@@ -368,7 +364,7 @@ def _copilot(token: str, customer_id: str) -> None:
     if not asked:
         return
 
-    conversation["messages"].append({"role": "user", "content": asked, "note": ""})
+    conversation["messages"].append({"role": "user", "content": asked})
     sent = [
         {"role": m["role"], "content": m["content"]}
         for m in conversation["messages"]
@@ -380,12 +376,12 @@ def _copilot(token: str, customer_id: str) -> None:
             try:
                 turn = api.chat(customer_id, token, sent)
                 conversation["disclaimer"] = turn.get("disclaimer") or DISCLAIMER
-                reply = {"role": "assistant", "content": turn["reply"], "note": turn["note"]}
+                # The API's fallback note is for logs and officers; a cardholder is not shown it.
+                reply = {"role": "assistant", "content": turn["reply"]}
             except api.ServiceUnavailable:
                 reply = {
                     "role": "assistant",
                     "content": "I could not reach the service just now. Please try again.",
-                    "note": "",
                 }
     conversation["messages"].append(reply)
     st.rerun()
@@ -395,8 +391,6 @@ def _bubble(message: dict) -> None:
     with st.chat_message(message["role"]):
         # Escaped, or a pair of dollar amounts in one reply renders as a formula.
         st.markdown(message["content"].replace("$", "\$"))
-        if message.get("note"):
-            st.caption(message["note"])
 
 
 def _consent() -> None:

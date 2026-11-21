@@ -1,4 +1,4 @@
-"""Writing and summarising the chat log (`chat_turn`)."""
+"""Writing and summarising the chat log (`chat_turn`), and writing the triage log (`triage_turn`)."""
 import logging
 import uuid
 from typing import Mapping
@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.core.exceptions import AppError
 from app.db.database import translate
 from app.db.exceptions import PersistenceFailed
-from app.db.models import ChatTurn
+from app.db.models import ChatTurn, TriageTurn
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +38,24 @@ def record(session: Session, turn: Mapping) -> None:
         )
     except (SQLAlchemyError, ValueError) as exception:
         log_failure("chat log: could not store the turn; is the chat_turn table created?", exception)
+
+
+def record_triage(session: Session, turn: Mapping) -> None:
+    """Store one triage turn. Never raises, for the same reason as `record`."""
+    try:
+        with session.begin_nested():
+            session.add(TriageTurn(**turn))
+        logger.info(
+            "triage turn: officer=%s source=%s fallback=%s matched=%s model=%s latency_ms=%s",
+            turn.get("officer_id") or "-",
+            turn.get("source"),
+            turn.get("fallback_reason") or "-",
+            turn.get("matched"),
+            turn.get("llm_model"),
+            turn.get("latency_ms"),
+        )
+    except SQLAlchemyError as exception:
+        log_failure("triage log: could not store the turn; is the triage_turn table created?", exception)
 
 
 def log_failure(what: str, exception: Exception) -> None:

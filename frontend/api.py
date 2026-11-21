@@ -305,16 +305,24 @@ def predict_selected(customer_ids: list[str], scored_by: str) -> list[dict]:
     )
 
 
+@st.cache_data(ttl=300, show_spinner=False)
+def briefing() -> dict:
+    """Loana's opening: text, each quick cohort's label, filter and size, and a lead row.
+    The backend stores one per day, so this is a short cache over a daily copy."""
+    return _get("/officer/briefing")
+
+
 def cohort(criteria: dict) -> dict:
     """The customers a triage filter selects: description, total, rows. Not cached:
     a row's latest band changes as soon as anyone predicts."""
     return _request("/officer/cohort", payload=criteria)
 
 
-def triage(messages: list[dict]) -> dict:
+def triage(messages: list[dict], asked_by: str | None = None) -> dict:
     """Loana's triage turn: reply, source, note, filter and the cohort it selects."""
     return _request(
-        "/officer/triage", payload={"messages": messages}, timeout=CHAT_TIMEOUT_SECONDS
+        "/officer/triage", payload={"messages": messages, "asked_by": asked_by},
+        timeout=CHAT_TIMEOUT_SECONDS,
     )
 
 
@@ -377,6 +385,11 @@ def open_review_request(customer_id: str, token: str) -> dict | None:
     return _request(f"/cardholders/{customer_id}/review-request", token=token)
 
 
+def report_issue(token: str, kind: str, details: str) -> dict:
+    """Store a problem or feedback from the signed-in person. Never cached."""
+    return _request("/issue-reports", payload={"kind": kind, "details": details}, token=token)
+
+
 def request_review(customer_id: str, token: str, reason: str) -> dict:
     """Send the loan officer a message; it opens (or reopens) the conversation."""
     sent = _request(
@@ -385,11 +398,6 @@ def request_review(customer_id: str, token: str, reason: str) -> dict:
         token=token,
     )
     review_requests.clear()
-def report_issue(token: str, kind: str, details: str) -> dict:
-    """Store a problem or feedback from the signed-in person. Never cached."""
-    return _request("/issue-reports", payload={"kind": kind, "details": details}, token=token)
-
-
     thread.clear()
     return sent
 

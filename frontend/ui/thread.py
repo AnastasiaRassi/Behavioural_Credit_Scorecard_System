@@ -1,64 +1,73 @@
-"""The account's activity thread, drawn the same way on both screens.
+"""The account's review record, drawn the same way on both screens.
 
-Cardholder messages and officer decisions read like a chat: the viewer's own
-side sits on the right. Bodies are escaped, since they are typed by people.
+A case, not a chat: each request is a full-width entry, and an officer's decision
+is its own block with the outcome, name and date. Bodies are escaped, since they
+are typed by people.
 """
 from html import escape
 
 import review
-from ui.profile import initials
 from ui.components import flatten, show
 
 EMPTY = {
-    "cardholder": "No messages yet. Write to your loan officer below.",
-    "officer": "No messages or decisions on this account yet.",
+    "cardholder": "No requests yet. Submit one below.",
+    "officer": "No requests or decisions on this account yet.",
 }
 
 
 def draw(entries: list[dict], viewer: str) -> None:
-    """`viewer` is "cardholder" or "officer"; it decides which side is "mine"."""
+    """`viewer` is "cardholder" or "officer"; it only changes who a request is "from"."""
     if not entries:
         show(f'<div class="thread-empty">{EMPTY[viewer]}</div>')
         return
 
     cards = [_card(entry, viewer) for entry in entries]
-    show(flatten(f'<div class="thread">{"".join(cards)}</div>'))
+    show(flatten(f'<div class="thread">{stepper(entries)}{"".join(cards)}</div>'))
+
+
+def stepper(entries: list[dict]) -> str:
+    """Submitted → Under review → Decision issued, for the newest request."""
+    stage = review.case_stage(entries)
+    if stage is None:
+        return ""
+    steps = []
+    for number, label in enumerate(review.CASE_STEPS, start=1):
+        state = "done" if number < stage else "current" if number == stage else "todo"
+        steps.append(f'<li class="case-step case-step--{state}"><span>{number}</span>{label}</li>')
+    return f'<ol class="case-steps">{"".join(steps)}</ol>'
+
+
+def status_chip(entries: list[dict]) -> str:
+    """The header badge: the case stage, grey when there is nothing left to do."""
+    stage = review.case_stage(entries)
+    if stage is None:
+        return '<span class="chat-status chat-status--closed">No open request</span>'
+    tone = "closed" if stage == 3 else "active"
+    return f'<span class="chat-status chat-status--{tone}">{review.CASE_STEPS[stage - 1]}</span>'
 
 
 def _card(entry: dict, viewer: str) -> str:
-    is_decision = entry["kind"] == "decision"
-    mine = is_decision == (viewer == "officer")
-    side = "mine" if mine else "theirs"
-    when = review.format_time(entry["at"])
+    when = escape(review.format_time(entry["at"]))
+    author = escape(entry["author"])
 
-    if is_decision:
-        action = review.ACTIONS.get(entry["action"], entry["action"])
-        who = "You" if mine else f"{entry['author']} · Loan officer"
-        head = (
-            f'<span class="thread-tag thread-tag--decision">Decision · {escape(action)}</span>'
+    if entry["kind"] == "decision":
+        outcome = escape(review.ACTIONS.get(entry["action"], entry["action"]))
+        return (
+            '<div class="case-entry case-entry--decision">'
+            '<div class="case-decision-head"><span class="case-label">Decision issued</span>'
+            f'<span class="case-outcome">{outcome}</span></div>'
+            f'<div class="case-body">{escape(entry["body"])}</div>'
+            f'<div class="case-sign">{author} · Loan officer · {when}</div></div>'
         )
-        foot = "Conversation closed"
-        kind = "decision"
-    else:
-        who = "You" if mine else entry["author"]
-        awaiting = entry["status"] in review.OPEN_STATUSES
-        head = (
-            '<span class="thread-tag thread-tag--open">Awaiting reply</span>'
-            if awaiting else ""
-        )
-        foot = ""
-        kind = "message--open" if awaiting else "message"
 
-    footer = f'<div class="thread-foot">{foot}</div>' if foot else ""
-    avatar = (
-        "" if mine
-        else f'<div class="thread-avatar">{escape(initials(entry["author"]))}</div>'
-    )
+    label = "Your request" if viewer == "cardholder" else "Customer request"
+    awaiting = entry["status"] in review.OPEN_STATUSES
+    tag = escape(review.REQUEST_TAGS.get(entry["status"], entry["status"]))
+    kind = "open" if awaiting else "done"
     return (
-        f'<div class="thread-row thread-row--{side}">{avatar}'
-        f'<div class="thread-card thread-card--{kind}">'
-        f'<div class="thread-meta"><b>{escape(who)}</b> · {escape(when)}</div>'
-        f"{head}"
-        f'<div class="thread-body">{escape(entry["body"])}</div>'
-        f"{footer}</div></div>"
+        f'<div class="case-entry case-entry--request case-entry--{kind}">'
+        f'<div class="case-meta"><span class="case-label">{label}</span>'
+        f'<span class="case-tag case-tag--{kind}">{tag}</span></div>'
+        f'<div class="case-body">{escape(entry["body"])}</div>'
+        f'<div class="case-sign">{author} · {when}</div></div>'
     )

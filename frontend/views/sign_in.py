@@ -132,7 +132,7 @@ _FEATURES = (
     (
         '<path d="M12 3l1.9 4.6L18.5 9.5l-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9z"/>'
         '<path d="M19 15l.8 1.9 1.9.8-1.9.8L19 20.5l-.8-1.9-1.9-.8 1.9-.8z"/>',
-        "AI that explains itself",
+        "AI that explains every outcome",
         "Use Loana AI to understand the reasoning behind every score "
         "with clear explanations tied to real account behaviour.",
     ),
@@ -151,8 +151,8 @@ _FEATURES = (
     ),
     (
         '<path d="M4 5h16v11H9l-5 4z"/><path d="M8 9.5h8M8 12.5h5"/>',
-        "Chat with AI or a person",
-        "Get quick answers from Loana AI, or start a direct thread with "
+        "Ask AI or request a review",
+        "Get quick answers from Loana AI, or request a review from "
         "a loan officer when a closer look is needed.",
     ),
 )

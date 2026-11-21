@@ -175,39 +175,39 @@ html, body, [data-testid="stApp"], .ct-banner,
     color: rgba(15, 23, 42, 0.78);
 }}
 
-.st-key-loana_panel p, .st-key-officer_triage p {{ color: {LOANA_INK}; }}
+.st-key-loana_panel p, .st-key-officer_briefing p {{ color: {LOANA_INK}; }}
 .st-key-loana_panel [data-testid="stCaptionContainer"] p,
-.st-key-officer_triage [data-testid="stCaptionContainer"] p {{
+.st-key-officer_briefing [data-testid="stCaptionContainer"] p {{
     color: rgba(7, 59, 45, 0.78);
 }}
 .st-key-loana_panel [data-testid="stChatMessage"],
-.st-key-officer_triage [data-testid="stChatMessage"] {{
+.st-key-officer_briefing [data-testid="stChatMessage"] {{
     background: rgba(255, 255, 255, 0.92);
     border-radius: 14px;
     padding: 0.9rem 1.1rem;
     align-items: flex-start;
 }}
 .st-key-loana_panel [data-testid="stChatMessage"] p,
-.st-key-officer_triage [data-testid="stChatMessage"] p {{
+.st-key-officer_briefing [data-testid="stChatMessage"] p {{
     line-height: 1.55;
     text-align: left;
 }}
 .st-key-loana_panel [data-testid="stChatMessage"] p,
-.st-key-officer_triage [data-testid="stChatMessage"] p {{ color: #1D2B27; }}
+.st-key-officer_briefing [data-testid="stChatMessage"] p {{ color: #1D2B27; }}
 .st-key-loana_panel [data-testid="stChatMessage"] [data-testid="stCaptionContainer"] p,
-.st-key-officer_triage [data-testid="stChatMessage"] [data-testid="stCaptionContainer"] p {{
+.st-key-officer_briefing [data-testid="stChatMessage"] [data-testid="stCaptionContainer"] p {{
     color: {MUTED};
     text-align: left;
 }}
 .st-key-loana_panel button,
-.st-key-officer_triage button {{
+.st-key-officer_briefing button {{
     background: #FFFFFF;
     border: none;
     color: {LOANA_INK};
     border-radius: 999px;
 }}
 .st-key-loana_panel button:hover,
-.st-key-officer_triage button:hover {{ background: #E9FFF7; color: {LOANA_INK}; }}
+.st-key-officer_briefing button:hover {{ background: #E9FFF7; color: {LOANA_INK}; }}
 
 /* Cardholder status banner (views/cardholder.py): the tone follows the risk. */
 div.account-alert {{
@@ -240,39 +240,50 @@ div.inbox-alert--clear {{ background: #F5F5F4; color: {MUTED}; border-color: {GR
     box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.15);
 }}
 
-/* Activity thread (ui/thread.py): the viewer's own cards sit on the right. */
-.thread {{ display: flex; flex-direction: column; gap: 0.6rem; margin: 0.4rem 0 1rem; }}
-.thread-row {{ display: flex; }}
-.thread-row--mine {{ justify-content: flex-end; }}
-.thread-card {{
-    max-width: 78%; padding: 0.7rem 0.95rem; border-radius: 14px;
-    border: 1px solid {GRID}; background: {SURFACE}; color: {TEXT};
+/* Review record (ui/thread.py): full-width entries, a status stepper and a decision block. */
+.thread {{ display: flex; flex-direction: column; gap: 0.75rem; margin: 0.4rem 0 1rem; }}
+.case-steps {{
+    display: flex; list-style: none; margin: 0 0 0.25rem; padding: 0; gap: 0.5rem;
 }}
-.thread-row--mine .thread-card {{ border-bottom-right-radius: 4px; }}
-.thread-row--theirs .thread-card {{ border-bottom-left-radius: 4px; }}
-.thread-card--message {{ background: #F5F5F4; }}
-.thread-card--message--open {{ background: #FFFBEB; border-color: #FDE68A; }}
-.thread-card--decision {{ background: #EFF6FF; border-color: #BFDBFE; border-left: 4px solid {ACCENT}; }}
-.thread-meta {{ font-size: 0.8rem; color: {MUTED}; margin-bottom: 0.25rem; }}
-.thread-meta b {{ color: {TEXT}; }}
-.thread-body {{ white-space: pre-wrap; line-height: 1.5; }}
-.thread-tag {{
-    display: inline-block; margin-bottom: 0.35rem; padding: 0.1rem 0.55rem;
-    border-radius: 999px; font-size: 0.75rem; font-weight: 700;
+.case-step {{
+    flex: 1; display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.75rem;
+    border-radius: 10px; font-size: 0.85rem; font-weight: 600;
+    border: 1px solid {GRID}; background: {SURFACE}; color: {MUTED};
 }}
-.thread-tag--decision {{ background: {ACCENT}; color: #FFFFFF; }}
-.thread-tag--open {{ background: #FDE68A; color: #92400E; }}
-.thread-foot {{ margin-top: 0.4rem; font-size: 0.75rem; color: {MUTED}; font-style: italic; }}
+.case-step span {{
+    flex: none; width: 22px; height: 22px; border-radius: 50%; display: flex;
+    align-items: center; justify-content: center; font-size: 0.75rem;
+    background: #E2E8F0; color: #475569;
+}}
+.case-step--done {{ color: #065F46; }}
+.case-step--done span {{ background: #A7F3D0; color: #065F46; }}
+.case-step--current {{ background: #ECFDF5; border-color: #6EE7B7; color: #065F46; }}
+.case-step--current span {{ background: #008F63; color: #FFFFFF; }}
+.case-entry {{
+    padding: 0.85rem 1.1rem; border-radius: 10px; border: 1px solid {GRID};
+    background: {SURFACE}; color: {TEXT};
+}}
+.case-entry--open {{ background: #FFFBEB; border-color: #FDE68A; }}
+.case-entry--decision {{ background: #F0FDF4; border-color: #A7F3D0; border-left: 5px solid #008F63; }}
+.case-meta, .case-decision-head {{
+    display: flex; align-items: center; justify-content: space-between; gap: 0.6rem;
+    margin-bottom: 0.4rem;
+}}
+.case-label {{
+    font-size: 0.75rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+    color: {MUTED};
+}}
+.case-outcome {{ font-size: 1.15rem; font-weight: 700; color: #065F46; }}
+.case-tag {{
+    padding: 0.1rem 0.6rem; border-radius: 999px; font-size: 0.75rem; font-weight: 700;
+}}
+.case-tag--open {{ background: #FDE68A; color: #92400E; }}
+.case-tag--done {{ background: #F3F4F6; color: #4B5563; }}
+.case-body {{ white-space: pre-wrap; line-height: 1.5; }}
+.case-sign {{ margin-top: 0.5rem; font-size: 0.8rem; color: {MUTED}; }}
 .thread-empty {{ color: {CAPTION}; font-style: italic; margin: 0.4rem 0 0.8rem; }}
 
-.thread-row {{ align-items: flex-end; gap: 0.5rem; }}
-.thread-avatar {{
-    flex: none; width: 30px; height: 30px; border-radius: 50%; background: #D1FAE5;
-    color: #065F46; display: flex; align-items: center; justify-content: center;
-    font-size: 0.72rem; font-weight: 700;
-}}
-
-/* Cardholder messages (views/cardholder.py): header, scrolling thread and composer
+/* Review requests (views/cardholder.py): header, scrolling record and request form
    in one rounded card. */
 .st-key-chat_card {{
     width: 100%; max-width: 920px; gap: 0; overflow: hidden;
@@ -292,10 +303,6 @@ div.inbox-alert--clear {{ background: #F5F5F4; color: {MUTED}; border-color: {GR
 .chat-status--closed {{ background: #F3F4F6; color: #4B5563; }}
 .st-key-chat_messages {{ min-height: 360px; padding: 0.5rem 1.1rem; background: #FFFFFF; }}
 .st-key-chat_card .thread {{ margin: 0; padding: 0.5rem 0; }}
-.st-key-chat_card .thread-card {{ max-width: 70%; }}
-.st-key-chat_card .thread-row--mine .thread-card {{ background: #ECFDF5; border-color: #A7F3D0; }}
-.st-key-chat_card .thread-row--theirs .thread-card {{ background: #F1F5F9; border-color: #E2E8F0; }}
-.st-key-chat_card .thread-row--theirs .thread-card--decision {{ border-left-color: {ACCENT}; }}
 .chat-empty {{
     display: flex; flex-direction: column; align-items: center; gap: 0.35rem;
     padding: 1.5rem 1rem 0.75rem; text-align: center; color: #334155;
@@ -516,28 +523,37 @@ h3 {{ font-size: 1.25rem !important; }}
 hr {{ border-color: {GRID} !important; opacity: 1; }}
 [data-testid="stDataFrame"] {{ border-radius: 8px; overflow: hidden; }}
 
-/* The officer's search is the way in, so it is the biggest thing on the page.
-   The border lives on Streamlit's root wrapper, not the <input>, so focus is
-   styled on the wrapper too. */
-.st-key-officer_lookup [data-testid="stTextInputRootElement"] {{
-    background: #F5F2EE;
-    border: 1px solid {GRID};
-    border-radius: 12px;
-    transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+/* Landing hero: room between the sections, and the illustration as a soft card. */
+[data-testid="stHorizontalBlock"]:has([data-testid="stImage"]) {{ gap: 3.5rem; }}
+[data-testid="stImage"] img {{
+    border-radius: 16px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 12px rgba(0, 0, 0, 0.04);
 }}
-.st-key-officer_lookup [data-testid="stTextInputRootElement"]:hover {{ border-color: #CFC8C1; }}
-.st-key-officer_lookup [data-testid="stTextInputRootElement"]:focus-within {{
-    background: #FFFFFF;
-    border-color: {ACCENT};
-    box-shadow: 0 0 0 3px rgba(76, 141, 246, 0.18);
+[data-testid="stMainBlockContainer"] hr {{ margin: 1.75rem 0; }}
+
+/* Officer landing: Loana's briefing leads the page as her emerald card. */
+.st-key-officer_briefing {{
+    background: linear-gradient(135deg, {LOANA} 0%, #19D3A2 55%, #4FD8C9 100%);
+    border-radius: 22px;
+    padding: 1.4rem 1.6rem 1.2rem;
+    box-shadow: 0 16px 44px rgba(7, 59, 45, 0.28);
 }}
-.st-key-officer_lookup input {{
-    font-size: 1.05rem;
-    font-weight: 500;
-    padding: 0.85rem 1.1rem;
-    background: transparent;
+.st-key-officer_briefing .loana-head img {{ width: 64px; height: 64px; }}
+.st-key-officer_briefing .loana-head {{ padding-bottom: 0.4rem; }}
+.st-key-officer_briefing h3 {{ color: #0F172A; padding: 0.2rem 0 0.1rem; }}
+.st-key-officer_briefing p {{ font-size: 1.05rem; line-height: 1.6; max-width: 62rem; }}
+.st-key-officer_briefing strong {{ color: #04261C; }}
+.st-key-officer_suggestions {{ gap: 0.5rem; padding-top: 0.4rem; }}
+.st-key-officer_briefing button {{
+    box-shadow: 0 2px 8px rgba(7, 59, 45, 0.15);
+    padding: 0.35rem 1rem;
 }}
-.st-key-officer_lookup input::placeholder {{ color: {MUTED}; font-weight: 400; }}
+.st-key-officer_briefing button[kind="primary"] {{
+    background: #0F172A;
+    color: #FFFFFF;
+}}
+.st-key-officer_briefing button[kind="primary"] p {{ color: #FFFFFF; }}
+.st-key-officer_briefing button[kind="primary"]:hover {{ background: #1E293B; color: #FFFFFF; }}
 
 /* Customer page: the emerald action. */
 .st-key-predict_next_payment button {{
@@ -548,34 +564,63 @@ hr {{ border-color: {GRID} !important; opacity: 1; }}
 }}
 .st-key-predict_next_payment button p {{ color: #FFFFFF; }}
 
-/* Landing hero: room between the sections, and the illustration as a soft card. */
-[data-testid="stHorizontalBlock"]:has([data-testid="stImage"]) {{ gap: 3.5rem; }}
-[data-testid="stImage"] img {{
+/* One command bar for search and Loana: the biggest input on the page. */
+.st-key-officer_command_bar {{ margin-top: 0.6rem; }}
+.st-key-officer_command_bar [data-testid="stChatInput"] {{
+    background: #FFFFFF;
+    border: 1px solid {GRID};
     border-radius: 16px;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 12px rgba(0, 0, 0, 0.04);
+    box-shadow: 0 6px 24px rgba(15, 23, 42, 0.08);
+    transition: box-shadow 0.15s ease, border-color 0.15s ease;
 }}
-[data-testid="stMainBlockContainer"] hr {{ margin: 1.75rem 0; }}
+.st-key-officer_command_bar [data-testid="stChatInput"]:focus-within {{
+    border-color: {LOANA};
+    box-shadow: 0 0 0 4px rgba(0, 197, 136, 0.18), 0 6px 24px rgba(15, 23, 42, 0.08);
+}}
+.st-key-officer_command_bar textarea {{ font-size: 1.05rem; }}
+.st-key-officer_reply [data-testid="stChatMessage"] {{
+    background: rgba(255, 255, 255, 0.85);
+    border-radius: 14px;
+    padding: 0.7rem 1rem;
+}}
+.st-key-officer_matches {{ gap: 0.5rem; }}
 
-/* Officer landing: the search box is compact, and Loana's card sticks under the
-   page bar. Sticky needs the column to span the row, hence align-items: stretch. */
-.st-key-officer_lookup input {{ padding: 0.55rem 1rem; font-size: 1rem; }}
-[data-testid="stHorizontalBlock"]:has(> [data-testid="stColumn"] .st-key-officer_triage) {{
-    align-items: stretch;
+/* The worklist as a card of rows, each with its own way into the dashboard. */
+.st-key-officer_worklist {{
+    background: #FFFFFF;
+    border: 1px solid {GRID};
+    border-radius: 14px;
+    padding: 0.4rem 1rem;
+    gap: 0;
 }}
-.st-key-officer_triage {{
-    position: sticky;
-    top: 7.5rem;
-    max-height: calc(100vh - 8.5rem);
-    overflow-y: auto;
+.st-key-officer_worklist [data-testid="stHorizontalBlock"] {{ gap: 0.75rem; }}
+.st-key-officer_worklist p {{
+    font-size: 0.9rem;
+    margin: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }}
-/* The triage panel is Loana's card, the same emerald as the floating chat. */
-.st-key-officer_triage {{
-    background: {LOANA};
-    border: none;
-    border-radius: 22px;
-    padding: 1.1rem;
-    box-shadow: 0 16px 44px rgba(7, 59, 45, 0.35);
+.worklist-heading {{
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+    color: {MUTED};
+    white-space: nowrap;
 }}
+[class*="st-key-worklist_row_"] {{
+    border-top: 1px solid {GRID};
+    padding: 0.15rem 0;
+    transition: background 0.12s ease;
+}}
+[class*="st-key-worklist_row_"]:hover {{ background: #F3FBF8; }}
+[class*="st-key-worklist_row_"] [data-testid="stColumn"]:last-child {{
+    display: flex;
+    justify-content: flex-end;
+}}
+[class*="st-key-officer_open_"] button p {{ color: #008F63; font-weight: 600; white-space: nowrap; }}
+[class*="st-key-officer_open_"] button:hover p {{ color: {LOANA_INK}; }}
 </style>
 """
 

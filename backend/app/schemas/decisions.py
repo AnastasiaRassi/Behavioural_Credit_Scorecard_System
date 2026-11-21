@@ -1,7 +1,7 @@
 """Request and response shapes for officer decisions."""
 from pydantic import BaseModel, Field, field_validator
 
-from app.db.models import DECISION_ACTIONS
+from app.db.models import DECISION_ACTIONS, RISK_BANDS
 
 
 class DecisionCreate(BaseModel):
@@ -13,9 +13,19 @@ class DecisionCreate(BaseModel):
     than a 500.
     """
 
-    action: str
+    action: str = "no_action"
     justification: str = Field(min_length=1, max_length=2000)
     decided_by: str = Field(max_length=255, description="Email of the deciding officer")
+    risk_band: str | None = Field(
+        default=None, description="Low, Medium or High: the level the officer sets"
+    )
+
+    @field_validator("risk_band")
+    @classmethod
+    def band_is_known(cls, value: str | None) -> str | None:
+        if value is not None and value not in RISK_BANDS:
+            raise ValueError(f"risk_band must be one of {', '.join(RISK_BANDS)}, got {value!r}")
+        return value
 
     @field_validator("action")
     @classmethod
@@ -40,6 +50,7 @@ class DecisionOut(BaseModel):
     decided_at: str
     action: str
     justification: str
+    assigned_band: str | None = None
     overrode_model: bool = Field(
         description="True when the officer acted against what the score suggested"
     )

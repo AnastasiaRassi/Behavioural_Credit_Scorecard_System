@@ -30,18 +30,18 @@ class Item:
 # Account views belong to a cardholder with a scored account.
 ACCOUNT_ITEMS = (
     Item(DASHBOARD, "Account Overview", ":material/dashboard:"),
-    Item(CHAT, "Messages", ":material/chat:"),
+    Item(CHAT, "Officer reviews", ":material/rate_review:"),
 )
 # Officers: the dashboard is the user filter. A chosen customer gets its own entry
 # (CUSTOMER) that the drawer indents under Filter Users.
 OFFICER_ITEMS = (
     Item(DASHBOARD, "Filter Users", ":material/filter_list:"),
-    Item(CHAT, "Messages", ":material/chat:"),
+    Item(CHAT, "Officer reviews", ":material/rate_review:"),
 )
-TITLES = {DASHBOARD: "Account Overview", CHAT: "Messages", PROFILE: "Profile", REPORT: "Report an Issue"}
+TITLES = {DASHBOARD: "Account Overview", CHAT: "Officer reviews", PROFILE: "Profile", REPORT: "Report an Issue"}
 OFFICER_TITLES = {
-    DASHBOARD: "Filter Users", CHAT: "Messages", PROFILE: "Profile", REPORT: "Report an Issue", CUSTOMER: "Customer account",
-    CONVERSATION: "Conversation",
+    DASHBOARD: "Filter Users", CHAT: "Officer reviews", PROFILE: "Profile", REPORT: "Report an Issue", CUSTOMER: "Customer account",
+    CONVERSATION: "Review request",
 }
 PROFILE_ITEM = Item(PROFILE, "Profile", ":material/person:")
 REPORT_ITEM = Item(REPORT, "Report an Issue", ":material/flag:")

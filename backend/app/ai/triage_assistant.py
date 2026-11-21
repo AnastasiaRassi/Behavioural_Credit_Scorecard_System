@@ -22,7 +22,7 @@ from app.schemas.worklist import TriageFilter
 
 logger = logging.getLogger(__name__)
 
-PROMPT_VERSION = "v1.1-triage"
+PROMPT_VERSION = "v1.2-triage"
 
 SYSTEM_PROMPT = """You are Loana AI in CrediTrait, a credit card prototype. You help a loan officer choose which existing customers to look at.
 You do not see any customer, score or risk. You only translate the officer's request into a filter.
@@ -40,6 +40,7 @@ Filter fields. Leave out any field the officer did not ask for:
 - min_months_with_no_payment: integer 0-6, months where money was owed and nothing was paid.
 - min_credit_limit, max_credit_limit: numbers.
 - not_scored: true when the officer wants customers nobody has predicted yet.
+- scored_band: "Low", "Medium" or "High", for customers an officer has already predicted in that band. "low risk" means "Low", "high risk" means "High".
 - sort_by: one of "months_in_arrears", "utilisation_now", "current_balance", "months_with_no_payment".
 - limit: integer 1-25, how many customers to show. Default 10.
 
@@ -65,6 +66,12 @@ class TriageTurn:
     note: str
     filter: TriageFilter | None
     failure: str | None
+    # How the turn was made, for the triage log.
+    llm_model: str = "none"
+    latency_ms: int = 0
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    rejected_reply: str | None = None
 
 
 def interpret(messages: Sequence[Mapping[str, str]]) -> TriageTurn:
@@ -77,20 +84,31 @@ def interpret(messages: Sequence[Mapping[str, str]]) -> TriageTurn:
         [{"role": "system", "content": SYSTEM_PROMPT}] + conversation[-MAX_HISTORY:]
     )
 
+    made = {
+        "llm_model": call.model or "none",
+        "latency_ms": call.latency_ms,
+        "prompt_tokens": call.prompt_tokens,
+        "completion_tokens": call.completion_tokens,
+    }
     failure = call.failure
     if call.text is not None:
         parsed, failure = parse(call.text)
         if failure is None:
             if parsed is None:
-                return TriageTurn(OFF_TOPIC, "model", "", None, None)
+                return TriageTurn(OFF_TOPIC, "model", "", None, None, **made)
             criteria = parsed.model_dump()
-            return TriageTurn(worklist.describe_cohort(criteria), "model", "", parsed, None)
+            return TriageTurn(
+                worklist.describe_cohort(criteria), "model", "", parsed, None, **made
+            )
 
     error = error_for(failure) if str(failure).startswith("llm_") else LlmBadResponse(
         str(failure), context={"failure": failure}
     )
     logger.warning("triage assistant: no usable filter; using template: %s", error.log_line())
-    return TriageTurn(OFF_TOPIC, "template", TEMPLATE_NOTE, None, failure)
+    return TriageTurn(
+        OFF_TOPIC, "template", TEMPLATE_NOTE, None, failure,
+        **made, rejected_reply=call.text,
+    )
 
 
 def parse(text: str) -> tuple[TriageFilter | None, str | None]:

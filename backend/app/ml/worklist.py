@@ -139,11 +139,14 @@ def cohort_row(row: dict) -> dict:
     }
 
 
-def select_cohort(rows: list[dict], criteria: dict, scored: set[str]) -> list[dict]:
+def select_cohort(
+    rows: list[dict], criteria: dict, scored: set[str], bands: dict[str, str] | None = None
+) -> list[dict]:
     """Cohort rows matching `criteria` (a TriageFilter dump), sorted, uncapped.
 
     `scored` is the account numbers someone has already run a prediction on, used
-    by `not_scored`; the database knows it, this module does not.
+    by `not_scored`; `bands` maps those accounts to their latest band, used by
+    `scored_band`. The database knows both, this module does not.
     """
     selected = [cohort_row(row) for row in rows]
 
@@ -163,6 +166,11 @@ def select_cohort(rows: list[dict], criteria: dict, scored: set[str]) -> list[di
         selected = [r for r in selected if r["trajectory"] == criteria["trajectory"]]
     if criteria.get("not_scored"):
         selected = [r for r in selected if r["account_number"] not in scored]
+    if criteria.get("scored_band"):
+        bands = bands or {}
+        selected = [
+            r for r in selected if bands.get(r["account_number"]) == criteria["scored_band"]
+        ]
 
     sort_by = criteria.get("sort_by") or "months_in_arrears"
     # Account number breaks ties, so the same question always lists the same people.
@@ -187,10 +195,76 @@ def describe_cohort(criteria: dict) -> str:
         parts.append(f"limit at most {criteria['max_credit_limit']:,.0f}")
     if criteria.get("not_scored"):
         parts.append("not scored yet")
+    if criteria.get("scored_band"):
+        parts.append(f"a {criteria['scored_band']} risk score from an officer")
 
     who = "Customers with " + ", ".join(parts) if parts else "All customers"
     order = COHORT_SORTS[criteria.get("sort_by") or "months_in_arrears"]
     return f"{who}, {order} first."
+
+
+# The officer's one-click cohorts, in the shape Loana fills. Unscored only, so
+# working through one empties it. The briefing counts each of them.
+QUICK_COHORTS = (
+    ("Getting worse, 2+ months behind", {
+        "min_months_in_arrears": 2, "trajectory": "deteriorating", "not_scored": True,
+    }),
+    ("No payment in 3+ months", {
+        "min_months_with_no_payment": 3, "sort_by": "months_with_no_payment",
+        "not_scored": True,
+    }),
+    ("Using 90%+ of their limit", {
+        "min_utilisation": 0.9, "sort_by": "utilisation_now", "not_scored": True,
+    }),
+)
+
+# How each quick cohort reads inside the briefing sentence.
+BRIEFING_PHRASES = (
+    "getting worse and 2+ months behind",
+    "with no payment in 3+ months",
+    "using 90%+ of their limit",
+)
+
+
+def briefing(rows: list[dict], scored: set[str]) -> tuple[list[dict], dict | None]:
+    """Each quick cohort's size, and the customer to start with.
+
+    The lead is the largest balance among those getting worse: the biggest
+    exposure in the group most likely to need a call. None when that group is empty.
+    """
+    cohorts = []
+    lead = None
+    for number, (label, criteria) in enumerate(QUICK_COHORTS):
+        matching = select_cohort(rows, criteria, scored)
+        cohorts.append({"label": label, "filter": criteria, "total": len(matching)})
+        if number == 0 and matching:
+            lead = max(matching, key=lambda row: row["current_balance"])
+    return cohorts, lead
+
+
+def describe_briefing(cohorts: list[dict], lead: dict | None) -> str:
+    """Loana's opening line, written from the counts, never by the LLM."""
+    parts = [
+        f"**{cohort['total']:,}** {phrase}"
+        for cohort, phrase in zip(cohorts, BRIEFING_PHRASES)
+        if cohort["total"]
+    ]
+    if not parts:
+        return (
+            "Nothing is waiting on a score: everyone in the quick cohorts has already "
+            "been predicted. Ask me for a different group below."
+        )
+
+    listed = parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + " and " + parts[-1]
+    text = f"Not scored yet: {listed}."
+    if lead:
+        who = lead.get("full_name") or f"account {lead['account_number']}"
+        text += (
+            f" I'd start with **{who}** (account {lead['account_number']}): "
+            f"{lead['months_in_arrears']} of 6 months behind and getting worse, with "
+            f"the largest balance in that group at {lead['current_balance']:,.0f}."
+        )
+    return text
 
 
 def find(account_number: str) -> dict | None:

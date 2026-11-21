@@ -61,6 +61,16 @@ def _app() -> None:
     cardholder.render("token", "id-1")
 
 
+def _dashboard_app() -> None:
+    import streamlit as st
+
+    from ui import loana
+    from views import cardholder
+
+    st.session_state.setdefault(loana.OPEN_STATE, True)  # Loana's chat card open
+    cardholder.render("token", "id-1")
+
+
 def _start() -> AppTest:
     return AppTest.from_function(_app, default_timeout=TIMEOUT).run()
 
@@ -83,7 +93,8 @@ def test_a_message_is_sent_shown_in_the_thread_and_the_box_cleared(faked_api):
 
     assert sent == [(ID, "Please check it.")]
     assert "Please check it." in _markdown(app)
-    assert "reply here" in _captions(app)
+    assert "reply on this page" in _captions(app)
+    assert "Submitted" in _markdown(app)
     assert app.text_area(key=f"review_comment_{ID}").value == ""
 
 
@@ -94,7 +105,7 @@ def test_a_blank_message_is_not_sent(faked_api):
     app.button(key=f"review_send_{ID}").click().run()
 
     assert sent == []
-    assert "write a message" in app.error[0].value
+    assert "describe what you would like reviewed" in app.error[0].value
 
 
 def test_a_decision_closes_the_conversation_but_the_box_stays(faked_api):
@@ -103,8 +114,9 @@ def test_a_decision_closes_the_conversation_but_the_box_stays(faked_api):
     app = _start()
 
     text = _markdown(app)
-    assert "Already asked." in text and "Monitoring it." in text and "Decision" in text
-    assert "conversation is closed" in _markdown(app)
+    assert "Already asked." in text and "Monitoring it." in text
+    assert "Decision issued" in text and "Monitor" in text
+    assert "review is complete" in text
     assert app.text_area(key=f"review_comment_{ID}") is not None
 
 
@@ -124,3 +136,16 @@ def test_a_quick_prompt_fills_the_box_without_sending(faked_api):
 
     assert "statement" in app.text_area(key=f"review_comment_{ID}").value
     assert sent == []
+
+
+def test_the_assistant_fallback_note_is_not_shown_to_a_cardholder(faked_api, monkeypatch):
+    monkeypatch.setattr(
+        api, "chat",
+        lambda *args: {"reply": "Your account is rated High.", "note": "Standard answer: internal",
+                       "disclaimer": "Careful."},
+    )
+    app = AppTest.from_function(_dashboard_app, default_timeout=TIMEOUT).run()
+    app.chat_input[0].set_value("Why was I flagged?").run()
+
+    assert "Your account is rated High." in _markdown(app)
+    assert "Standard answer" not in _markdown(app) + _captions(app)

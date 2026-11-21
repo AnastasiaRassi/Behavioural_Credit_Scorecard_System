@@ -316,7 +316,9 @@ def _sign_out() -> None:
 def _officer(session: dict, header: Callable[[], None]) -> None:
     # The acting officer is whoever signed in, not a sidebar choice: a decision
     # records who took it, and that must not be selectable.
-    officer.render(session["email"], session["token"], header)
+    officer.render(
+        session["email"], session["token"], header, officer_name=session["display_name"]
+    )
 
 
 def _cardholder(session: dict, header: Callable[[], None]) -> None:

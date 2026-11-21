@@ -11,7 +11,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.models.base import Base, new_id, now, sql_tuple
 
-REVIEW_STATUSES = ("pending", "in_review", "resolved")
+REVIEW_STATUSES = ("pending", "in_review", "resolved", "rejected")
 OPEN_REVIEW_STATUSES = ("pending", "in_review")
 
 

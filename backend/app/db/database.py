@@ -27,7 +27,8 @@ from app.db.exceptions import (
     RecordConflict,
     SchemaOutOfDate,
 )
-from app.db.models import Base
+from app.db.models import REVIEW_STATUSES, RISK_BANDS, Base
+from app.db.models.base import sql_tuple
 
 
 @lru_cache(maxsize=1)
@@ -122,6 +123,22 @@ ADDED_COLUMNS = (
     ("chat_turn", "grounding_passed", "boolean"),
     ("chat_turn", "claim_passed", "boolean"),
     ("prediction", "scored_by_user_id", "uuid REFERENCES users(id)"),
+    ("decision", "assigned_band", "text"),
+)
+
+# Checks whose allowed values grew after the table shipped: (table, name, condition).
+# Dropped and re-added so an older database accepts the new value.
+WIDENED_CHECKS = (
+    (
+        "review_request",
+        "status_is_known",
+        f"status IN {sql_tuple(REVIEW_STATUSES)}",
+    ),
+    (
+        "decision",
+        "assigned_band_is_known",
+        f"assigned_band IS NULL OR assigned_band IN {sql_tuple(RISK_BANDS)}",
+    ),
 )
 
 
@@ -130,6 +147,11 @@ def _add_missing_columns() -> None:
         for table, column, sql_type in ADDED_COLUMNS:
             connection.execute(
                 text(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {sql_type}")
+            )
+        for table, name, condition in WIDENED_CHECKS:
+            connection.execute(text(f"ALTER TABLE {table} DROP CONSTRAINT IF EXISTS {name}"))
+            connection.execute(
+                text(f"ALTER TABLE {table} ADD CONSTRAINT {name} CHECK ({condition})")
             )
 
 

@@ -16,6 +16,7 @@ from app.db.models.base import Base, new_id, now, sql_tuple
 # nothing to approve or decline. The officer chooses an intervention on an
 # existing account.
 DECISION_ACTIONS = ("no_action", "monitor", "contact_customer", "reduce_limit")
+RISK_BANDS = ("Low", "Medium", "High")
 
 
 class Decision(Base):
@@ -45,6 +46,8 @@ class Decision(Base):
 
     action: Mapped[str] = mapped_column(Text, nullable=False)
     justification: Mapped[str] = mapped_column(Text, nullable=False)
+    # The risk level the officer set for the account; null when they left the model's.
+    assigned_band: Mapped[str | None] = mapped_column(Text)
 
     prediction: Mapped["Prediction"] = relationship(  # noqa: F821
         back_populates="decisions"
@@ -62,6 +65,10 @@ class Decision(Base):
         CheckConstraint(
             "length(trim(justification)) > 0", name="justification_is_present"
         ),
+        CheckConstraint(
+            f"assigned_band IS NULL OR assigned_band IN {sql_tuple(RISK_BANDS)}",
+            name="assigned_band_is_known",
+        ),
     )
 
     @property
@@ -73,6 +80,8 @@ class Decision(Base):
         intervention on an account the model did not flag. Monitoring sits in
         between and counts as agreement either way.
         """
+        if self.assigned_band is not None:
+            return self.assigned_band != self.prediction.risk_band
         if self.prediction.flagged:
             return self.action == "no_action"
         return self.action in ("contact_customer", "reduce_limit")
@@ -84,6 +93,7 @@ class Decision(Base):
             "decided_at": self.decided_at.isoformat(),
             "action": self.action,
             "justification": self.justification,
+            "assigned_band": self.assigned_band,
             "overrode_model": self.overrode_model,
         }
 

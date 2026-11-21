@@ -55,6 +55,51 @@ def resolve_open(session: Session, customer_id: uuid.UUID) -> int:
     )
 
 
+def start_review(session: Session, customer_id: uuid.UUID) -> int:
+    """The officer accepts the case: waiting messages become 'in review'."""
+    return (
+        session.query(ReviewRequest)
+        .filter(ReviewRequest.customer_id == customer_id, ReviewRequest.status == "pending")
+        .update({ReviewRequest.status: "in_review"}, synchronize_session=False)
+    )
+
+
+def reject_open(session: Session, customer_id: uuid.UUID) -> int:
+    """The officer declines the case: every open message is closed without a decision."""
+    return (
+        session.query(ReviewRequest)
+        .filter(
+            ReviewRequest.customer_id == customer_id,
+            ReviewRequest.status.in_(OPEN_REVIEW_STATUSES),
+        )
+        .update({ReviewRequest.status: "rejected"}, synchronize_session=False)
+    )
+
+
+def latest_band_decision(session: Session, customer_id: uuid.UUID) -> dict | None:
+    """The newest decision in which an officer set a risk level, with who and when."""
+    found = (
+        session.query(Decision, User)
+        .join(Prediction, Decision.prediction_id == Prediction.id)
+        .join(User, Decision.decided_by_user_id == User.id)
+        .filter(
+            Prediction.subject_customer_id == customer_id,
+            Decision.assigned_band.is_not(None),
+        )
+        .order_by(Decision.decided_at.desc())
+        .first()
+    )
+    if found is None:
+        return None
+    decision, officer = found
+    return {
+        "risk_band": decision.assigned_band,
+        "officer_name": officer.display_name or "Loan officer",
+        "decided_at": decision.decided_at.isoformat(),
+        "note": decision.justification,
+    }
+
+
 def all_open(session: Session) -> list[tuple[ReviewRequest, Customer, User]]:
     return (
         session.query(ReviewRequest, Customer, User)
@@ -88,6 +133,7 @@ def thread(session: Session, customer: Customer) -> list[dict]:
             "author": customer.user.display_name or "Cardholder",
             "body": message.reason,
             "action": None,
+            "band": None,
             "status": message.status,
         }
         for message in messages
@@ -99,6 +145,7 @@ def thread(session: Session, customer: Customer) -> list[dict]:
             "author": officer.display_name or "Loan officer",
             "body": decision.justification,
             "action": decision.action,
+            "band": decision.assigned_band,
             "status": None,
         }
         for decision, officer in decisions
