@@ -480,7 +480,7 @@ def _copilot(token: str, customer_id: str) -> None:
         if column.button(label, key=f"preset_{customer_id}_{label}", width="stretch"):
             asked = question
 
-    asked = st.chat_input("Ask why, or what would help") or asked
+    asked = st.chat_input("Ask why, or what would help") or asked or loana.take_pending()
     st.caption(conversation["disclaimer"])
     if not asked:
         return

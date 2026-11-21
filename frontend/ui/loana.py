@@ -21,6 +21,8 @@ CHAT_KEY = "loana_chat"
 LAUNCH_KEY = "loana_launch"
 CLOSE_KEY = "loana_close"
 OPEN_STATE = "loana_open"
+# A question another page asked on the user's behalf, sent on the chat's next draw.
+PENDING_STATE = "loana_pending"
 
 # Only the fallback: theme.py makes the chat fill whatever the card has left.
 CHAT_HEIGHT = 520
@@ -36,6 +38,16 @@ def is_open() -> bool:
 
 def _set_open(value: bool) -> None:
     st.session_state[OPEN_STATE] = value
+
+
+def ask(question: str) -> None:
+    """Open the chat with `question` already sent. Use as a button callback."""
+    st.session_state[OPEN_STATE] = True
+    st.session_state[PENDING_STATE] = question
+
+
+def take_pending() -> str | None:
+    return st.session_state.pop(PENDING_STATE, None)
 
 
 @lru_cache(maxsize=1)

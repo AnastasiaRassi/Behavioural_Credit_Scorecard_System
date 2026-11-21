@@ -174,11 +174,18 @@ def test_the_overview_links_to_a_prediction_page_that_never_shows_the_probabilit
 
     app.button(key="open_prediction").click().run()
     assert app.session_state["active_view"] == "prediction"
-    text = _markdown(app)
+    # Stylesheets are markdown too, and their `100%` widths are not a probability.
+    text = " ".join(m.value for m in app.markdown if not m.value.startswith("<style>"))
     assert "Why this score" in text and "Last month was late" in text
     assert "Low risk" in text and "%" not in text
     assert "▲ raises the risk" in _captions(app)
-    assert app.button(key="predict_next_payment") is not None
+    assert app.button(key="predict_next_payment").label == "Re-run prediction"
+
+    app.button(key="prediction_ask_loana").click().run()
+    assert app.session_state["loana_open"] is True
+
+    app.button(key="prediction_follow_up").click().run()
+    assert app.session_state["active_view"] == "chat"
 
 
 def test_an_unpredicted_account_shows_the_button_and_no_band(faked_api, monkeypatch):
