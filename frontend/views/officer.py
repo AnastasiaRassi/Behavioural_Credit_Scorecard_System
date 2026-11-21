@@ -9,8 +9,9 @@ Loana: a briefing written from the worklist counts, one command bar that either
 finds a customer or asks Loana for a cohort, the cohort's filter as removable
 chips, and the worklist. The officer ticks customers and runs "predict selected";
 no score is shown until someone runs one. Once the officer picks
-a customer, the page becomes the customer's record at full width with Loana AI as
-a floating chat about that customer (ui/loana.py).
+a customer, the page becomes that customer's page at full width, switched between
+Overview and Risk assessment from its header (ui/customer_mode.py), with Loana AI
+as a floating chat about that customer (ui/loana.py).
 
 Nothing opens by itself: the selected customer (`officer_customer_id`) is only ever
 set by a click, and is deliberately not mirrored in or read from the URL, so a
@@ -33,7 +34,7 @@ import api
 import review
 from components import BAND_ICONS
 from money import markdown_safe, money
-from ui import loana, nav, thread
+from ui import customer_mode, loana, nav, thread
 from ui.profile import initials
 from ui.components import card_head, quote, show, stylesheet
 from views import prediction
@@ -126,10 +127,7 @@ def render(
     customer_id = st.session_state.get(CUSTOMER_KEY)
     view = nav.current()
     if view == nav.CUSTOMER and customer_id:
-        _record_page(customer_id, officer_email, token)
-        loana.dock(lambda: _assistant(customer_id))
-    elif view == nav.PREDICTION and customer_id:
-        _prediction_page(customer_id, officer_email)
+        _customer_page(customer_id, officer_email, token)
         loana.dock(lambda: _assistant(customer_id))
     elif view == nav.CONVERSATION and st.session_state.get(CONVERSATION_KEY):
         conversation_id = st.session_state[CONVERSATION_KEY]
@@ -143,7 +141,7 @@ def render(
 
 def close_customer() -> None:
     """Drop the opened customer from the drawer; leave their page if it is showing."""
-    if nav.current() in (nav.CUSTOMER, nav.PREDICTION):
+    if nav.current() == nav.CUSTOMER:
         st.session_state[nav.VIEW_KEY] = nav.DASHBOARD
     st.session_state[CUSTOMER_KEY] = None
 
@@ -516,39 +514,35 @@ def _label(match: dict) -> str:
 # --- the customer's record ------------------------------------------------
 
 
-def _record_page(customer_id: str, officer_email: str, token: str) -> None:
+def _customer_page(customer_id: str, officer_email: str, token: str) -> None:
+    """The header with the mode switch, then the mode the officer picked."""
     try:
         detail = api.customer_detail(customer_id)
     except api.ServiceUnavailable as exception:
         api.guard(exception)
         return
 
-    request = _open_request_for(customer_id)
-    _heading(detail)
+    segment = detail.get("segment") or {}
+    customer_mode.header(
+        detail.get("full_name") or f"Customer {detail['account_number']}",
+        detail["account_number"], segment.get("name"),
+    )
+    with customer_mode.panel():
+        if customer_mode.current() == customer_mode.RISK:
+            prediction.officer_page(detail, officer_email)
+        else:
+            _overview(detail, token)
+
+
+def _overview(detail: dict, token: str) -> None:
+    """Six months of bills against payments, and the account summary."""
+    request = _open_request_for(detail["customer_id"])
     if request:
         _unread_alert(request)
-    prediction.entry_card(prediction.officer_summary(detail))
-    if request:
         _plan(detail, token)
     _figures(detail)
     st.divider()
     _history(detail)
-
-
-def _prediction_page(customer_id: str, officer_email: str) -> None:
-    """The model's call on the next payment for the opened customer, in full."""
-    try:
-        detail = api.customer_detail(customer_id)
-    except api.ServiceUnavailable as exception:
-        api.guard(exception)
-        return
-    _heading(detail)
-    prediction.officer_page(detail, officer_email)
-
-    if request:
-        st.divider()
-        _evidence(detail, request)
-        _plan(detail, token)
 
 
 # --- the conversation -------------------------------------------------------
@@ -677,17 +671,6 @@ def _plan(detail: dict, token: str) -> None:
 
 
 # --- the customer page ----------------------------------------------------
-
-
-def _heading(detail: dict) -> None:
-    segment = detail.get("segment") or {}
-
-    name = detail.get("full_name")
-    st.subheader(name or f"Customer {detail['account_number']}")
-
-    st.caption(f"Account {detail['account_number']}")
-    if segment:
-        st.caption(f"Behavioural segment: **{segment['name']}**")
 
 
 def _figures(detail: dict) -> None:

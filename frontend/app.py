@@ -29,7 +29,7 @@ if str(HERE) not in sys.path:
 import api  # noqa: E402
 import theme  # noqa: E402
 from tabs import drift, explain, fairness, performance, registry, segmentation, threshold  # noqa: E402
-from ui import drawer, nav, profile, report  # noqa: E402
+from ui import customer_mode, drawer, nav, profile, report  # noqa: E402
 from ui.components import stylesheet  # noqa: E402
 from views import cardholder, officer, sign_in  # noqa: E402
 
@@ -103,9 +103,10 @@ def _seed_location(session: dict) -> None:
         st.session_state[nav.VIEW_KEY] = nav.REPORT
     elif session["role"] == "officer" and params.get("customer"):
         st.session_state[officer.CUSTOMER_KEY] = params["customer"]
-        st.session_state[nav.VIEW_KEY] = (
-            nav.PREDICTION if params.get("view") == nav.PREDICTION else nav.CUSTOMER
-        )
+        st.session_state[nav.VIEW_KEY] = nav.CUSTOMER
+        # ?view=prediction is the old address of the risk page.
+        mode = customer_mode.RISK if params.get("view") == nav.PREDICTION else params.get("mode")
+        st.session_state[customer_mode.MODE_KEY] = mode or customer_mode.DEFAULT
     elif params.get("view") == nav.CHAT:
         st.session_state[nav.VIEW_KEY] = nav.CHAT
     elif session["role"] == "cardholder" and params.get("view") == nav.PREDICTION:
@@ -121,13 +122,9 @@ def _sync_location(session: dict) -> None:
     elif nav.current() == nav.REPORT:
         wanted["page"] = nav.REPORT
     elif nav.current() == nav.CUSTOMER and officer_customer:
-        wanted["customer"] = str(officer_customer)
-    elif nav.current() == nav.PREDICTION:
-        # An officer's prediction page belongs to the opened customer.
-        if session["role"] == "officer" and officer_customer:
-            wanted.update(customer=str(officer_customer), view=nav.PREDICTION)
-        elif session["role"] == "cardholder":
-            wanted["view"] = nav.PREDICTION
+        wanted.update(customer=str(officer_customer), mode=customer_mode.current())
+    elif nav.current() == nav.PREDICTION and session["role"] == "cardholder":
+        wanted["view"] = nav.PREDICTION
     elif nav.current() == nav.CHAT:
         wanted["view"] = nav.CHAT
     if dict(st.query_params) != wanted:
@@ -137,6 +134,7 @@ def _sync_location(session: dict) -> None:
 
 def main() -> None:
     session = st.session_state.get(SESSION_KEY)
+    handing_over = False
     if session is None and st.session_state.pop(CLEAR_COOKIE_KEY, False):
         _clear_token()
     elif session is None and not st.session_state.get(RESTORE_TRIED_KEY):
@@ -151,9 +149,12 @@ def main() -> None:
             _clear_token()  # stale token: drop it so we don't reload forever
         else:
             _hand_over_token()
+            handing_over = True
 
     if session is None:
-        st.query_params.clear()
+        # Keep the address through the hand-over reload so _seed_location can reopen it.
+        if not handing_over:
+            st.query_params.clear()
         _sign_in()
         return
 

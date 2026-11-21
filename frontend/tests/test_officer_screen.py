@@ -495,19 +495,25 @@ def test_the_prediction_survives_closing_and_reopening_the_customer(faked_api):
     assert app.session_state["prediction_id-111"] == {"probability": 0.5}
 
 
-def test_the_record_links_to_the_prediction_page_which_runs_the_model(faked_api):
+def test_the_customer_header_switches_between_overview_and_risk_assessment(faked_api):
     app = _start()
     _command(app, "111")
     app.button(key="officer_pick_id-111").click().run()
 
-    # The record keeps the figures and chart; the analysis is one click away.
-    assert "Not run yet" in _text(app)
+    # Opens on the overview: figures and history, no model and no entry card.
+    assert app.button(key="customer_mode_overview").proto.type == "primary"
+    assert app.button(key="customer_mode_risk").proto.type == "secondary"
+    text = _text(app)
+    assert "Maya Haddad" in text and "Account 111" in text
+    assert "Six months of bills against payments" in text
+    assert "open_prediction" not in [b.key for b in app.button]
     assert "predict_next_payment" not in [b.key for b in app.button]
-    assert "Why this score" not in _text(app)
 
-    app.button(key="open_prediction").click().run()
-    assert app.session_state["active_view"] == "prediction"
-    assert "Why this score" in _text(app)
+    app.button(key="customer_mode_risk").click().run()
+    assert app.session_state["active_view"] == "customer"
+    assert app.button(key="customer_mode_risk").proto.type == "primary"
+    text = _text(app)
+    assert "Why this score" in text and "behavioural drivers (SHAP)" in text
 
     app.button(key="predict_next_payment").click().run()
     text = _text(app)
@@ -517,8 +523,8 @@ def test_the_record_links_to_the_prediction_page_which_runs_the_model(faked_api)
         c.value for c in app.caption
     )
 
-    _show(app, "customer")
-    assert "High risk · 70% chance of missing the next payment" in _text(app)
+    app.button(key="prediction_follow_up").click().run()
+    assert app.button(key="customer_mode_overview").proto.type == "primary"
 
 
 def test_a_large_backlog_is_capped_in_messages(faked_api, monkeypatch):

@@ -1,8 +1,9 @@
-"""The Risk Prediction page: the model's call on the next payment, and why.
+"""Risk prediction: the model's call on the next payment, and why.
 
-One layout for both roles, drawn from the same pieces. An officer sees the
-probability; a cardholder is never sent it (`worklist.cardholder_view`), so their
-score card shows the band alone. The six-month history chart stays on the
+One layout for both roles, drawn from the same pieces: the cardholder's Risk
+Prediction page, and the Risk assessment mode of an officer's customer page
+(ui/customer_mode.py). An officer sees the probability; a cardholder is never sent
+it (`worklist.cardholder_view`), so their score card shows the band alone. The six-month history chart stays on the
 overview rather than repeating here. Styles are in ui/prediction.css.
 """
 from collections.abc import Callable
@@ -14,7 +15,7 @@ import streamlit as st
 import api
 import theme
 from theme import BAND_ICONS
-from ui import loana, nav
+from ui import customer_mode, loana, nav
 from ui.components import flatten, reason_line, show, stylesheet
 
 # No model is certain, so the extremes are shown as bounds.
@@ -78,16 +79,6 @@ def cardholder_summary(account: dict) -> str:
     return f"{account['risk_band']} risk. See what is driving it."
 
 
-def officer_summary(detail: dict) -> str:
-    result, _ = officer_result(detail)
-    if result is None:
-        return NOT_RUN_SUMMARY
-    return (
-        f"{result['risk_band']} risk · {as_risk(result['probability'])} chance "
-        "of missing the next payment"
-    )
-
-
 # --- the page ---------------------------------------------------------------
 
 
@@ -115,7 +106,7 @@ def officer_page(detail: dict, officer_email: str) -> None:
         result,
         on_predict=_officer_predict, args=(detail["customer_id"], officer_email),
         show_probability=True, question=OFFICER_QUESTION, stakes=OFFICER_STAKES,
-        follow_up=("Record a decision", nav.CUSTOMER),
+        follow_up=("See the account overview", customer_mode.go, (customer_mode.OVERVIEW,)),
         scored_note=(
             "Scored just now and recorded." if is_fresh
             else "The last score recorded for this customer."
@@ -153,7 +144,7 @@ def cardholder_page(
     _layout(
         result, on_predict=on_predict, args=(), show_probability=False, scored_note="",
         question=CARDHOLDER_QUESTION, stakes=CARDHOLDER_STAKES,
-        follow_up=("Request an officer review", nav.CHAT),
+        follow_up=("Request an officer review", nav.go, (nav.CHAT,)),
         not_run=(
             "Run the model on your last six months to see how your next payment "
             "looks and what is driving it."
@@ -165,9 +156,9 @@ def cardholder_page(
 def _layout(
     result: dict | None, on_predict: Callable[..., None], args: tuple,
     show_probability: bool, scored_note: str, not_run: str, problem: str | None,
-    question: str, stakes: str, follow_up: tuple[str, str],
+    question: str, stakes: str, follow_up: tuple[str, Callable[..., None], tuple],
 ) -> None:
-    """`follow_up` is the label and view of the next step after reading the score."""
+    """`follow_up` is the label, callback and its args for the step after reading the score."""
     stylesheet("prediction.css")
     show(flatten(f"""
 <div class="prediction-stakes">
@@ -194,8 +185,8 @@ def _layout(
     _charts(result)
 
 
-def _next_steps(question: str, follow_up: tuple[str, str]) -> None:
-    label, view = follow_up
+def _next_steps(question: str, follow_up: tuple[str, Callable[..., None], tuple]) -> None:
+    label, on_click, args = follow_up
     with st.container(key="prediction_next"):
         st.button(
             ":material/auto_awesome: Ask Loana AI how to improve this",
@@ -204,7 +195,7 @@ def _next_steps(question: str, follow_up: tuple[str, str]) -> None:
         )
         st.button(
             f"{label} →", key="prediction_follow_up", type="tertiary",
-            on_click=nav.go, args=(view,),
+            on_click=on_click, args=args,
         )
 
 

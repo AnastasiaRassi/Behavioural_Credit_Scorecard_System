@@ -42,13 +42,12 @@ def test_risk_prediction_sits_between_the_overview_and_officer_reviews():
     assert "view=prediction" in _text(app)
 
 
-def test_officer_gets_risk_prediction_only_under_an_opened_customer():
+def test_officer_drawer_has_no_risk_prediction_entry():
+    # An officer's risk assessment is a mode of the customer page, not a drawer entry.
     app = AppTest.from_function(_officer_app, default_timeout=TIMEOUT).run()
     app.button(key="nav_toggle").click().run()
 
-    keys = [button.key for button in app.button if button.key.startswith("nav_")]
-    assert keys.index("nav_prediction") > keys.index("nav_customer")
-    assert keys.index("nav_prediction") < keys.index("nav_chat")
+    assert "nav_prediction" not in [button.key for button in app.button]
 
 
 def test_profile_item_opens_the_profile_view():

@@ -1,0 +1,64 @@
+/* Officer customer page: a header bar that doubles as the tab track, and the white
+   panel the active tab opens onto. Header and panel read as one inspection surface. */
+
+:root { --customer-line: #E2E8F0; --customer-track: #EEF2F6; }
+
+/* --- header bar: the tab track ------------------------------------------------ */
+.st-key-customer_header {
+    background: var(--customer-track);
+    border: 1px solid var(--customer-line); border-bottom: 1px solid var(--customer-line);
+    border-radius: 18px 18px 0 0;
+    /* No bottom padding: the tabs sit on the bar's bottom edge. */
+    padding: .9rem 1.2rem 0;
+}
+/* Streamlit pulls markdown up by -1rem, which drops the subtitle onto the bar's edge. */
+.st-key-customer_header [data-testid="stMarkdownContainer"] { margin-bottom: 0; }
+.customer-header-name { color: #0F172A; font-size: 1.6rem; font-weight: 800; line-height: 1.2; }
+.customer-header-meta { color: #475569; font-size: .92rem; margin-top: .1rem; }
+.customer-header-subtitle {
+    color: #334155; font-size: .98rem; line-height: 1.45; margin: .45rem 0 .85rem;
+}
+.customer-header-subtitle b { color: #0F172A; font-weight: 700; }
+
+/* --- tabs ---------------------------------------------------------------------- */
+.st-key-customer_mode { gap: 4px; align-items: flex-end; }
+.st-key-customer_mode button {
+    min-height: 0; padding: .55rem 1.25rem; border-radius: 10px 10px 0 0;
+    border: 1px solid transparent; border-bottom: none; box-shadow: none;
+    transition: background .15s ease, color .15s ease;
+}
+.st-key-customer_mode button p { font-size: .95rem; font-weight: 600; white-space: nowrap; }
+
+/* Active: the panel's own white, overlapping the bar's bottom line so they join. */
+.st-key-customer_mode button[data-testid="stBaseButton-primary"],
+.st-key-customer_mode button[data-testid="stBaseButton-primary"]:hover,
+.st-key-customer_mode button[data-testid="stBaseButton-primary"]:focus {
+    position: relative; z-index: 1; margin-bottom: -1px; padding-bottom: calc(.55rem + 1px);
+    background: #FFFFFF; border-color: var(--customer-line); cursor: default;
+}
+.st-key-customer_mode button[data-testid="stBaseButton-primary"] p { color: #0F172A; }
+
+/* Inactive: recessed into the track, muted until hovered. */
+.st-key-customer_mode button[data-testid="stBaseButton-secondary"] { background: transparent; }
+.st-key-customer_mode button[data-testid="stBaseButton-secondary"] p { color: #64748B; }
+.st-key-customer_mode button[data-testid="stBaseButton-secondary"]:hover,
+.st-key-customer_mode button[data-testid="stBaseButton-secondary"]:focus-visible {
+    background: rgba(255, 255, 255, .55); border-color: var(--customer-line);
+}
+.st-key-customer_mode button[data-testid="stBaseButton-secondary"]:hover p { color: #0F172A; }
+
+/* --- the panel under the tabs -------------------------------------------------- */
+.st-key-customer_view {
+    /* Cancel the block gap so the panel butts against the header bar. */
+    margin-top: -1rem;
+    background: #FFFFFF;
+    border: 1px solid var(--customer-line); border-top: none; border-radius: 0 0 18px 18px;
+    box-shadow: 0 10px 28px rgba(15, 23, 42, .08);
+    padding: 1.2rem 1.2rem 1.4rem;
+}
+
+/* Narrow screens: the tabs drop under the name and share the width. */
+@media (max-width: 640px) {
+    .st-key-customer_mode > div { flex: 1; }
+    .st-key-customer_mode button { width: 100%; }
+}
