@@ -15,7 +15,7 @@ import uuid
 import pytest
 import requests
 
-from app.ai import assistant, coaching, llm_client, local_llm
+from app.ai import assistant, coaching, guardrails, llm_client, local_llm
 from app.ml import worklist
 from tests.test_coaching import STRESSED
 
@@ -479,3 +479,25 @@ def test_generic_contact_routes_are_rejected(payload, reply):
 def test_a_review_referral_does_not_launder_payment_advice():
     reply = "You should pay down the balance, then contact your loan officer."
     assert not assistant.validate_claim_level_safety(reply, UNREACHABLE_PAYLOAD)
+
+
+# Seen live: gpt-4o-mini judged this plain description of past arrears as advice.
+DESCRIPTIVE_WHY = (
+    "Your account was flagged for attention because you have been behind on payments in 6 "
+    "of the last 6 billing cycles, with the most recent month being 2 months overdue. This "
+    "consistent pattern of being in arrears raises the risk associated with your account."
+)
+
+
+def test_a_factual_why_answer_is_not_rejected_when_the_judge_cries_advice(monkeypatch):
+    monkeypatch.setattr(guardrails, "judge_claims", lambda reply, steps: ("unprescribed_advice",))
+
+    assert assistant.validate_claim_level_safety(DESCRIPTIVE_WHY, UNREACHABLE_PAYLOAD)
+
+
+def test_real_advice_is_still_rejected_when_the_judge_flags_it(monkeypatch):
+    monkeypatch.setattr(guardrails, "judge_claims", lambda reply, steps: ("unprescribed_advice",))
+
+    assert not assistant.validate_claim_level_safety(
+        "You should pay more this month to improve things.", UNREACHABLE_PAYLOAD
+    )

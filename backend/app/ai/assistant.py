@@ -527,6 +527,11 @@ def validate_claim_level_safety(reply: str, payload: CoachingPayload) -> bool:
     violations = guardrails.judge_claims(reply, payload.steps)
     if violations is None:
         return _claims_by_patterns(reply, payload)
+    # "Advice" is the judge's weakest call: it has flagged a plain description of past
+    # arrears. On that alone, the word patterns decide, so a factual reply is not discarded.
+    if violations == ("unprescribed_advice",) and _claims_by_patterns(reply, payload):
+        logger.info("assistant: judge flagged advice but no directive wording was found; allowed")
+        return payload.outcome != REACHABLE or _amounts_follow_steps(text, payload)
     if violations:
         logger.warning("assistant: judge found %s in the reply", ", ".join(violations))
         return False

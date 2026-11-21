@@ -17,11 +17,13 @@ Loana's to explain, on request, in a floating chat in the corner (ui/loana.py).
 Loana's wording and the repayment history it draws on come from the API.
 """
 from collections.abc import Callable
+from html import escape
 
 import plotly.graph_objects as go
 import streamlit as st
 
 import api
+import review
 import theme
 from ui import loana, nav, thread
 from ui.components import show, stylesheet
@@ -103,6 +105,7 @@ def _dashboard(account: dict) -> None:
     """The account itself: the banner, the figures, the history and what to do about it."""
     stylesheet("dashboard.css")
     needs_attention = account["needs_attention"]
+    _officer_decision(account.get("officer_decision"))
     _banner(needs_attention, account["risk_band"])
 
     _account(account)
@@ -116,6 +119,20 @@ def _chat_view(token: str, customer_id: str) -> None:
     stylesheet("chat_page.css")
     nav.back_button()
     _human_review(token, customer_id)
+
+
+def _officer_decision(decision: dict | None) -> None:
+    """Who set the account's risk level, when an officer has."""
+    if not decision:
+        return
+    when = escape(review.format_time(decision["decided_at"]))
+    st.markdown(
+        '<div class="account-alert account-alert--good">'
+        '<div class="account-alert-title">Reviewed by a loan officer</div>'
+        f'<p>Loan officer <b>{escape(decision["officer_name"])}</b> reviewed your account on '
+        f'{when} and decided you belong to <b>{escape(decision["risk_band"])} risk</b>.</p></div>',
+        unsafe_allow_html=True,
+    )
 
 
 def _banner(needs_attention: bool, risk_band: str) -> None:
@@ -154,7 +171,7 @@ def _human_review(token: str, customer_id: str) -> None:
         st.caption("Review requests are unavailable right now.")
         return
 
-    closed = bool(entries) and entries[-1]["kind"] == "decision"
+    closed = review.is_closed(entries)
     with st.container(key="chat_card"):
         show(
             f'<div class="chat-head"><b>Request a human review</b>{thread.status_chip(entries)}</div>'

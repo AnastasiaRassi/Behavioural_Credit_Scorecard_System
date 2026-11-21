@@ -28,7 +28,7 @@ from app.db import chat_log, customer_registry, queue_predictions, reviews
 from app.db.models import Customer, DailyBriefing, Decision, User
 from app.ml import artifacts, worklist
 from app.schemas.decisions import DecisionCreate, DecisionOut
-from app.schemas.reviews import ReviewRequestOut, ThreadEntry
+from app.schemas.reviews import ReviewAction, ReviewRequestOut, ThreadEntry
 from app.schemas.scoring import ScoreResponse
 from app.schemas.worklist import (
     Briefing,
@@ -176,6 +176,30 @@ def read_review_requests(session: Session = Depends(get_session)):
     ]
 
 
+@router.post("/customers/{customer_id}/review-requests/approve")
+def approve_review_requests(
+    customer_id: str, body: ReviewAction, session: Session = Depends(get_session)
+):
+    """Accept a customer's waiting requests: they move to 'in review' and the chat opens."""
+    customer, _ = queued_account(session, customer_id)
+    officer = user_by_email(session, body.decided_by, "officer")
+    moved = reviews.start_review(session, customer.id)
+    audit.event("review_approved", actor=officer.email, customer=customer_id, requests=moved)
+    return {"updated": moved}
+
+
+@router.post("/customers/{customer_id}/review-requests/reject")
+def reject_review_requests(
+    customer_id: str, body: ReviewAction, session: Session = Depends(get_session)
+):
+    """Decline a customer's open requests without issuing a decision."""
+    customer, _ = queued_account(session, customer_id)
+    officer = user_by_email(session, body.decided_by, "officer")
+    closed = reviews.reject_open(session, customer.id)
+    audit.event("review_rejected", actor=officer.email, customer=customer_id, requests=closed)
+    return {"updated": closed}
+
+
 @router.get("/queue/{customer_id}", response_model=QueueRow)
 def read_queued_customer(customer_id: str, session: Session = Depends(get_session)):
     """One queue row, in the shape the list uses. /officer/customers/{id} is the full page."""
@@ -205,6 +229,7 @@ def read_customer_detail(
 
     stored = queue_predictions.latest_for_cardholder(session, customer.id)
     detail["latest_prediction"] = stored.to_dict() if stored else None
+    detail["officer_decision"] = reviews.latest_band_decision(session, customer.id)
     return detail
 
 
@@ -439,6 +464,7 @@ def decide_on_queued_customer(
         decided_by_user_id=officer.id,
         action=request.action,
         justification=request.justification.strip(),
+        assigned_band=request.risk_band,
     )
     session.add(decision)
     # The decision is the officer's answer, so it closes the conversation.
@@ -455,6 +481,7 @@ def decide_on_queued_customer(
         prediction=prediction.id,
         decided_action=request.action,
         band=prediction.risk_band,
+        assigned_band=request.risk_band,
         overrode_model=decision.to_dict()["overrode_model"],
         messages_closed=closed,
     )

@@ -13,11 +13,17 @@ ACTIONS = {
     "reduce_limit": "Reduce limit",
 }
 DEFAULT_ACTION = "no_action"
-STATUS_LABELS ={"pending": "Pending", "in_review": "In review", "resolved": "Resolved"}
+STATUS_LABELS = {
+    "pending": "Pending", "in_review": "In review", "resolved": "Resolved", "rejected": "Declined",
+}
+RISK_BANDS = ("Low", "Medium", "High")
 
 # The case as the cardholder sees it. Stage is 1-based into CASE_STEPS.
 CASE_STEPS = ("Submitted", "Under review", "Decision issued")
-REQUEST_TAGS = {"pending": "Submitted", "in_review": "Under review", "resolved": "Reviewed"}
+REQUEST_TAGS = {
+    "pending": "Submitted", "in_review": "Under review",
+    "resolved": "Reviewed", "rejected": "Declined",
+}
 
 NOTE_PREVIEW_CHARS = 140
 
@@ -53,26 +59,18 @@ def truncate(text: str, limit: int = NOTE_PREVIEW_CHARS) -> str:
     return text[:limit].rsplit(" ", 1)[0].rstrip(",.;:") + "…"
 
 
-def shareable_stats(detail: dict) -> dict[str, str]:
-    """Account figures an officer can quote to the customer, label to text.
+def current_band(detail: dict) -> str:
+    """The level an account stands at: the officer's if one was set, else the model's."""
+    decided = detail.get("officer_decision")
+    if decided:
+        return decided["risk_band"]
+    latest = detail.get("latest_prediction")
+    return latest["risk_band"] if latest else detail["risk_band"]
 
-    Never the probability: the cardholder is deliberately not shown it.
-    """
-    highlights = detail.get("highlights") or {}
-    stats = {
-        "Risk rating": f"{detail['risk_band']} risk",
-        "Credit limit": f"{detail['credit_limit']:,.0f}",
-        "Current balance": f"{detail['current_balance']:,.0f}",
-        "Last payment": f"{detail['last_payment']:,.0f}",
-        "Months in arrears": f"{detail['months_in_arrears']} of 6",
-    }
-    if highlights.get("utilisation_now") is not None:
-        stats["Credit used"] = f"{highlights['utilisation_now']:.0%}"
-    if highlights.get("months_with_no_payment") is not None:
-        stats["Months with no payment"] = f"{highlights['months_with_no_payment']} of 6"
-    if highlights.get("trajectory"):
-        stats["Arrears trend"] = highlights["trajectory"].capitalize()
-    return stats
+
+def is_closed(entries: list[dict]) -> bool:
+    """Nothing is left to do: the newest entry is a decision or a declined request."""
+    return case_stage(entries) == 3
 
 
 def open_requests(requests: list[dict]) -> list[dict]:
@@ -107,7 +105,8 @@ def case_stage(entries: list[dict]) -> int | None:
     """
     if not entries:
         return None
-    if entries[-1]["kind"] == "decision":
+    newest = entries[-1]
+    if newest["kind"] == "decision" or newest["status"] == "rejected":
         return 3
     in_review = any(
         item["kind"] == "message" and item["status"] == "in_review" for item in entries

@@ -134,7 +134,7 @@ def render(
         _conversation_page(conversation_id, officer_email)
         loana.dock(lambda: _assistant(conversation_id))
     elif view == nav.CHAT:
-        _messages(_all_requests())
+        _messages(_all_requests(), officer_email)
     else:
         _landing(officer_email, officer_name)
 
@@ -217,7 +217,7 @@ def _all_requests() -> list[dict]:
         return []
 
 
-def _requests(requests: list[dict]) -> None:
+def _requests(requests: list[dict], officer_email: str) -> None:
     waiting = review.conversations(requests)
     st.subheader("Customers asking for a human review")
     st.caption(
@@ -230,7 +230,7 @@ def _requests(requests: list[dict]) -> None:
 
     now = datetime.now(timezone.utc)
     for item in waiting[:REQUEST_CARDS]:
-        _request_card(item, _band(item["customer_id"]), now)
+        _request_card(item, _band(item["customer_id"]), now, officer_email)
     hidden = len(waiting) - REQUEST_CARDS
     if hidden > 0:
         st.caption(
@@ -248,7 +248,25 @@ def _band(customer_id: str) -> str | None:
     return latest["risk_band"] if latest else None
 
 
-def _request_card(item: dict, band: str | None, now: datetime) -> None:
+def _approve(customer_id: str, officer_email: str) -> None:
+    """Accept the request and open the conversation."""
+    try:
+        api.approve_review(customer_id, officer_email)
+    except api.ServiceUnavailable as exception:
+        st.session_state[NOTICE_KEY] = {"customer_id": customer_id, "ok": False, "text": str(exception)}
+        return
+    _open_conversation(customer_id)
+
+
+def _reject(customer_id: str, officer_email: str) -> None:
+    """Decline the request; the card leaves the list."""
+    try:
+        api.reject_review(customer_id, officer_email)
+    except api.ServiceUnavailable as exception:
+        st.session_state[NOTICE_KEY] = {"customer_id": customer_id, "ok": False, "text": str(exception)}
+
+
+def _request_card(item: dict, band: str | None, now: datetime, officer_email: str) -> None:
     card = review.card_data({**item, "reason": item["latest"]}, band, now)
     unread = item["unread"]
     with st.container(border=True, key=f"request_card_{item['request_id']}"):
@@ -263,10 +281,21 @@ def _request_card(item: dict, band: str | None, now: datetime) -> None:
         if card["is_truncated"]:
             with st.expander("Read the full note"):
                 show(quote(card["full_note"]))
-        st.button(
-            "Open review", key=f"review_{item['request_id']}",
-            on_click=_open_conversation, args=(item["customer_id"],),
-        )
+        if item["status"] == "pending":
+            approve, reject, _ = st.columns([1.6, 1.6, 4])
+            approve.button(
+                "Approve request", key=f"approve_{item['request_id']}",
+                on_click=_approve, args=(item["customer_id"], officer_email),
+            )
+            reject.button(
+                "Reject request", key=f"reject_{item['request_id']}",
+                on_click=_reject, args=(item["customer_id"], officer_email),
+            )
+        else:
+            st.button(
+                "Open review", key=f"review_{item['request_id']}",
+                on_click=_open_conversation, args=(item["customer_id"],),
+            )
 
 
 # --- the landing page -----------------------------------------------------
@@ -467,9 +496,9 @@ def _search_results() -> None:
 
 
 
-def _messages(requests: list[dict]) -> None:
+def _messages(requests: list[dict], officer_email: str) -> None:
     """Officer reviews view: every request waiting on the officer."""
-    _requests(requests)
+    _requests(requests, officer_email)
 
 
 def _open_request_for(customer_id: str) -> dict | None:
@@ -537,7 +566,7 @@ def _conversation_page(customer_id: str, officer_email: str) -> None:
 
     name = detail.get("full_name") or f"Customer {detail['account_number']}"
     open_request = _open_request_for(customer_id) is not None
-    closed = bool(entries) and entries[-1]["kind"] == "decision"
+    closed = review.is_closed(entries)
     badge = thread.status_chip(entries)
     with st.container(key="chat_card"):
         with st.container(key="chat_head"):
@@ -570,24 +599,12 @@ def _conversation_page(customer_id: str, officer_email: str) -> None:
                 )
 
         with st.container(key="chat_composer"):
-            attach, box, send = st.columns([0.6, 6.5, 1], vertical_alignment="bottom")
+            level, box, send = st.columns([1.4, 6, 1.3], vertical_alignment="bottom")
             # Widgets rather than a form: a form's unsent text never reaches session
             # state, so it could not survive a trip to another view.
-            with attach.popover("", icon=":material/attach_file:", help="Attach customer stats"):
-                st.caption("Add to your decision note")
-                stats = review.shareable_stats(detail)
-                for label, value in stats.items():
-                    st.button(
-                        f"{label}: {value}", key=f"officer_attach_{customer_id}_{label}",
-                        on_click=_attach, args=(customer_id, [f"{label}: {value}"]),
-                        width="stretch",
-                    )
-                st.button(
-                    "Add all", key=f"officer_attach_all_{customer_id}", type="primary",
-                    on_click=_attach,
-                    args=(customer_id, [f"{label}: {value}" for label, value in stats.items()]),
-                    width="stretch",
-                )
+            band_key = f"officer_band_{customer_id}"
+            st.session_state.setdefault(band_key, review.current_band(detail))
+            level.selectbox("Risk level", review.RISK_BANDS, key=band_key)
             box.text_area(
                 "Decision note", key=f"officer_note_{customer_id}",
                 placeholder=f"Explain the decision to {name}, in words they will understand...",
@@ -819,6 +836,7 @@ def _record(
 ) -> None:
     """Save the reply as a decision. A callback, so it can clear the note that was just sent."""
     action = review.DEFAULT_ACTION
+    band = st.session_state.get(f"officer_band_{customer_id}")
     note_key = f"officer_note_{customer_id}"
     justification = st.session_state.get(note_key, "")
 
@@ -832,7 +850,7 @@ def _record(
         return
 
     try:
-        api.decide(customer_id, officer_email, action, justification)
+        api.decide(customer_id, officer_email, action, justification, band)
     except api.ServiceUnavailable as exception:
         notify(False, str(exception))
         return
@@ -842,14 +860,7 @@ def _record(
     outcome = (
         "Decision issued and review closed" if from_request else "Decision issued"
     )
-    notify(True, f"{outcome} for {who}.")
-
-
-def _attach(customer_id: str, lines: list[str]) -> None:
-    """Append stat lines to the reply being written."""
-    note_key = f"officer_note_{customer_id}"
-    current = st.session_state.get(note_key, "").rstrip()
-    st.session_state[note_key] = "\n".join(([current] if current else []) + lines)
+    notify(True, f"{outcome} for {who}: risk level set to {band}.")
 
 
 # --- the customer assistant -----------------------------------------------

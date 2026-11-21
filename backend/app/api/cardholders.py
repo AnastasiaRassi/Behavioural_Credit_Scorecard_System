@@ -51,7 +51,15 @@ def read_ownaccount_for(
     stale overnight one. Falls back to the queue when none has been run.
     """
     row, stored, record = account_for(customer_id, session)
-    return worklist.cardholder_view(row, stored_prediction=stored, record=record)
+    view = worklist.cardholder_view(row, stored_prediction=stored, record=record)
+
+    # An officer's level replaces the model's: it is the human decision on the account.
+    decision = reviews.latest_band_decision(session, customer_or_404(session, customer_id).id)
+    if decision:
+        view["risk_band"] = decision["risk_band"]
+        view["needs_attention"] = decision["risk_band"] != "Low"
+        view["officer_decision"] = decision
+    return view
 
 
 @router.post(

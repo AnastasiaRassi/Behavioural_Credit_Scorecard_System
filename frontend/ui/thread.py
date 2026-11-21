@@ -42,7 +42,7 @@ def status_chip(entries: list[dict]) -> str:
     stage = review.case_stage(entries)
     if stage is None:
         return '<span class="chat-status chat-status--closed">No open request</span>'
-    tone = "closed" if stage == 3 else "active"
+    tone = "closed" if review.is_closed(entries) else "active"
     return f'<span class="chat-status chat-status--{tone}">{review.CASE_STEPS[stage - 1]}</span>'
 
 
@@ -51,7 +51,10 @@ def _card(entry: dict, viewer: str) -> str:
     author = escape(entry["author"])
 
     if entry["kind"] == "decision":
-        outcome = escape(review.ACTIONS.get(entry["action"], entry["action"]))
+        band = entry.get("band")
+        outcome = escape(
+            f"Risk level set to {band}" if band else review.ACTIONS.get(entry["action"], entry["action"])
+        )
         return (
             '<div class="case-entry case-entry--decision">'
             '<div class="case-decision-head"><span class="case-label">Decision issued</span>'
@@ -64,6 +67,7 @@ def _card(entry: dict, viewer: str) -> str:
     awaiting = entry["status"] in review.OPEN_STATUSES
     tag = escape(review.REQUEST_TAGS.get(entry["status"], entry["status"]))
     kind = "open" if awaiting else "done"
+    kind = "done" if entry["status"] == "rejected" else kind
     return (
         f'<div class="case-entry case-entry--request case-entry--{kind}">'
         f'<div class="case-meta"><span class="case-label">{label}</span>'

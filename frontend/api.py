@@ -345,16 +345,41 @@ def officer_chat(customer_id: str, messages: list[dict]) -> dict:
     )
 
 
-def decide(customer_id: str, decided_by: str, action: str, justification: str) -> dict:
-    """Record a decision; the backend also closes the customer's open conversation."""
+def decide(
+    customer_id: str, decided_by: str, action: str, justification: str,
+    risk_band: str | None = None,
+) -> dict:
+    """Record a decision, setting the risk level when given; the backend also closes
+    the customer's open conversation."""
     decision = _post(
         f"/officer/customers/{customer_id}/decisions",
-        {"decided_by": decided_by, "action": action, "justification": justification},
+        {
+            "decided_by": decided_by, "action": action,
+            "justification": justification, "risk_band": risk_band,
+        },
     )
+    _refresh_reviews()
+    return decision
+
+
+def approve_review(customer_id: str, decided_by: str) -> None:
+    """Accept the customer's waiting requests so the conversation can open."""
+    _post(f"/officer/customers/{customer_id}/review-requests/approve", {"decided_by": decided_by})
+    _refresh_reviews()
+
+
+def reject_review(customer_id: str, decided_by: str) -> None:
+    """Decline the customer's open requests; no decision is issued."""
+    _post(f"/officer/customers/{customer_id}/review-requests/reject", {"decided_by": decided_by})
+    _refresh_reviews()
+
+
+def _refresh_reviews() -> None:
     decisions.clear()
     thread.clear()
     review_requests.clear()
-    return decision
+    customer_detail.clear()
+    cardholder.clear()
 
 
 @st.cache_data(ttl=5, show_spinner=False)

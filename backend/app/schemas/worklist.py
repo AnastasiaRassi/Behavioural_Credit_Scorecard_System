@@ -60,6 +60,15 @@ class Highlights(BaseModel):
     worst_payment_status: int | None = None
 
 
+class OfficerBandDecision(BaseModel):
+    """A risk level an officer set for an account, and who set it."""
+
+    risk_band: str
+    officer_name: str
+    decided_at: str
+    note: str
+
+
 class CustomerDetail(BaseModel):
     """The dedicated customer page: a queue row plus history, segment, highlights."""
 
@@ -82,6 +91,9 @@ class CustomerDetail(BaseModel):
     latest_prediction: dict | None = Field(
         default=None,
         description="Most recent score an officer ran, or None if never run",
+    )
+    officer_decision: "OfficerBandDecision | None" = Field(
+        default=None, description="The newest risk level an officer set, or None"
     )
 
 
@@ -249,6 +261,7 @@ class CardholderView(BaseModel):
     reasons: list[CardholderReason]
     coaching: CardholderCoaching
     history: list[CardholderMonth]
+    officer_decision: OfficerBandDecision | None = None
 
 
 class RoleOut(BaseModel):

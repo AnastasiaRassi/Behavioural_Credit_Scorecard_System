@@ -118,9 +118,9 @@ Answer `pass`, or a comma-separated list of the violations the reply commits:
 promise: promises, guarantees or predicts an outcome, or says what a lender will decide
 other_strategy: suggests a payment strategy, loan or financial product that is not one of the allowed_steps
 generic_contact: points to customer service, a support team, a phone line or a branch instead of the loan officer review request
-unprescribed_advice: tells the cardholder to do something while allowed_steps is none
+unprescribed_advice: tells or recommends that the cardholder do something ("you should", "try to", "make a payment") while allowed_steps is none
 
-Pointing the cardholder to the loan officer review request is allowed. Describing past behaviour is not advice. Reply with the answer only."""
+Pointing the cardholder to the loan officer review request is allowed. Stating facts is never advice, even unwelcome ones: months behind, arrears, overdue payments, amounts paid, risk band and why it is raised. Example that passes: "You have been behind in 6 of the last 6 cycles, which raises the risk." Reply with the answer only."""
 
 
 @dataclass(frozen=True)

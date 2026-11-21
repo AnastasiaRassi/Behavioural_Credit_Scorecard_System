@@ -91,7 +91,11 @@ def _briefing() -> dict:
 @pytest.fixture
 def faked_api(monkeypatch):
     """Every call the screen makes, answered locally. Returns the decisions recorded."""
-    recorded = []
+    class Recorded(list):
+        rejected: list = []
+
+    recorded = Recorded()
+    rejected = recorded.rejected = []
 
     def decisions(customer_id):
         return []
@@ -129,6 +133,8 @@ def faked_api(monkeypatch):
             }
         ] if customer_id == "id-111" else [],
         "decide": lambda *args: recorded.append(args),
+        "approve_review": lambda customer_id, officer: None,
+        "reject_review": lambda customer_id, officer: rejected.append(customer_id),
     }
     for name, fake in fakes.items():
         monkeypatch.setattr(api, name, fake)
@@ -311,7 +317,7 @@ def test_review_opens_the_customer_with_the_unread_alert_and_thread(faked_api):
     app = _start()
     _show(app, "chat")
 
-    app.button(key="review_r1").click().run()
+    app.button(key="approve_r1").click().run()
 
     assert not app.exception
     assert app.session_state["officer_conversation_id"] == "id-111"
@@ -344,7 +350,7 @@ def test_the_dashboard_links_to_messages_instead_of_a_chat_box(faked_api):
 def test_back_to_worklist_returns_to_the_landing(faked_api):
     app = _start()
     _show(app, "chat")
-    app.button(key="review_r1").click().run()
+    app.button(key="approve_r1").click().run()
     app.button(key="back_to_dashboard").click().run()
 
     assert app.chat_input(key="officer_command") is not None
@@ -354,7 +360,7 @@ def test_open_conversation_opens_it_in_the_drawer_not_as_a_customer(faked_api):
     app = _start()
     _show(app, "chat")
 
-    app.button(key=[b.key for b in app.button if b.key.startswith("review_")][0]).click().run()
+    app.button(key=[b.key for b in app.button if b.key.startswith("approve_")][0]).click().run()
 
     assert app.session_state["officer_conversation_id"] == "id-111"
     assert "officer_customer_id" not in app.session_state or not app.session_state["officer_customer_id"]
@@ -374,7 +380,7 @@ def test_recording_a_review_outcome_needs_a_justification_and_names_the_customer
 ):
     app = _start()
     _show(app, "chat")
-    app.button(key="review_r1").click().run()
+    app.button(key="approve_r1").click().run()
 
     app.button(key="officer_record_id-111").click().run()
     assert "note is required" in app.error[0].value
@@ -385,7 +391,7 @@ def test_recording_a_review_outcome_needs_a_justification_and_names_the_customer
 
     assert not app.exception
     assert faked_api == [
-        ("id-111", "officer@example.com", "no_action", "Late transfer, confirmed.")
+        ("id-111", "officer@example.com", "no_action", "Late transfer, confirmed.", "High")
     ]
     message = app.success[0].value
     assert "Maya Haddad" in message
@@ -393,18 +399,29 @@ def test_recording_a_review_outcome_needs_a_justification_and_names_the_customer
     assert app.text_area(key="officer_note_id-111").value == ""
 
 
-def test_attaching_stats_appends_them_to_the_reply_without_the_probability(faked_api):
+def test_the_officer_sets_the_risk_level_with_the_decision(faked_api):
     app = _start()
     _show(app, "chat")
-    app.button(key="review_r1").click().run()
+    app.button(key="approve_r1").click().run()
 
-    app.text_area(key="officer_note_id-111").set_value("Hello").run()
-    app.button(key="officer_attach_all_id-111").click().run()
+    assert "officer_attach_all_id-111" not in [b.key for b in app.button]
+    app.selectbox(key="officer_band_id-111").select("Low").run()
+    app.text_area(key="officer_note_id-111").set_value("Paid in full.").run()
+    app.button(key="officer_record_id-111").click().run()
 
     assert not app.exception
-    note = app.text_area(key="officer_note_id-111").value
-    assert note.startswith("Hello\n") and "Credit limit:" in note
-    assert "robab" not in note
+    assert faked_api[-1][-1] == "Low"
+    assert "risk level set to Low" in app.success[0].value
+
+
+def test_rejecting_a_request_declines_it_without_opening_the_chat(faked_api):
+    app = _start()
+    _show(app, "chat")
+    app.button(key="reject_r1").click().run()
+
+    assert not app.exception
+    assert faked_api.rejected == ["id-111"]
+    assert not app.session_state.filtered_state.get("officer_conversation_id")
 
 
 def test_the_assistant_says_it_is_not_connected_and_keeps_the_layout(faked_api, monkeypatch):
@@ -414,7 +431,7 @@ def test_the_assistant_says_it_is_not_connected_and_keeps_the_layout(faked_api, 
     monkeypatch.setattr(api, "officer_chat", unreachable)
     app = _start()
     _show(app, "chat")
-    app.button(key="review_r1").click().run()
+    app.button(key="approve_r1").click().run()
     _open_chat(app)
 
     app.chat_input(key="officer_ask").set_value("Why flagged?").run()
@@ -432,7 +449,7 @@ def test_chat_history_is_kept_per_customer(faked_api, monkeypatch):
     )
     app = _start()
     _show(app, "chat")
-    app.button(key="review_r1").click().run()
+    app.button(key="approve_r1").click().run()
     _open_chat(app)
     app.chat_input(key="officer_ask").set_value("Why flagged?").run()
 
@@ -453,7 +470,7 @@ def test_chat_history_is_kept_per_customer(faked_api, monkeypatch):
 def test_the_prediction_survives_closing_and_reopening_the_customer(faked_api):
     app = _start()
     _show(app, "chat")
-    app.button(key="review_r1").click().run()
+    app.button(key="approve_r1").click().run()
     app.session_state["prediction_id-111"] = {"probability": 0.5}
 
     _show(app, "dashboard")
@@ -483,5 +500,5 @@ def test_a_large_backlog_is_capped_in_messages(faked_api, monkeypatch):
 
     assert not app.exception
     assert "5000 waiting" in " ".join(c.value for c in app.caption)
-    assert len([b for b in app.button if b.key.startswith("review_")]) == 10
+    assert len([b for b in app.button if b.key.startswith("approve_")]) == 10
     assert "4,990 more are waiting" in " ".join(c.value for c in app.caption)
