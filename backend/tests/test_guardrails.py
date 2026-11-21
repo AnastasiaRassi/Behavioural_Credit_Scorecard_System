@@ -154,3 +154,91 @@ def test_a_reply_leaking_a_card_email_or_phone_is_replaced(row, monkeypatch, tex
 def test_redact_keeps_the_last_four_digits_and_leaves_amounts_alone():
     assert guardrails.redact("Card 4111 1111 1111 1111.") == "Card **** **** **** 1111."
     assert guardrails.find_sensitive("Your limit is 1,234,567 and balance 50,000.") == []
+
+
+# --- claim judge --------------------------------------------------------------
+
+from tests.test_assistant import REACHABLE_PAYLOAD, UNREACHABLE_PAYLOAD  # noqa: E402
+
+
+@pytest.mark.parametrize("text, expected", [
+    ("pass", ()),
+    (" Pass. ", ()),
+    ("promise", ("promise",)),
+    ("promise, other_strategy", ("promise", "other_strategy")),
+    ("generic_contact unprescribed_advice", ("generic_contact", "unprescribed_advice")),
+    ("The reply looks fine", None),
+    ("pass, but it is borderline", None),
+    ("", None),
+    (None, None),
+])
+def test_only_an_exact_verdict_is_trusted(text, expected):
+    assert guardrails._parse_violations(text) == expected
+
+
+def _by_prompt(classifier="action", answer="Rated High risk.", judge="pass"):
+    """A fake model that answers each of the three prompts differently."""
+    def fake(messages):
+        system = messages[0]["content"]
+        if system.startswith("Classify"):
+            return _llm(classifier)
+        if system.startswith("You check"):
+            return _llm(judge)
+        return _llm(answer)
+    return fake
+
+
+def test_the_judge_catches_what_no_pattern_lists(monkeypatch):
+    reply = "Opening a new credit line could ease things for you."
+    assert assistant._claims_by_patterns(reply, UNREACHABLE_PAYLOAD)  # the old check misses it
+    monkeypatch.setattr(llm_client, "chat", lambda messages: _llm("other_strategy"))
+
+    assert not assistant.validate_claim_level_safety(reply, UNREACHABLE_PAYLOAD)
+
+
+def test_the_judge_can_clear_a_reply_the_patterns_wrongly_reject(monkeypatch):
+    reply = "You may find a payment plan unnecessary, as your history is steady."
+    assert not assistant._claims_by_patterns(reply, UNREACHABLE_PAYLOAD)
+    monkeypatch.setattr(llm_client, "chat", lambda messages: _llm("pass"))
+
+    assert assistant.validate_claim_level_safety(reply, UNREACHABLE_PAYLOAD)
+
+
+def test_an_outright_promise_is_refused_even_if_the_judge_passes_it(monkeypatch):
+    monkeypatch.setattr(llm_client, "chat", lambda messages: _llm("pass"))
+
+    assert not assistant.validate_claim_level_safety("I guarantee this will work.", UNREACHABLE_PAYLOAD)
+
+
+def test_an_amount_that_is_not_a_listed_step_is_refused_even_if_the_judge_passes_it(monkeypatch):
+    monkeypatch.setattr(llm_client, "chat", lambda messages: _llm("pass"))
+
+    assert assistant.validate_claim_level_safety("Put 5,000 into the card this month.", REACHABLE_PAYLOAD)
+    assert not assistant.validate_claim_level_safety("Put 4,000 into the card this month.", REACHABLE_PAYLOAD)
+
+
+def test_without_a_judge_verdict_the_patterns_decide(monkeypatch):
+    monkeypatch.setattr(llm_client, "chat", lambda messages: _llm(failure="llm_timeout"))
+
+    assert not assistant.validate_claim_level_safety("Please contact customer service.", UNREACHABLE_PAYLOAD)
+    assert assistant.validate_claim_level_safety("Rated High risk on this model.", UNREACHABLE_PAYLOAD)
+
+
+def test_a_reply_the_judge_rejects_becomes_a_template_and_is_logged(row, monkeypatch):
+    monkeypatch.setattr(llm_client, "chat", _by_prompt(answer="Reach out to a nearby advisor.", judge="generic_contact"))
+    turns = []
+
+    reply = assistant.answer(
+        row, [{"role": "user", "content": "Who can help?"}], record=STRESSED, on_turn=turns.append
+    )
+
+    assert reply.source == "template"
+    assert (turns[0].fallback_reason, turns[0].claim_passed) == ("unsafe_claim", False)
+
+
+def test_a_reply_the_judge_passes_is_shown(row, monkeypatch):
+    monkeypatch.setattr(llm_client, "chat", _by_prompt(answer=f"Your account is rated {row['risk_band']} risk."))
+
+    reply = assistant.answer(row, [{"role": "user", "content": "Why?"}], record=STRESSED)
+
+    assert reply.source == "model"

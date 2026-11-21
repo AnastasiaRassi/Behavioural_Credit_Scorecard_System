@@ -90,7 +90,8 @@ def test_grounded_model_reply_is_used(row, monkeypatch):
     seen = {}
 
     def fake_chat(messages):
-        seen["messages"] = messages
+        if messages[0]["content"].startswith("You are Loana"):
+            seen["messages"] = messages
         return _llm(f"Your account is rated {row['risk_band']} risk on this model.")
 
     monkeypatch.setattr(llm_client, "chat", fake_chat)
@@ -208,7 +209,9 @@ def test_opening_is_asked_of_the_model_with_the_sheet_and_not_logged_as_a_questi
     seen = {}
 
     def fake_chat(messages):
-        seen["messages"] = messages
+        # The judge is a second call; only the assistant's own call is under test.
+        if messages[0]["content"].startswith("You are Loana"):
+            seen["messages"] = messages
         return _llm(f"Your account is rated {row['risk_band']} risk on this model.")
 
     monkeypatch.setattr(llm_client, "chat", fake_chat)
@@ -227,7 +230,8 @@ def test_opening_is_cached_so_a_second_call_does_not_reach_the_llm(row, monkeypa
     calls = []
 
     def fake_chat(messages):
-        calls.append(messages)
+        if messages[0]["content"].startswith("You are Loana"):
+            calls.append(messages)
         return _llm(f"Your account is rated {row['risk_band']} risk on this model.")
 
     monkeypatch.setattr(llm_client, "chat", fake_chat)
@@ -416,8 +420,8 @@ def test_grounding_failure_wins_the_reason_but_the_claim_check_still_runs(row, m
     )
 
 
-def test_the_system_prompt_is_loana_v3_0():
-    assert assistant.PROMPT_VERSION == "v3.0-loana"
+def test_the_system_prompt_is_loana_v3_1():
+    assert assistant.PROMPT_VERSION == "v3.1-loana"
     assert assistant.SYSTEM_PROMPT.startswith("You are Loana AI")
     assert "{facts}" in assistant.SYSTEM_PROMPT
 

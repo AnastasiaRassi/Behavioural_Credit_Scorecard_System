@@ -11,7 +11,7 @@ A message is classified first (`guardrails.classify`): requests for confidential
 or for the assistant's instructions get a fixed refusal and never reach the model.
 Every model reply passes two checks, in order: number grounding (a number that is not
 in the sheet is invented) and claim-level safety (no promises, and no advice the
-counterfactual search did not produce); a card number, email or phone number in it
+counterfactual search did not produce, judged by a second model call); a card number, email or phone number in it
 is also discarded. A failed check, or any model failure, is replaced by a template
 answer from the same sheet, so the chat always answers.
 
@@ -47,7 +47,7 @@ logger = logging.getLogger(__name__)
 
 # Recorded with every reply. Bump it whenever SYSTEM_PROMPT changes, so logged
 # answers can be compared before and after.
-PROMPT_VERSION = "v3.0-loana"
+PROMPT_VERSION = "v3.1-loana"
 
 # Turns sent to the model. Older ones add prompt time and rarely matter.
 MAX_HISTORY = 10
@@ -502,7 +502,34 @@ def validate_number_grounding(reply: str, sheet: dict) -> bool:
 
 
 def validate_claim_level_safety(reply: str, payload: CoachingPayload) -> bool:
-    """True when the reply makes no promise and recommends nothing the search did not find."""
+    """True when the reply makes no promise and recommends nothing the search did not find.
+
+    A model judge decides. Outright promises are refused by pattern first, whatever the
+    judge would say, and the full pattern check answers when no judge verdict exists.
+    """
+    text = NEGATED_PROMISE.sub(" ", _normalise(reply))
+    if any(pattern.search(text) for pattern in OUTCOME_PROMISE_PATTERNS):
+        return False
+
+    violations = guardrails.judge_claims(reply, payload.steps)
+    if violations is None:
+        return _claims_by_patterns(reply, payload)
+    if violations:
+        logger.warning("assistant: judge found %s in the reply", ", ".join(violations))
+        return False
+    # The judge reads words, not amounts: an amount must still be a listed step's.
+    return payload.outcome != REACHABLE or _amounts_follow_steps(text, payload)
+
+
+def _amounts_follow_steps(text: str, payload: CoachingPayload) -> bool:
+    allowed = numbers_in(" ".join(payload.steps))
+    return all(
+        match.group(1).replace(",", "") in allowed for match in ACTION_WITH_AMOUNT.finditer(text)
+    )
+
+
+def _claims_by_patterns(reply: str, payload: CoachingPayload) -> bool:
+    """The claim check as word patterns: the fallback when no judge verdict is available."""
     text = _normalise(reply)
     text = NEGATED_PROMISE.sub(" ", text)
 
@@ -520,10 +547,7 @@ def validate_claim_level_safety(reply: str, payload: CoachingPayload) -> bool:
         text = REVIEW_REFERRAL.sub(" ", text)
         return not any(pattern.search(text) for pattern in PRESCRIPTIVE_PATTERNS)
 
-    allowed = numbers_in(" ".join(payload.steps))
-    return all(
-        match.group(1).replace(",", "") in allowed for match in ACTION_WITH_AMOUNT.finditer(text)
-    )
+    return _amounts_follow_steps(text, payload)
 
 
 def _normalise(text: str) -> str:
