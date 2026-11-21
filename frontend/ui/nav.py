@@ -15,6 +15,7 @@ DRAWER_KEY = "nav_drawer_open"
 DASHBOARD = "dashboard"
 CHAT = "chat"
 PROFILE = "profile"
+REPORT = "report"
 CUSTOMER = "customer"
 CONVERSATION = "conversation"
 
@@ -37,12 +38,13 @@ OFFICER_ITEMS = (
     Item(DASHBOARD, "Filter Users", ":material/filter_list:"),
     Item(CHAT, "Messages", ":material/chat:"),
 )
-TITLES = {DASHBOARD: "Account Overview", CHAT: "Messages", PROFILE: "Profile"}
+TITLES = {DASHBOARD: "Account Overview", CHAT: "Messages", PROFILE: "Profile", REPORT: "Report an Issue"}
 OFFICER_TITLES = {
-    DASHBOARD: "Filter Users", CHAT: "Messages", PROFILE: "Profile", CUSTOMER: "Customer account",
+    DASHBOARD: "Filter Users", CHAT: "Messages", PROFILE: "Profile", REPORT: "Report an Issue", CUSTOMER: "Customer account",
     CONVERSATION: "Conversation",
 }
 PROFILE_ITEM = Item(PROFILE, "Profile", ":material/person:")
+REPORT_ITEM = Item(REPORT, "Report an Issue", ":material/flag:")
 
 
 def current() -> str:

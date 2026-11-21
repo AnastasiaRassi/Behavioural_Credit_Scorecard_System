@@ -1,10 +1,7 @@
-"""The profile page and the report-an-issue dialog, both opened from the nav drawer."""
+"""The profile page, opened from the nav drawer."""
 import html
-import logging
 
 import streamlit as st
-
-LOGGER = logging.getLogger(__name__)
 
 PROFILE_OPEN_KEY = "profile_open"
 
@@ -16,8 +13,6 @@ LOAN_OFFICER = "Rana Haddad"
 SEX = {1: "Male", 2: "Female"}
 EDUCATION = {1: "Graduate school", 2: "University", 3: "High school", 4: "Other"}
 MARRIAGE = {1: "Married", 2: "Single", 3: "Other"}
-
-ISSUE_KINDS = ("Something is broken", "Something looks wrong", "Feedback or idea")
 
 _CSS = f"""
 <style>
@@ -72,17 +67,6 @@ def is_open() -> bool:
 
 def set_open(value: bool) -> None:
     st.session_state[PROFILE_OPEN_KEY] = value
-
-
-@st.dialog("Report an issue")
-def report_dialog(display_name: str) -> None:
-    kind = st.selectbox("What kind of issue?", ISSUE_KINDS)
-    details = st.text_area("What happened?", placeholder="Describe it in a sentence or two.")
-    if st.button("Send report", type="primary", disabled=not details.strip()):
-        # No tracker is wired up yet; the log is where reports land.
-        LOGGER.info("Issue report from %s [%s]: %s", display_name, kind, details.strip())
-        st.toast("Thanks, your report was sent.")
-        st.rerun()
 
 
 def render_page(session: dict, role_label: str) -> None:

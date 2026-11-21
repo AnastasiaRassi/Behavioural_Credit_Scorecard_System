@@ -29,7 +29,7 @@ if str(HERE) not in sys.path:
 import api  # noqa: E402
 import theme  # noqa: E402
 from tabs import drift, explain, fairness, performance, registry, segmentation, threshold  # noqa: E402
-from ui import drawer, nav, profile  # noqa: E402
+from ui import drawer, nav, profile, report  # noqa: E402
 from ui.components import stylesheet  # noqa: E402
 from views import cardholder, officer, sign_in  # noqa: E402
 
@@ -99,6 +99,8 @@ def _seed_location(session: dict) -> None:
     params = st.query_params
     if params.get("page") == "profile":
         st.session_state[profile.PROFILE_OPEN_KEY] = True
+    elif params.get("page") == nav.REPORT:
+        st.session_state[nav.VIEW_KEY] = nav.REPORT
     elif session["role"] == "officer" and params.get("customer"):
         st.session_state[officer.CUSTOMER_KEY] = params["customer"]
         st.session_state[nav.VIEW_KEY] = nav.CUSTOMER
@@ -111,6 +113,8 @@ def _sync_location() -> None:
     wanted = {}
     if profile.is_open():
         wanted["page"] = "profile"
+    elif nav.current() == nav.REPORT:
+        wanted["page"] = nav.REPORT
     elif nav.current() == nav.CUSTOMER and st.session_state.get(officer.CUSTOMER_KEY):
         wanted["customer"] = str(st.session_state[officer.CUSTOMER_KEY])
     elif nav.current() == nav.CHAT:
@@ -151,7 +155,8 @@ def main() -> None:
     _store_token(session["token"])
     _sync_location()
     stylesheet("backdrop.css")
-    if session["role"] == "engineer" and not profile.is_open():
+    on_report = nav.current() == nav.REPORT
+    if session["role"] == "engineer" and not profile.is_open() and not on_report:
         stylesheet("workspace.css")
 
     # Drawn by the screen, not here: the officer and cardholder screens put it at
@@ -163,6 +168,10 @@ def main() -> None:
         header()
         nav.back_button("Back to Dashboard" if session["role"] == "cardholder" else "Back")
         profile.render_page(session, LABELS.get(session["role"], session["role"]))
+    elif on_report:
+        header()
+        nav.back_button("Back to Dashboard" if session["role"] == "cardholder" else "Back")
+        report.render_page(session)
     elif session["role"] == "officer":
         _officer(session, header)
     elif session["role"] == "engineer":
@@ -258,7 +267,7 @@ def _crumb(session: dict) -> str:
     """The page name shown at the banner's right."""
     if session["role"] == "officer":
         return nav.OFFICER_TITLES.get(nav.current(), "")
-    if profile.is_open() or session["role"] == "cardholder":
+    if profile.is_open() or nav.current() == nav.REPORT or session["role"] == "cardholder":
         return nav.TITLES.get(nav.current(), "")
     return "Model monitoring"
 

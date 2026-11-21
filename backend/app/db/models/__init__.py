@@ -6,6 +6,7 @@
     decisions  what an officer did about it, and what then happened
     chat       what the cardholder assistant answered, and how
     reviews    cardholders asking a person to look again at their rating
+    issues     problems and feedback sent from the Report an Issue page
 
 Import from this package rather than from a module: SQLAlchemy resolves
 relationships by class name at first use, so every mapper has to be registered
@@ -22,6 +23,7 @@ from app.db.models.customers import (
     MonthlyStatement,
 )
 from app.db.models.decisions import DECISION_ACTIONS, Decision, ObservedOutcome
+from app.db.models.issues import ISSUE_KINDS, IssueReport
 from app.db.models.reviews import OPEN_REVIEW_STATUSES, REVIEW_STATUSES, ReviewRequest
 from app.db.models.scoring import ModelVersion, Prediction
 
@@ -36,6 +38,8 @@ __all__ = [
     "DECISION_ACTIONS",
     "Decision",
     "MONTHS_OBSERVED",
+    "ISSUE_KINDS",
+    "IssueReport",
     "ModelVersion",
     "MonthlyStatement",
     "ObservedOutcome",

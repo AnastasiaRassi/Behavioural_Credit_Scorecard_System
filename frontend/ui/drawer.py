@@ -1,4 +1,4 @@
-"""Right-hand utility drawer: navigation, report an issue, sign out.
+"""Right-hand utility drawer: navigation, sign out.
 
 The toggle sits in the banner's `top_actions` container (app.py); the drawer is a
 fixed panel below the banner. Its look is in drawer.css.
@@ -14,7 +14,6 @@ from ui import nav, profile
 CSS = Path(__file__).with_name("drawer.css")
 PANEL_KEY = "nav_panel"
 TOGGLE_KEY = "nav_toggle"
-REPORT_KEY = "nav_report"
 SIGN_OUT_KEY = "nav_sign_out"
 FOOTER_KEY = "nav_footer"
 
@@ -83,7 +82,7 @@ def _panel(
             unsafe_allow_html=True,
         )
         active = nav.current()
-        for position, item in enumerate((*items, nav.PROFILE_ITEM)):
+        for position, item in enumerate((*items, nav.PROFILE_ITEM, nav.REPORT_ITEM)):
             st.button(
                 f"{item.icon} {item.label}", key=f"nav_{item.view}", width="stretch",
                 type="primary" if item.view == active else "secondary",
@@ -115,8 +114,6 @@ def _panel(
                         ":material/close:", key="nav_customer_close", help="Close this user",
                         on_click=on_close_customer,
                     )
-        if st.button(":material/flag: Report an Issue", key=REPORT_KEY, width="stretch"):
-            profile.report_dialog(display_name)
         with st.container(key=FOOTER_KEY):
             st.divider()
             st.button(

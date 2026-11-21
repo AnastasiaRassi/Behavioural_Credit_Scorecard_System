@@ -30,6 +30,7 @@ from app.api import (
     cardholders,
     decisions,
     fairness,
+    issues,
     monitoring,
     officer,
     predictions,
@@ -155,6 +156,7 @@ app.include_router(cardholders.router)
 app.include_router(recourse.router)
 app.include_router(predictions.router)
 app.include_router(decisions.router)
+app.include_router(issues.router)
 app.include_router(fairness.router)
 app.include_router(admin.router)
 app.include_router(monitoring.router)

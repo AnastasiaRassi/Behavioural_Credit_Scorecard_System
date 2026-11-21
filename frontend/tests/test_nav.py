@@ -76,3 +76,26 @@ def test_closing_the_customer_block_removes_it_and_leaves_its_page():
     app.button(key="nav_customer_close").click().run()
     assert "view=dashboard" in _text(app)
     assert "nav_customer" not in [button.key for button in app.button]
+
+
+def test_report_item_opens_the_report_view_for_every_role():
+    app = AppTest.from_function(_app, default_timeout=TIMEOUT).run()
+    app.button(key="nav_toggle").click().run()
+    app.button(key="nav_report").click().run()
+    assert "view=report" in _text(app)
+
+
+def test_report_page_thanks_the_user_once_the_issue_is_stored(monkeypatch):
+    def app_fn() -> None:
+        import api
+        from ui import report
+
+        api.report_issue = lambda token, kind, details: {"id": "x"}
+        report.render_page({"token": "t"})
+
+    app = AppTest.from_function(app_fn, default_timeout=TIMEOUT).run()
+    assert app.button(key="issue_report_send").disabled
+
+    app.text_area(key="issue_report_details").set_value("It broke").run()
+    app.button(key="issue_report_send").click().run()
+    assert "your feedback is with us" in app.success[0].value

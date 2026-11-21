@@ -385,6 +385,11 @@ def request_review(customer_id: str, token: str, reason: str) -> dict:
         token=token,
     )
     review_requests.clear()
+def report_issue(token: str, kind: str, details: str) -> dict:
+    """Store a problem or feedback from the signed-in person. Never cached."""
+    return _request("/issue-reports", payload={"kind": kind, "details": details}, token=token)
+
+
     thread.clear()
     return sent
 
