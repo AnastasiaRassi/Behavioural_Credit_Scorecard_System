@@ -69,7 +69,7 @@ class ReasonOut(BaseModel):
     """One driver of a score, in plain language."""
 
     feature: str
-    value: float
+    value: float | None = Field(description="None when the feature could not be computed")
     effect: float = Field(description="Log-odds; positive raises risk")
     description: str
     raises_risk: bool

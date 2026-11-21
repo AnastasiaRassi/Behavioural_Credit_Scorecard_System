@@ -52,3 +52,12 @@ def test_no_model_feature_is_described_with_a_decimal_number(value):
         assert not re.search(r"\d\.\d", text), f"{feature}: {text}"
         # The generic fallback prints "name: value" and no feature should reach it.
         assert not re.search(r"\b[a-z]+_[a-z_0-9]+\b", text), f"{feature}: {text}"
+
+
+def test_reason_with_no_value_serialises_as_valid_json():
+    import json
+
+    from app.ml.explainability import Reason
+
+    reason = Reason("repay_ratio_min", float("nan"), 0.1, "not available")
+    assert json.loads(json.dumps(reason.to_dict(), allow_nan=False))["value"] is None

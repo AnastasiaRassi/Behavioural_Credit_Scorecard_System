@@ -57,7 +57,12 @@ class Reason:
         return self.effect > 0
 
     def to_dict(self) -> dict:
-        return asdict(self)
+        data = asdict(self)
+        # NaN (a feature with nothing to compute from) is not valid JSON: Postgres
+        # rejects it and it breaks the response. The description already says so.
+        if pd.isna(data["value"]):
+            data["value"] = None
+        return data
 
 
 # The dataset's monthly columns are positional, not dated: PAY_1 is the most
