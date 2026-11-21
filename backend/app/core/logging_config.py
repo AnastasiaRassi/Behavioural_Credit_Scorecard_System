@@ -13,8 +13,8 @@ LOGS_ROOT = Path(__file__).resolve().parents[2] / "logs"
 
 
 def log_dir() -> Path:
-    """`logs/test/` under pytest (conftest sets APP_ENV=test), else `logs/app/`."""
-    return LOGS_ROOT / ("test" if os.environ.get("APP_ENV") == "test" else "app")
+    """`logs/testing/` under pytest (conftest sets APP_ENV=test), else `logs/app/`."""
+    return LOGS_ROOT / ("testing" if os.environ.get("APP_ENV") == "test" else "app")
 
 LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s [%(request_id)s]: %(message)s"
 
