@@ -153,3 +153,39 @@ def test_the_stored_input_withholds_protected_attributes(client, customer_id):
         assert protected not in raw
     assert raw["_protected_attributes_withheld"] is True
     assert stored["risk_band"] in {"Low", "Medium", "High"}
+
+
+@pytest.fixture
+def unpredicted_customer_id(api_session) -> str:
+    """A customer outside the precomputed queue with no stored prediction."""
+    from sqlalchemy import select
+
+    from app.db.models import Customer, Prediction
+
+    queued = {row["account_number"] for row in worklist.all_rows()}
+    predicted = select(Prediction.subject_customer_id)
+    for customer in api_session.scalars(
+        select(Customer).where(Customer.id.not_in(predicted)).limit(200)
+    ):
+        if customer.account_number not in queued and not customer.account_number.startswith("W-"):
+            return str(customer.id)
+    pytest.skip("no unpredicted customer outside the queue")
+
+
+def test_a_cardholder_sees_no_model_output_until_they_ask(client, unpredicted_customer_id):
+    before = _cardholder_view(client, unpredicted_customer_id)
+    assert before.status_code == 200
+    body = before.json()
+    assert body["predicted"] is False
+    assert body["risk_band"] is None and body["reasons"] == [] and body["coaching"] is None
+    assert len(body["history"]) == 6
+
+    asked = client.post(
+        f"/cardholders/{unpredicted_customer_id}/prediction", headers=bearer(OFFICER_EMAIL)
+    )
+    assert asked.status_code == 201
+    assert asked.json()["predicted"] is True
+    assert asked.json()["risk_band"] in {"Low", "Medium", "High"}
+
+    # Stored, so the next read shows it without asking again.
+    assert _cardholder_view(client, unpredicted_customer_id).json()["predicted"] is True

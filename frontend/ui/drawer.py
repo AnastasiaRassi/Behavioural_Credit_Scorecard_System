@@ -114,6 +114,12 @@ def _panel(
                         ":material/close:", key="nav_customer_close", help="Close this user",
                         on_click=on_close_customer,
                     )
+                    st.button(
+                        f"{nav.PREDICTION_ITEM.icon} {nav.PREDICTION_ITEM.label}",
+                        key=f"nav_{nav.PREDICTION}", width="stretch",
+                        type="primary" if active == nav.PREDICTION else "secondary",
+                        on_click=nav.go, args=(nav.PREDICTION,),
+                    )
         with st.container(key=FOOTER_KEY):
             st.divider()
             st.button(

@@ -45,6 +45,19 @@ def _detail(customer_id: str) -> dict:
     }
 
 
+_detail.clear = lambda: None
+
+
+def _scored() -> dict:
+    return {
+        "probability": 0.7, "risk_band": "High", "flagged": True, "threshold": 0.4,
+        "reasons": [
+            {"feature": "PAY_1", "description": "Last month was late", "raises_risk": True},
+            {"feature": "PAY_AMT1", "description": "Paid a lot", "raises_risk": False},
+        ],
+    }
+
+
 def _requests() -> list[dict]:
     return [
         {
@@ -133,6 +146,7 @@ def faked_api(monkeypatch):
             }
         ] if customer_id == "id-111" else [],
         "decide": lambda *args: recorded.append(args),
+        "predict": lambda customer_id, scored_by: _scored(),
         "approve_review": lambda customer_id, officer: None,
         "reject_review": lambda customer_id, officer: rejected.append(customer_id),
     }
@@ -331,8 +345,9 @@ def test_review_opens_the_customer_with_the_unread_alert_and_thread(faked_api):
     app.button(key="officer_conversation_dashboard").click().run()
     text = _text(app)
     assert "1 unanswered request from this customer" in text
-    assert "What the model saw" in text and "What would change the rating" in text
+    assert "What would change the rating" in text
     assert "Pay 500 this month" in text
+    assert "What the model saw" not in text and "What the customer says" not in text
 
 
 def test_the_dashboard_has_no_chat_box_or_review_link(faked_api):
@@ -478,6 +493,35 @@ def test_the_prediction_survives_closing_and_reopening_the_customer(faked_api):
 
     assert app.session_state["officer_customer_id"] == "id-111"
     assert app.session_state["prediction_id-111"] == {"probability": 0.5}
+
+
+def test_the_record_links_to_the_prediction_page_which_runs_the_model(faked_api):
+    app = _start()
+    _command(app, "111")
+    app.button(key="officer_pick_id-111").click().run()
+
+    # The record keeps the figures and chart; the analysis is one click away.
+    assert "Not run yet" in _text(app)
+    assert "predict_next_payment" not in [b.key for b in app.button]
+    assert "Why this score" not in _text(app)
+
+    app.button(key="open_prediction").click().run()
+    assert app.session_state["active_view"] == "prediction"
+    assert "Why this score" in _text(app)
+
+    app.button(key="predict_next_payment").click().run()
+    text = _text(app)
+    assert "70%" in text and "Last month was late" in text
+    assert "1 of 2 factors raise the risk, 1 lower it." in text
+    assert "▲ raises the risk, ▼ lowers it, strongest first." in " ".join(
+        c.value for c in app.caption
+    )
+
+    app.button(key="nav_toggle") if False else None
+    _show(app, "dashboard")
+    app.session_state["active_view"] = "customer"
+    app.run()
+    assert "High risk · 70% chance of missing the next payment" in _text(app)
 
 
 def test_a_large_backlog_is_capped_in_messages(faked_api, monkeypatch):

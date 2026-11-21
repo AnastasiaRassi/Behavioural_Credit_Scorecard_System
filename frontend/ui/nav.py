@@ -18,6 +18,7 @@ PROFILE = "profile"
 REPORT = "report"
 CUSTOMER = "customer"
 CONVERSATION = "conversation"
+PREDICTION = "prediction"
 
 
 @dataclass(frozen=True)
@@ -30,18 +31,23 @@ class Item:
 # Account views belong to a cardholder with a scored account.
 ACCOUNT_ITEMS = (
     Item(DASHBOARD, "Account Overview", ":material/dashboard:"),
+    Item(PREDICTION, "Risk Prediction", ":material/query_stats:"),
     Item(CHAT, "Officer reviews", ":material/rate_review:"),
 )
 # Officers: the dashboard is the user filter. A chosen customer gets its own entry
-# (CUSTOMER) that the drawer indents under Filter Users.
+# (CUSTOMER) that the drawer indents under Filter Users, with PREDICTION_ITEM below it.
 OFFICER_ITEMS = (
     Item(DASHBOARD, "Filter Users", ":material/filter_list:"),
     Item(CHAT, "Officer reviews", ":material/rate_review:"),
 )
-TITLES = {DASHBOARD: "Account Overview", CHAT: "Officer reviews", PROFILE: "Profile", REPORT: "Report an Issue"}
+PREDICTION_ITEM = Item(PREDICTION, "Risk Prediction", ":material/query_stats:")
+TITLES = {
+    DASHBOARD: "Account Overview", PREDICTION: "Risk Prediction", CHAT: "Officer reviews",
+    PROFILE: "Profile", REPORT: "Report an Issue",
+}
 OFFICER_TITLES = {
     DASHBOARD: "Filter Users", CHAT: "Officer reviews", PROFILE: "Profile", REPORT: "Report an Issue", CUSTOMER: "Customer account",
-    CONVERSATION: "Review request",
+    CONVERSATION: "Review request", PREDICTION: "Risk Prediction",
 }
 PROFILE_ITEM = Item(PROFILE, "Profile", ":material/person:")
 REPORT_ITEM = Item(REPORT, "Report an Issue", ":material/flag:")

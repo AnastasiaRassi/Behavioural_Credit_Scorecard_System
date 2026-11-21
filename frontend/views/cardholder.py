@@ -28,6 +28,7 @@ import theme
 from money import CURRENCY, markdown_safe, money
 from ui import loana, nav, thread
 from ui.components import show, stylesheet
+from views import prediction
 
 # Features a cardholder can act on this month (read by the officer screen). A reason
 # they cannot change is not advice, it is an accusation.
@@ -65,6 +66,12 @@ PRESETS = {
     "🎯 Next steps": "What can I do this month?",
 }
 
+NOT_SCORED = (
+    "Your account does not have six full months of history yet, so it cannot be "
+    "scored and there is no dashboard to show."
+)
+PREDICT_PROBLEM_KEY = "predict_problem"
+
 GREETING = (
     "Hi, I'm Loana. Ask me about your account, or pick one of the questions below."
 )
@@ -91,12 +98,23 @@ def render(
         account = api.cardholder(customer_id, token)
     except api.ServiceUnavailable as exception:
         header()
+        if exception.code == "RESOURCE_NOT_FOUND":
+            # Every stored customer is scorable; only one without six full months lands here.
+            st.info(NOT_SCORED)
+            st.stop()
         api.guard(exception)
         return
 
     header()
     if nav.current() == nav.CHAT:
         _chat_view(token, customer_id)
+        return
+    if nav.current() == nav.PREDICTION:
+        _prediction_view(token, customer_id, account)
+        loana.dock(lambda: _copilot(token, customer_id))
+        return
+    if not account.get("predicted", True):
+        _unpredicted_dashboard(token, customer_id, account)
         return
     _dashboard(account)
     loana.dock(lambda: _copilot(token, customer_id))
@@ -108,11 +126,51 @@ def _dashboard(account: dict) -> None:
     needs_attention = account["needs_attention"]
     _officer_decision(account.get("officer_decision"))
     _banner(account)
+    prediction.entry_card(prediction.cardholder_summary(account))
 
     _account(account)
     history_card(account["history"])
     _ask_loana(needs_attention)
     _consent()
+
+
+def _unpredicted_dashboard(token: str, customer_id: str, account: dict) -> None:
+    """Figures and history, and a button that runs the model. No band until it is pressed."""
+    stylesheet("dashboard.css")
+    _officer_decision(account.get("officer_decision"))
+    st.markdown(
+        '<div class="account-alert account-alert--neutral">'
+        '<div class="account-alert-title">No prediction yet</div>'
+        "<p>Run the model on your last six months to see how your next payment looks, "
+        "what is driving it, and what would help.</p></div>",
+        unsafe_allow_html=True,
+    )
+    st.button(
+        "Get a prediction", key="get_prediction", type="primary",
+        on_click=_predict, args=(token, customer_id),
+    )
+    problem = st.session_state.pop(PREDICT_PROBLEM_KEY, None)
+    if problem:
+        st.error(problem)
+    _account(account)
+    history_card(account["history"])
+
+
+def _prediction_view(token: str, customer_id: str, account: dict) -> None:
+    """The Risk Prediction page: the band and the reasons, never the probability."""
+    stylesheet("dashboard.css")
+    _officer_decision(account.get("officer_decision"))
+    prediction.cardholder_page(
+        account, on_predict=lambda: _predict(token, customer_id),
+        problem=st.session_state.pop(PREDICT_PROBLEM_KEY, None),
+    )
+
+
+def _predict(token: str, customer_id: str) -> None:
+    try:
+        api.request_prediction(customer_id, token)
+    except api.ServiceUnavailable as exception:
+        st.session_state[PREDICT_PROBLEM_KEY] = str(exception)
 
 
 def _chat_view(token: str, customer_id: str) -> None:

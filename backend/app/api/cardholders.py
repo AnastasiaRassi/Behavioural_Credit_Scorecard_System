@@ -46,12 +46,32 @@ def read_ownaccount_for(
     owed: the band, whether the account needs attention, and the drivers in plain
     language with their direction.
 
-    Prefers the most recent score an officer has run, so the customer and the
-    officer are looking at the same prediction rather than the customer seeing a
-    stale overnight one. Falls back to the queue when none has been run.
+    Shows the most recent stored prediction, whoever ran it. With none stored the
+    view carries only figures and history (`predicted` false) until the cardholder
+    asks for one; deleting the prediction rows returns the account to that state.
     """
     row, stored, record = account_for(customer_id, session)
-    view = worklist.cardholder_view(row, stored_prediction=stored, record=record)
+    return _view(session, customer_id, row, stored, record)
+
+
+@router.post(
+    "/{customer_id}/prediction",
+    response_model=CardholderView,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(account_reader)],
+)
+def request_prediction(customer_id: str, session: Session = Depends(get_session)):
+    """Run the model on this account now, store the prediction, return the full view."""
+    row, _, record = account_for(customer_id, session)
+    stored = _score_live(session, row)
+    return _view(session, customer_id, row, stored, record)
+
+
+def _view(session: Session, customer_id: str, row: dict, stored, record) -> dict:
+    if stored is None:
+        view = worklist.unpredicted_view(row)
+    else:
+        view = worklist.cardholder_view(row, stored_prediction=stored, record=record)
 
     # An officer's level replaces the model's: it is the human decision on the account.
     decision = reviews.latest_band_decision(session, customer_or_404(session, customer_id).id)
@@ -76,6 +96,8 @@ def chat_aboutaccount_for(
     returns Loana's opening interpretation of the account.
     """
     row, stored, record = account_for(customer_id, session)
+    if stored is None:
+        stored = _score_live(session, row)
     messages = [message.model_dump() for message in request.messages]
     audit.event("cardholder_chat", customer=customer_id, turns=len(messages))
     return assistant.answer(
@@ -164,12 +186,10 @@ def _score_live(session: Session, row: dict):
 
 
 def account_for(customer_id: str, session: Session):
-    """The queue row, the latest officer score if any, and the raw input for the search."""
+    """The queue row, the latest stored prediction if any, and the raw input for the search."""
     customer, row = queued_account(session, customer_id)
 
     stored = queue_predictions.latest_for_cardholder(session, customer.id)
-    if stored is None:
-        stored = _score_live(session, row)
     try:
         record = statements.raw_input_for(session, customer.id)
     except statements.CustomerNotFound:

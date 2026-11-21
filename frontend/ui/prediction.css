@@ -1,0 +1,40 @@
+/* Risk Prediction page and the overview's entry card. Frosted cards come from backdrop.css. */
+
+/* The emerald action. */
+.st-key-predict_next_payment button { background: #00A669; border-color: #00A669; color: #FFFFFF; }
+.st-key-predict_next_payment button:hover { background: #047857; border-color: #047857; color: #FFFFFF; }
+.st-key-predict_next_payment button p { color: #FFFFFF; }
+
+.prediction-eyebrow {
+    color: #475569; font-size: .78rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+}
+.prediction-figure { color: #0F172A; font-size: 3.6rem; font-weight: 800; line-height: 1.1; margin: .3rem 0 .1rem; }
+.prediction-figure--Low { color: #2F7A52; font-size: 2.4rem; }
+.prediction-figure--Medium { color: #B45309; font-size: 2.4rem; }
+.prediction-figure--High { color: #DC2626; font-size: 2.4rem; }
+.prediction-sub { color: #475569; font-size: 1rem; font-weight: 500; }
+.prediction-badge { margin: .7rem 0 .2rem; }
+.prediction-flag { color: #0F172A; font-size: 1.05rem; font-weight: 600; margin: .5rem 0 .2rem; }
+.prediction-empty { color: #475569; font-size: 1.02rem; line-height: 1.55; }
+
+.prediction-title { color: #0F172A; font-size: 1.35rem; font-weight: 750; }
+.prediction-summary { color: #475569; font-size: 1.02rem; margin: .2rem 0 0; }
+.prediction-reasons { list-style: none; counter-reset: reason; margin: .8rem 0 .4rem; padding: 0; }
+.prediction-reason {
+    counter-increment: reason; display: flex; align-items: baseline; gap: .7rem;
+    padding: .55rem .8rem; margin-bottom: .45rem; border-radius: 10px; border-left: 3px solid;
+    background: rgba(255, 255, 255, .6); color: #0F172A; font-size: 1.02rem;
+}
+.prediction-reason::before { content: counter(reason); color: #64748B; font-size: .85rem; font-weight: 700; min-width: 1rem; }
+.prediction-reason--up { border-left-color: #DC2626; }
+.prediction-reason--down { border-left-color: #2F7A52; }
+
+/* Overview: one quiet line that leads to the analysis. */
+.st-key-prediction_entry {
+    background: rgba(255, 255, 255, .72); border: 1px solid rgba(255, 255, 255, .85);
+    border-left: 4px solid #00A669; border-radius: 14px; padding: .55rem 1rem;
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+}
+.prediction-entry-text { display: flex; flex-direction: column; color: #0F172A; line-height: 1.35; }
+.prediction-entry-text span { color: #475569; font-size: .95rem; }
+.st-key-open_prediction button { padding: .35rem .9rem; }

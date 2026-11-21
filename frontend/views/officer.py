@@ -31,11 +31,11 @@ import streamlit as st
 
 import api
 import review
-from components import BAND_ICONS
 from money import markdown_safe, money
 from ui import loana, nav, thread
 from ui.profile import initials
-from ui.components import card_head, quote, reason_line, show, stylesheet
+from ui.components import card_head, quote, show, stylesheet
+from views import prediction
 from views.cardholder import ACTIONABLE, history_card
 
 ACTIONS = review.ACTIONS
@@ -46,9 +46,6 @@ UNREAD_CAP = 9
 REQUEST_CARDS = 10
 # The backend caps "predict selected" at the same number.
 MAX_PREDICT = 10
-
-# No model is certain, so the extremes are shown as bounds.
-CERTAINTY_CAP = 0.99
 
 CUSTOMER_KEY = "officer_customer_id"
 CONVERSATION_KEY = "officer_conversation_id"
@@ -130,6 +127,9 @@ def render(
     if view == nav.CUSTOMER and customer_id:
         _record_page(customer_id, officer_email, token)
         loana.dock(lambda: _assistant(customer_id))
+    elif view == nav.PREDICTION and customer_id:
+        _prediction_page(customer_id, officer_email)
+        loana.dock(lambda: _assistant(customer_id))
     elif view == nav.CONVERSATION and st.session_state.get(CONVERSATION_KEY):
         conversation_id = st.session_state[CONVERSATION_KEY]
         _conversation_page(conversation_id, officer_email)
@@ -142,7 +142,7 @@ def render(
 
 def close_customer() -> None:
     """Drop the opened customer from the drawer; leave their page if it is showing."""
-    if nav.current() == nav.CUSTOMER:
+    if nav.current() in (nav.CUSTOMER, nav.PREDICTION):
         st.session_state[nav.VIEW_KEY] = nav.DASHBOARD
     st.session_state[CUSTOMER_KEY] = None
 
@@ -526,15 +526,28 @@ def _record_page(customer_id: str, officer_email: str, token: str) -> None:
     _heading(detail)
     if request:
         _unread_alert(request)
-    # The model's call is the point of the page, so it sits above the fold.
-    _prediction(detail, officer_email)
-    st.divider()
+    prediction.entry_card(prediction.officer_summary(detail))
     if request:
-        _evidence(detail, request)
         _plan(detail, token)
     _figures(detail)
     st.divider()
     _history(detail)
+
+
+def _prediction_page(customer_id: str, officer_email: str) -> None:
+    """The model's call on the next payment for the opened customer, in full."""
+    try:
+        detail = api.customer_detail(customer_id)
+    except api.ServiceUnavailable as exception:
+        api.guard(exception)
+        return
+    _heading(detail)
+    prediction.officer_page(detail, officer_email)
+
+    if request:
+        st.divider()
+        _evidence(detail, request)
+        _plan(detail, token)
 
 
 # --- the conversation -------------------------------------------------------
@@ -627,18 +640,6 @@ def _unread_alert(request: dict) -> None:
         f"customer</b> · waiting {waited}. Issue a decision from their review in "
         "Officer reviews.</div></div>"
     )
-
-
-def _evidence(detail: dict, request: dict) -> None:
-    saw, says = st.columns(2, gap="large")
-    with saw:
-        st.markdown("**What the model saw**")
-        st.caption("The last six months of this account.")
-        for sentence in review.model_saw(detail):
-            st.markdown(f"- {markdown_safe(sentence)}")
-    with says:
-        st.markdown("**What the customer says**")
-        show(quote(request["latest"].strip()))
 
 
 def _plan(detail: dict, token: str) -> None:
@@ -755,73 +756,6 @@ def _history(detail: dict) -> None:
         ),
         hide_index=True, width="stretch",
     )
-
-
-def _prediction(detail: dict, officer_email: str) -> None:
-    st.markdown("**Next payment**")
-
-    stored = detail.get("latest_prediction")
-    state_key = f"prediction_{detail['customer_id']}"
-    fresh = st.session_state.get(state_key)
-
-    if st.button("Predict next payment", type="primary", key="predict_next_payment"):
-        try:
-            fresh = api.predict(detail["customer_id"], scored_by=officer_email)
-        except api.ServiceUnavailable as exception:
-            st.error(str(exception))
-            return
-        st.session_state[state_key] = fresh
-        api.customer_detail.clear()
-
-    if fresh is None and stored is None:
-        band = detail["risk_band"]
-        st.info(
-            f"This account sits in the **{BAND_ICONS[band]} {band}** band in this "
-            "month's batch. Run the prediction to see the risk and the reasons "
-            "behind it."
-        )
-        return
-
-    result = fresh or {
-        "probability": stored["probability"],
-        "risk_band": stored["risk_band"],
-        "flagged": stored["flagged"],
-        "threshold": stored["threshold"],
-        "reasons": stored["explanation"]["reasons"],
-    }
-    _show_prediction(result, is_fresh=fresh is not None)
-
-
-def _as_risk(probability: float) -> str:
-    if probability >= CERTAINTY_CAP:
-        return f"over {CERTAINTY_CAP:.0%}"
-    if probability <= 1 - CERTAINTY_CAP:
-        return f"under {1 - CERTAINTY_CAP:.0%}"
-    return f"{probability:.0%}"
-
-
-def _show_prediction(result: dict, is_fresh: bool) -> None:
-    band = result["risk_band"]
-
-    # Score and reasons side by side so the whole verdict fits without scrolling.
-    score, why = st.columns([2, 3], gap="large")
-    with score:
-        st.metric("Risk of missing the next payment", _as_risk(result["probability"]))
-        st.markdown(
-            f"### {BAND_ICONS[band]} {band} risk\n"
-            f"{'Flagged for attention' if result['flagged'] else 'Not flagged for attention'}."
-        )
-        st.caption(
-            "Scored just now and recorded." if is_fresh
-            else "The last score recorded for this customer."
-        )
-
-    with why:
-        st.markdown("**Why**")
-        for reason in result["reasons"]:
-            raises = reason.get("raises_risk", reason.get("effect", 0) > 0)
-            show(reason_line(reason["description"], raises))
-        st.caption("▲ raises the risk, ▼ lowers it, strongest first.")
 
 
 def _record(

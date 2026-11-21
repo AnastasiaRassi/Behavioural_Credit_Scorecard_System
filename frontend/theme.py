@@ -538,15 +538,6 @@ hr {{ border-color: {GRID} !important; opacity: 1; }}
 .st-key-officer_briefing button[kind="primary"] p {{ color: #FFFFFF; }}
 .st-key-officer_briefing button[kind="primary"]:hover {{ background: #1E293B; color: #FFFFFF; }}
 
-/* Customer page: the emerald action. */
-.st-key-predict_next_payment button {{
-    background: #00A669; border-color: #00A669; color: #FFFFFF;
-}}
-.st-key-predict_next_payment button:hover {{
-    background: #047857; border-color: #047857; color: #FFFFFF;
-}}
-.st-key-predict_next_payment button p {{ color: #FFFFFF; }}
-
 /* One command bar for search and Loana: the biggest input on the page. */
 .st-key-officer_command_bar {{ margin-top: 0.6rem; }}
 .st-key-officer_command_bar [data-testid="stChatInput"] {{

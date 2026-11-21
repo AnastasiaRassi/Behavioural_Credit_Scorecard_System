@@ -149,3 +149,38 @@ def test_the_assistant_fallback_note_is_not_shown_to_a_cardholder(faked_api, mon
 
     assert "Your account is rated High." in _markdown(app)
     assert "Standard answer" not in _markdown(app) + _captions(app)
+
+
+def test_an_unscored_cardholder_is_told_so_rather_than_shown_an_outage(faked_api, monkeypatch):
+    def not_queued(customer_id, token):
+        raise api.ServiceUnavailable("404", status=404, code="RESOURCE_NOT_FOUND")
+
+    monkeypatch.setattr(api, "cardholder", not_queued)
+    app = AppTest.from_function(_dashboard_app, default_timeout=TIMEOUT).run()
+
+    assert "six full months" in app.info[0].value
+    assert not app.error
+
+
+def test_an_unpredicted_account_shows_the_button_and_no_band(faked_api, monkeypatch):
+    asked = []
+    state = {"predicted": False}
+
+    def view(customer_id, token):
+        return {**_account(), "predicted": state["predicted"],
+                "risk_band": "Low" if state["predicted"] else None}
+
+    def request_prediction(customer_id, token):
+        asked.append(customer_id)
+        state["predicted"] = True
+
+    monkeypatch.setattr(api, "cardholder", view)
+    monkeypatch.setattr(api, "request_prediction", request_prediction)
+    app = AppTest.from_function(_dashboard_app, default_timeout=TIMEOUT).run()
+
+    assert "No prediction yet" in " ".join(m.value for m in app.markdown)
+    app.button(key="get_prediction").click().run()
+
+    assert asked == ["id-1"]
+    assert not [b for b in app.button if b.key == "get_prediction"]
+    assert "Your account looks on track" in " ".join(m.value for m in app.markdown)

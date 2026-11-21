@@ -11,6 +11,7 @@ div.account-alert { backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(1
 div.account-alert--good { background: rgba(236, 253, 245, .82); border-left-color: #00A669; }
 div.account-alert--medium { background: rgba(255, 251, 235, .85); }
 div.account-alert--high { background: rgba(254, 242, 242, .85); }
+div.account-alert--neutral { background: rgba(241, 245, 249, .9); border-left-color: #475569; }
 .account-alert-title { font-size: 1.15rem; }
 
 .loana-hint {

@@ -5,8 +5,6 @@ The shapes here are the ones `api.review_requests()` returns.
 """
 from datetime import datetime, timezone
 
-from money import money
-
 OPEN_STATUSES = ("pending", "in_review")
 ACTIONS = {
     "no_action": "No action",
@@ -147,41 +145,6 @@ def card_data(request: dict, band: str | None, now: datetime) -> dict:
         "status": STATUS_LABELS.get(request["status"], request["status"]),
         "band": band,
     }
-
-
-def model_saw(detail: dict) -> list[str]:
-    """The last six months in plain sentences, from the history the screen already has."""
-    highlights = detail["highlights"]
-    sentences = []
-
-    behind = detail["months_in_arrears"]
-    sentences.append(
-        "Never behind on a payment in the last six months."
-        if behind == 0
-        else f"Behind on payments in {behind} of the last 6 months."
-    )
-
-    missed = highlights.get("months_with_no_payment")
-    if missed:
-        sentences.append(f"No payment at all in {_plural(missed, 'month')}.")
-
-    now, average = highlights.get("utilisation_now"), highlights.get("utilisation_mean")
-    if now is not None and average is not None:
-        sentences.append(
-            f"Using {now:.0%} of the limit now, {average:.0%} on average over six months."
-        )
-
-    billed = sum(month["bill_amount"] for month in detail["history"])
-    paid = sum(month["amount_paid"] for month in detail["history"])
-    if billed > 0:
-        sentences.append(
-            f"Paid {money(paid)} against {money(billed)} billed ({paid / billed:.0%})."
-        )
-
-    trajectory = highlights.get("trajectory")
-    if trajectory:
-        sentences.append(f"Repayment behaviour is {trajectory}.")
-    return sentences
 
 
 def unchangeable_reason(reasons: list[dict], actionable: set[str]) -> str | None:

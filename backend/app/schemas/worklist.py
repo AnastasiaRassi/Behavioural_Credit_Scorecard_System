@@ -252,14 +252,17 @@ class CardholderView(BaseModel):
 
     customer_id: str
     account_number: str
-    risk_band: str
+    predicted: bool = Field(
+        description="False until a prediction is stored; then band, reasons and coaching are set"
+    )
+    risk_band: str | None
     needs_attention: bool
     credit_limit: float
     current_balance: float
     last_payment: float
     months_in_arrears: int
     reasons: list[CardholderReason]
-    coaching: CardholderCoaching
+    coaching: CardholderCoaching | None
     history: list[CardholderMonth]
     officer_decision: OfficerBandDecision | None = None
 

@@ -415,6 +415,13 @@ def report_issue(token: str, kind: str, details: str) -> dict:
     return _request("/issue-reports", payload={"kind": kind, "details": details}, token=token)
 
 
+def request_prediction(customer_id: str, token: str) -> dict:
+    """Run and store a prediction for this cardholder; never cached."""
+    view = _request(f"/cardholders/{customer_id}/prediction", payload={}, token=token)
+    cardholder.clear()
+    return view
+
+
 def request_review(customer_id: str, token: str, reason: str) -> dict:
     """Send the loan officer a message; it opens (or reopens) the conversation."""
     sent = _request(

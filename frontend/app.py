@@ -103,20 +103,31 @@ def _seed_location(session: dict) -> None:
         st.session_state[nav.VIEW_KEY] = nav.REPORT
     elif session["role"] == "officer" and params.get("customer"):
         st.session_state[officer.CUSTOMER_KEY] = params["customer"]
-        st.session_state[nav.VIEW_KEY] = nav.CUSTOMER
+        st.session_state[nav.VIEW_KEY] = (
+            nav.PREDICTION if params.get("view") == nav.PREDICTION else nav.CUSTOMER
+        )
     elif params.get("view") == nav.CHAT:
         st.session_state[nav.VIEW_KEY] = nav.CHAT
+    elif session["role"] == "cardholder" and params.get("view") == nav.PREDICTION:
+        st.session_state[nav.VIEW_KEY] = nav.PREDICTION
 
 
-def _sync_location() -> None:
+def _sync_location(session: dict) -> None:
     """Mirror the open page into the URL so a reload can restore it."""
     wanted = {}
+    officer_customer = st.session_state.get(officer.CUSTOMER_KEY)
     if profile.is_open():
         wanted["page"] = "profile"
     elif nav.current() == nav.REPORT:
         wanted["page"] = nav.REPORT
-    elif nav.current() == nav.CUSTOMER and st.session_state.get(officer.CUSTOMER_KEY):
-        wanted["customer"] = str(st.session_state[officer.CUSTOMER_KEY])
+    elif nav.current() == nav.CUSTOMER and officer_customer:
+        wanted["customer"] = str(officer_customer)
+    elif nav.current() == nav.PREDICTION:
+        # An officer's prediction page belongs to the opened customer.
+        if session["role"] == "officer" and officer_customer:
+            wanted.update(customer=str(officer_customer), view=nav.PREDICTION)
+        elif session["role"] == "cardholder":
+            wanted["view"] = nav.PREDICTION
     elif nav.current() == nav.CHAT:
         wanted["view"] = nav.CHAT
     if dict(st.query_params) != wanted:
@@ -153,7 +164,7 @@ def main() -> None:
         st.stop()
 
     _store_token(session["token"])
-    _sync_location()
+    _sync_location(session)
     stylesheet("backdrop.css")
     on_report = nav.current() == nav.REPORT
     if session["role"] == "engineer" and not profile.is_open() and not on_report:

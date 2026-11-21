@@ -291,3 +291,20 @@ def test_predict_selected_needs_a_known_officer(client, riskiest_customer_id):
         json={"customer_ids": [riskiest_customer_id], "scored_by": "nobody@example.com"},
     )
     assert response.status_code in (403, 404)
+
+
+def test_a_live_row_matches_the_precomputed_queue_row():
+    queued = worklist.all_rows()[0]
+    record = {"LIMIT_BAL": queued["credit_limit"]}
+    for month in queued["history"]:
+        position = month["month"]
+        record[f"PAY_{position}"] = month["payment_status"]
+        record[f"BILL_AMT{position}"] = month["bill_amount"]
+        record[f"PAY_AMT{position}"] = month["amount_paid"]
+
+    live = worklist.live_row("live-check", record)
+
+    assert live["account_number"] == "live-check"
+    assert abs(live["probability"] - queued["probability"]) < 1e-6
+    assert live["risk_band"] == queued["risk_band"]
+    assert [r["feature"] for r in live["reasons"]] == [r["feature"] for r in queued["reasons"]]

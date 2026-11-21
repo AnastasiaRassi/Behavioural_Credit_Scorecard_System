@@ -9,9 +9,12 @@ returned a cardholder their probability and log-odds effects and the screen
 merely declined to draw them, the numbers would still be in the response, one
 devtools panel away. What a role cannot see, it is not sent.
 """
+from functools import lru_cache
+
 from app.ai.coaching import coach
 from app.core.money import money
 from app.ml import artifacts
+from app.ml.exceptions import ArtifactsMissing
 from app.ml.explainability import describe
 
 BANDS = ("Low", "Medium", "High")
@@ -275,6 +278,40 @@ def find(account_number: str) -> dict | None:
     )
 
 
+def live_row(account_number: str, record: dict) -> dict:
+    """A queue-shaped row for a customer outside the precomputed queue, scored now.
+
+    The queue holds only the held-out test customers, but every cardholder is owed
+    a dashboard. Built by train.officer_queue itself, so a live row cannot drift
+    from a precomputed one in shape or in maths.
+    """
+    return dict(_live_row(account_number, tuple(sorted(record.items()))))
+
+
+# Stored history does not change between requests, so a score is reused.
+@lru_cache(maxsize=2048)
+def _live_row(account_number: str, record: tuple) -> dict:
+    import pandas as pd
+
+    from app.ml.scorer import CreditScorer
+    from app.ml.segmentation import Segmenter
+    from app.ml.train import officer_queue
+
+    scorer = CreditScorer()
+    frame = pd.DataFrame([dict(record)])
+    features = scorer.prepare(frame)
+    try:
+        segments = Segmenter().assign(features)
+    except ArtifactsMissing:
+        segments = None
+    row = officer_queue(
+        scorer.models, features, scorer.probabilities(frame), scorer.threshold,
+        scorer.band, segments=segments,
+    )[0]
+    row.pop("customer_id")
+    return {**row, "account_number": account_number}
+
+
 def highlights(row: dict) -> dict:
     """Facts an officer would otherwise work out by eye from the history.
 
@@ -363,6 +400,31 @@ def customer_detail(row: dict) -> dict:
     }
 
 
+def unpredicted_view(row: dict) -> dict:
+    """The account before anyone has asked for a prediction: figures and history only.
+
+    No band, reasons or coaching. The queue row holds a precomputed score, but the
+    cardholder sees model output only once a prediction has been run and stored.
+    """
+    return {
+        "customer_id": row["customer_id"],
+        "account_number": row["account_number"],
+        "predicted": False,
+        "risk_band": None,
+        "needs_attention": False,
+        "credit_limit": row["credit_limit"],
+        "current_balance": row["current_balance"],
+        "last_payment": row["last_payment"],
+        "months_in_arrears": row["months_in_arrears"],
+        "reasons": [],
+        "coaching": None,
+        "history": [
+            {key: entry[key] for key in CARDHOLDER_MONTH_FIELDS}
+            for entry in row.get("history") or []
+        ],
+    }
+
+
 def cardholder_view(row: dict, stored_prediction=None, record=None) -> dict:
     """What a cardholder is told about their own account.
 
@@ -398,6 +460,7 @@ def cardholder_view(row: dict, stored_prediction=None, record=None) -> dict:
     return {
         "customer_id": row["customer_id"],
         "account_number": row["account_number"],
+        "predicted": True,
         "risk_band": band,
         "needs_attention": needs_attention,
         "credit_limit": row["credit_limit"],

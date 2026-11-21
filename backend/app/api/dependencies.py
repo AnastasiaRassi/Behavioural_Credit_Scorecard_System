@@ -20,8 +20,9 @@ from sqlalchemy.orm import Session
 
 from app.core import audit, sessions
 from app.core.exceptions import Forbidden, InvalidRequest, ResourceNotFound, Unauthenticated
+from app.db import statements
 from app.db.database import _session_factory, translate
-from app.db.exceptions import NoLiveModel
+from app.db.exceptions import IncompleteHistory, NoLiveModel
 from app.db.models import Customer, ModelVersion, Prediction, User
 from app.ml.counterfactuals import CounterfactualExplainer
 from app.ml import worklist
@@ -180,7 +181,13 @@ def queued_account(session: Session, customer_id: str) -> tuple[Customer, dict]:
     customer = customer_or_404(session, customer_id)
     row = worklist.find(customer.account_number)
     if row is None:
-        raise ResourceNotFound(f"No queued customer {customer_id}")
+        # Not in the held-out queue: score the stored history now, so every
+        # cardholder has a dashboard.
+        try:
+            record = statements.raw_input_for(session, customer.id)
+        except (statements.CustomerNotFound, IncompleteHistory) as exception:
+            raise ResourceNotFound(f"No scorable history for customer {customer_id}") from exception
+        row = worklist.live_row(customer.account_number, record)
     return customer, {**row, "customer_id": str(customer.id)}
 
 

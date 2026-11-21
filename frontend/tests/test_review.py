@@ -118,44 +118,6 @@ def test_card_data_leaves_a_short_note_whole():
     assert not card["is_truncated"]
 
 
-def _detail(**overrides) -> dict:
-    history = [
-        {"bill_amount": 1000.0, "amount_paid": 400.0},
-        {"bill_amount": 1000.0, "amount_paid": 0.0},
-    ]
-    detail = {
-        "months_in_arrears": 2,
-        "history": history,
-        "highlights": {
-            "months_with_no_payment": 1,
-            "utilisation_now": 0.85,
-            "utilisation_mean": 0.6,
-            "trajectory": "deteriorating",
-        },
-    }
-    detail.update(overrides)
-    return detail
-
-
-def test_model_saw_reads_the_history_in_plain_sentences():
-    sentences = review.model_saw(_detail())
-
-    assert "Behind on payments in 2 of the last 6 months." in sentences
-    assert "No payment at all in 1 month." in sentences
-    assert "Using 85% of the limit now, 60% on average over six months." in sentences
-    assert "Paid NT$400 against NT$2,000 billed (20%)." in sentences
-    assert "Repayment behaviour is deteriorating." in sentences
-
-
-def test_model_saw_copes_with_a_clean_account_and_no_bills():
-    clean = _detail(
-        months_in_arrears=0,
-        history=[{"bill_amount": 0.0, "amount_paid": 0.0}],
-        highlights={"months_with_no_payment": 0},
-    )
-    assert review.model_saw(clean) == ["Never behind on a payment in the last six months."]
-
-
 REASONS = [
     {"feature": "fixed_feature", "effect": 0.9, "description": "Something fixed"},
     {"feature": "PAY_1", "effect": 0.5, "description": "Last month was late"},
