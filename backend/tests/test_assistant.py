@@ -416,8 +416,8 @@ def test_grounding_failure_wins_the_reason_but_the_claim_check_still_runs(row, m
     )
 
 
-def test_the_system_prompt_is_loana_v2_2():
-    assert assistant.PROMPT_VERSION == "v2.2-loana"
+def test_the_system_prompt_is_loana_v3_0():
+    assert assistant.PROMPT_VERSION == "v3.0-loana"
     assert assistant.SYSTEM_PROMPT.startswith("You are Loana AI")
     assert "{facts}" in assistant.SYSTEM_PROMPT
 
