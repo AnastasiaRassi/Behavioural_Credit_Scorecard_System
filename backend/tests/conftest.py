@@ -98,7 +98,7 @@ def ensure_queued_customer(session: Session, row: dict) -> str:
 
 @pytest.fixture(autouse=True)
 def no_network_llm(monkeypatch):
-    """No test reaches OpenAI or Ollama, whatever .env holds.
+    """No test reaches OpenAI, whatever .env holds.
 
     A developer's real key would otherwise make any chat test a live, billed call.
     Tests that need a reply patch `llm_client.chat` themselves.

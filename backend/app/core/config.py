@@ -57,26 +57,7 @@ def session_secret() -> str:
     return secret
 
 
-# Ollama serves the free local model behind the cardholder assistant. Neither
-# setting is a secret, so both have working defaults for a local install.
-DEFAULT_OLLAMA_URL = "http://127.0.0.1:11434"
-DEFAULT_OLLAMA_MODEL = "qwen2.5:3b"
-
-
-@lru_cache(maxsize=1)
-def ollama_url() -> str:
-    load_dotenv(project_root() / ".env")
-    return os.environ.get("OLLAMA_URL", DEFAULT_OLLAMA_URL).rstrip("/")
-
-
-@lru_cache(maxsize=1)
-def ollama_model() -> str:
-    load_dotenv(project_root() / ".env")
-    return os.environ.get("OLLAMA_MODEL", DEFAULT_OLLAMA_MODEL)
-
-
-# OpenAI is the assistant's first-choice provider when a key is set; without one the
-# assistant falls back to Ollama, then to templates (ai/llm_client.py).
+# The assistant uses OpenAI when a key is set; without one, templates answer (ai/llm_client.py).
 DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
 
 

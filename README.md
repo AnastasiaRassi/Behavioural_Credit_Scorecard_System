@@ -18,7 +18,7 @@ Final Year Project (TM471), Arab Open University Lebanon.
   and marital status, computed on every training run.
 - **Role-based dashboard**: separate screens for loan officers, ML engineers and cardholders.
 - **Loana AI assistant**: a cardholder and officer chat grounded in the customer's own data,
-  backed by OpenAI, a local Ollama model, or fixed templates as a fallback.
+  backed by OpenAI, or fixed templates without a key.
 - **Monitoring**: population stability index (PSI) drift check and a model registry.
 - **Batch scoring**: CSV upload for scoring many customers at once.
 
@@ -74,7 +74,7 @@ and [docs/REPORT_FINDINGS.md](docs/REPORT_FINDINGS.md).
 | API | FastAPI, Uvicorn, SQLAlchemy 2, Pydantic |
 | Database | PostgreSQL 16 (psycopg 3) |
 | Dashboard | Streamlit, Plotly |
-| Assistant | OpenAI `gpt-4o-mini`, or Ollama `qwen2.5:3b` |
+| Assistant | OpenAI `gpt-4o-mini`, or templates without a key |
 | Tooling | Docker Compose, pytest, ruff, black, isort |
 
 ## Getting started
@@ -106,7 +106,6 @@ DEMO_MODE=1                         # creates the demo accounts below
 | `WEB_PORT` | no (default `8502`) | Dashboard port |
 | `OPENAI_API_KEY` | no | Enables the OpenAI-backed assistant |
 | `OPENAI_MODEL` | no (default `gpt-4o-mini`) | OpenAI model name |
-| `OLLAMA_URL`, `OLLAMA_MODEL` | no | Local fallback model for the assistant |
 
 ### 2. Train the model
 
@@ -147,10 +146,8 @@ Never enable `DEMO_MODE` outside a demo.
 
 With `OPENAI_API_KEY` set, the assistant uses OpenAI, so data leaves the machine: the fact
 sheet it sends holds the risk band, the reasons, account figures and six months of history,
-never the probability or any protected attribute. Without a key it falls back to a local
-[Ollama](https://ollama.com) model (`ollama pull qwen2.5:3b`), and without that to templates,
-so the chat always answers. No Ollama on the host? Start the stack with
-`docker compose --profile ollama up` and set `OLLAMA_URL=http://ollama:11434`.
+never the probability or any protected attribute. Without a key, templates answer, so the
+chat always answers and nothing leaves the machine.
 
 ## API
 

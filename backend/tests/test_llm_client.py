@@ -9,7 +9,7 @@ import httpx
 import openai
 import pytest
 
-from app.ai import llm_client, local_llm
+from app.ai import llm_client
 
 REAL_CHAT = llm_client.chat
 MESSAGES = [{"role": "system", "content": "facts"}, {"role": "user", "content": "hi"}]
@@ -116,27 +116,10 @@ def test_the_client_is_built_with_a_four_second_timeout_and_no_retries(monkeypat
     assert (seen["timeout"], seen["max_retries"], seen["api_key"]) == (4.0, 0, "sk-test")
 
 
-def test_without_a_key_the_local_model_answers(monkeypatch):
+def test_without_a_key_there_is_no_text_and_openai_is_not_called(monkeypatch):
     monkeypatch.setattr(llm_client, "openai_api_key", lambda: None)
-    local = local_llm.LlmCall("From Ollama.", "qwen2.5:3b", 5)
-    monkeypatch.setattr(local_llm, "chat", lambda messages: local)
-
-    assert REAL_CHAT(MESSAGES) is local
-
-
-def test_without_a_key_and_without_ollama_there_is_no_text(monkeypatch):
-    monkeypatch.setattr(llm_client, "openai_api_key", lambda: None)
-    down = local_llm.LlmCall(None, "qwen2.5:3b", 5, failure="llm_unreachable")
-    monkeypatch.setattr(local_llm, "chat", lambda messages: down)
+    monkeypatch.setattr(llm_client, "_client", lambda: pytest.fail("OpenAI must not be used without a key"))
 
     call = REAL_CHAT(MESSAGES)
 
-    assert (call.text, call.failure) == (None, "llm_unreachable")
-
-
-def test_openai_is_not_called_when_there_is_no_key(monkeypatch):
-    monkeypatch.setattr(llm_client, "openai_api_key", lambda: None)
-    monkeypatch.setattr(local_llm, "chat", lambda messages: local_llm.LlmCall(None, "m", 0, failure="llm_unreachable"))
-    monkeypatch.setattr(llm_client, "_client", lambda: pytest.fail("OpenAI must not be used without a key"))
-
-    REAL_CHAT(MESSAGES)
+    assert (call.text, call.failure) == (None, "llm_not_configured")

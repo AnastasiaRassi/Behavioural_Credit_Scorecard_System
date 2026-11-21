@@ -5,7 +5,7 @@ Each test runs in a transaction that is rolled back. Skipped when no database is
 import pytest
 from sqlalchemy import text
 
-from app.ai import llm_client, local_llm
+from app.ai import llm_client
 from app.db import chat_log
 from app.db.models import ChatTurn
 from tests.conftest import bearer
@@ -81,7 +81,7 @@ def test_a_chat_request_is_logged_and_shows_in_the_summary(
 ):
     monkeypatch.setattr(
         llm_client, "chat",
-        lambda messages: local_llm.LlmCall(None, "test-model", 5, failure="llm_unreachable"),
+        lambda messages: llm_client.LlmCall(None, "test-model", 5, failure="llm_unreachable"),
     )
 
     response = client.post(
@@ -155,7 +155,7 @@ def test_summary_rates_are_none_when_nothing_was_checked(session, turn):
 def test_a_logged_chat_request_stores_the_guard_verdicts_and_the_opening_as_turn_zero(
     session, client, cardholder_identity, any_customer_id, monkeypatch  # noqa: F811
 ):
-    reply = lambda messages: local_llm.LlmCall("Rated Medium risk.", "gpt-4o-mini", 5)  # noqa: E731
+    reply = lambda messages: llm_client.LlmCall("Rated Medium risk.", "gpt-4o-mini", 5)  # noqa: E731
     monkeypatch.setattr(llm_client, "chat", reply)
     headers = bearer(cardholder_identity)
 

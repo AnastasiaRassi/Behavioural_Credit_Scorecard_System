@@ -1,8 +1,7 @@
-"""The assistant's LLM: OpenAI when a key is set, otherwise the local Ollama model.
+"""The assistant's LLM: OpenAI when a key is set; with no key the template answers.
 
-`chat()` has the contract of `local_llm.chat()`: it returns an `LlmCall` and never
-raises, so a caller always has its template to fall back on. With no key and no
-Ollama running there is simply no text, and the template answers.
+`chat()` returns an `LlmCall` and never raises, so a caller always has its template
+to fall back on. With no key there is simply no text.
 
 Data leaves the machine when OPENAI_API_KEY is set. What is sent is the fact sheet
 (`assistant.fact_sheet`): the risk band, the reasons, the account's figures and six
@@ -12,14 +11,13 @@ from __future__ import annotations
 
 import logging
 import time
+from dataclasses import dataclass
 from functools import lru_cache
 from typing import Mapping, Sequence
 
 import openai
 
-from app.ai import local_llm
 from app.ai.exceptions import error_for
-from app.ai.local_llm import LlmCall
 from app.core.config import openai_api_key, openai_model
 
 logger = logging.getLogger(__name__)
@@ -32,9 +30,24 @@ MAX_TOKENS = 300
 TEMPERATURE = 0.0
 
 
+@dataclass(frozen=True)
+class LlmCall:
+    """One request to the model. `text` is None exactly when `failure` is set."""
+
+    text: str | None
+    model: str
+    latency_ms: int
+    failure: str | None = None  # llm_timeout, llm_unreachable, llm_not_configured, ...
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+
+
 def chat(messages: Sequence[Mapping[str, str]]) -> LlmCall:
     """The model's reply to `messages`, or a call with no text if it could not be produced."""
-    call = local_llm.chat(messages) if openai_api_key() is None else _openai_chat(messages)
+    if openai_api_key() is None:
+        # Not a fault, so not logged: templates are the intended answer without a key.
+        return LlmCall(None, openai_model(), 0, failure="llm_not_configured")
+    call = _openai_chat(messages)
     if call.failure:
         # One typed line per failed call, so a failure has a code to search for.
         logger.warning("%s", error_for(call.failure, call.model, call.latency_ms).log_line())

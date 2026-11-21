@@ -37,13 +37,9 @@ services:
       SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET in .env}
       SEED_PASSWORD: ${SEED_PASSWORD:-}
       DEMO_MODE: ${DEMO_MODE:-1}
-      # Optional. When set, the assistant uses OpenAI; otherwise Ollama, then templates.
+      # Optional. When set, the assistant uses OpenAI; otherwise templates answer.
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
-      # The host's Ollama by default, so the model already pulled there is reused.
-      # With `--profile ollama`, set OLLAMA_URL=http://ollama:11434 instead.
-      OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
-      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:3b}
     extra_hosts: &host-gateway
       - "host.docker.internal:host-gateway"
     volumes:
@@ -53,15 +49,6 @@ services:
       db:
         condition: service_healthy
     restart: "no"
-
-  # Only for machines without Ollama installed:  docker compose --profile ollama up
-  # then once:  docker compose exec ollama ollama pull qwen2.5:3b
-  # Without any Ollama the assistant still answers, from templates.
-  ollama:
-    image: ollama/ollama:0.33.3
-    profiles: ["ollama"]
-    volumes:
-      - ollama:/root/.ollama
 
   api:
     <<: *app
@@ -100,4 +87,3 @@ services:
 
 volumes:
   pgdata:
-  ollama:

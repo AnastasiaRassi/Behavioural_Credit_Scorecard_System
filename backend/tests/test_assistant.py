@@ -13,9 +13,8 @@ import json
 import uuid
 
 import pytest
-import requests
 
-from app.ai import assistant, coaching, guardrails, llm_client, local_llm
+from app.ai import assistant, coaching, guardrails, llm_client
 from app.ml import worklist
 from tests.test_coaching import STRESSED
 
@@ -115,50 +114,6 @@ def test_a_number_only_the_cardholder_typed_is_rejected(row, monkeypatch):
     assert reply.source == "template"
     assert (turns[0].fallback_reason, turns[0].grounding_passed) == ("invented_numbers", False)
     assert turns[0].rejected_reply == "I cannot estimate what paying 4,321 would do."
-
-
-def test_local_llm_returns_none_when_ollama_is_down(monkeypatch):
-    def refuse(*args, **kwargs):
-        raise requests.ConnectionError("connection refused")
-
-    monkeypatch.setattr(requests, "post", refuse)
-    assert local_llm.chat([{"role": "user", "content": "hi"}]).text is None
-
-
-def test_local_llm_returns_none_on_timeout(monkeypatch):
-    def slow(*args, **kwargs):
-        raise requests.Timeout("too slow")
-
-    monkeypatch.setattr(requests, "post", slow)
-    assert local_llm.chat([{"role": "user", "content": "hi"}]).text is None
-
-
-def test_local_llm_records_failure_reason_and_latency(monkeypatch):
-    def refuse(*args, **kwargs):
-        raise requests.ConnectionError("connection refused")
-
-    monkeypatch.setattr(requests, "post", refuse)
-    call = local_llm.chat([{"role": "user", "content": "hi"}])
-
-    assert call.failure == "llm_unreachable"
-    assert call.latency_ms >= 0
-    assert call.prompt_tokens is None
-
-
-def test_local_llm_reads_token_counts_from_ollama(monkeypatch):
-    class Reply:
-        status_code = 200
-        ok = True
-
-        def json(self):
-            return {"message": {"content": " Hello. "}, "done_reason": "stop",
-                    "prompt_eval_count": 321, "eval_count": 45}
-
-    monkeypatch.setattr(requests, "post", lambda *args, **kwargs: Reply())
-    call = local_llm.chat([{"role": "user", "content": "hi"}])
-
-    assert (call.text, call.failure) == ("Hello.", None)
-    assert (call.prompt_tokens, call.completion_tokens) == (321, 45)
 
 
 def test_on_turn_receives_a_model_turn(row, monkeypatch):

@@ -450,9 +450,7 @@ def recourse(customer_id: str, token: str) -> dict:
 
 
 # OpenAI is cut off at 4 s by the API and the one-month search behind a turn takes
-# about a second, so 20 s leaves room for both. A local Ollama model on CPU can
-# take longer; the call then fails here with the usual message while the API goes
-# on to log its own template fallback.
+# about a second, so 20 s leaves room for both.
 CHAT_TIMEOUT_SECONDS = 20
 
 

@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from typing import Sequence
 
 from app.ai import llm_client
-from app.ai.local_llm import LlmCall
+from app.ai.llm_client import LlmCall
 
 logger = logging.getLogger(__name__)
 
@@ -56,13 +56,22 @@ REFUSALS = {
 REFUSAL_REASONS = {intent: f"refused_{intent}" for intent in REFUSALS}
 SENSITIVE_REPLY_REASON = "sensitive_data_in_reply"
 
-# Last resort when no model can classify: the topic is guessed from these words.
+# The only classifier when no model is set. Each word must start a word in the message
+# ("pay" would otherwise fire inside "repay" or "payday"), and words that turn up in
+# harmless sentences ("person", "number", "help", "because") are left out: a wrong
+# topic here sends the cardholder to the wrong answer.
 KEYWORDS = (
-    (REVIEW, ("appeal", "dispute", "disagree", "unfair", "human", "person", "someone", "contact", "review", "officer", "talk to", "speak to", "speak with", "complain")),
-    (PROBABILITY, ("probab", "percent", "%", "chance", "likel", "score", "number")),
-    (WHY, ("why", "reason", "cause", "factor", "because", "driv", "raising", "affect")),
+    (REVIEW, ("appeal", "dispute", "disagree", "unfair", "officer", "complain", "human", "real person", "who can i contact", "talk to", "speak to", "speak with", "review my", "manual review", "reconsider")),
+    (PROBABILITY, ("probab", "percent", "%", "chance", "likel", "credit score", "my score")),
+    (WHY, ("why", "reason", "cause", "factor", "driv", "raising", "affect")),
     (ACCOUNT, ("balance", "limit", "owe", "bill", "last payment", "arrears", "history")),
-    (ACTION, ("what can", "how can", "how do", "improve", "help", "change", "lower", "better", "fix", "reduce", "pay", "should")),
+    (ACTION, ("what can", "how can", "how do", "improve", "lower", "reduce", "pay off", "pay down", "pay more", "pay early")),
+)
+_KEYWORD_PATTERNS = tuple(
+    (intent, re.compile("|".join(
+        (r"\b" if word[0].isalnum() else "") + re.escape(word) for word in words
+    )))
+    for intent, words in KEYWORDS
 )
 
 
@@ -153,8 +162,8 @@ def rule_intent(message: str) -> str | None:
 
 def keyword_intent(message: str) -> str:
     asked = message.lower()
-    for intent, words in KEYWORDS:
-        if any(word in asked for word in words):
+    for intent, pattern in _KEYWORD_PATTERNS:
+        if pattern.search(asked):
             return intent
     return OTHER
 
