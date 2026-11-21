@@ -13,6 +13,8 @@ import logging
 from typing import Callable, Mapping, Sequence
 
 from app.ai import llm_client
+from app.ai.exceptions import GuardrailBlocked
+from app.core.exceptions import failure_line
 from app.ai.assistant import (
     MAX_HISTORY,
     TEMPLATE_NOTE,
@@ -82,7 +84,10 @@ def answer(
             reply = ChatReply(call.text, "model", "", DISCLAIMER)
         else:
             rejected = call.text
-            logger.warning("officer assistant: reply failed %s; using template", reason)
+            logger.warning(
+                "officer assistant: using template: %s",
+                GuardrailBlocked(reason, context={"reason": reason, "stage": "reply"}).log_line(),
+            )
     if reply is None:
         reply = ChatReply(_template(view, payload), "template", TEMPLATE_NOTE, DISCLAIMER)
 
@@ -164,5 +169,9 @@ def _log(on_turn, row, conversation, question, reply, call, reason, rejected, gu
                 claim_passed=guard.claim_passed if guard else None,
             )
         )
-    except Exception:
-        logger.exception("officer assistant: could not record the chat turn")
+    except Exception as exception:
+        logger.error(
+            "officer assistant: could not record the chat turn: %s",
+            failure_line(exception, "CHAT_TURN_NOT_RECORDED"),
+            exc_info=True,
+        )

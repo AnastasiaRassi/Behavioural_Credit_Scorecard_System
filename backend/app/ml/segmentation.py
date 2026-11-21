@@ -35,7 +35,7 @@ from sklearn.impute import SimpleImputer
 from sklearn.metrics import silhouette_score
 from sklearn.preprocessing import StandardScaler
 
-from app.ml.exceptions import ArtifactsMissing
+from app.ml.exceptions import ArtifactsMissing, MissingColumns
 from app.ml.feature_engineering import PROTECTED, build_splits, project_root
 
 SEED = 42
@@ -93,7 +93,9 @@ def prepare(frame: pd.DataFrame) -> pd.DataFrame:
     """Select the behavioural subset and tame the skew. No fitted statistics here."""
     missing = [c for c in SEGMENT_FEATURES if c not in frame.columns]
     if missing:
-        raise ValueError(f"Segment features absent from the frame: {missing}")
+        raise MissingColumns(
+            f"Segment features absent from the frame: {missing}", context={"columns": missing}
+        )
 
     out = frame[SEGMENT_FEATURES].copy()
     for column in LOG_FEATURES:

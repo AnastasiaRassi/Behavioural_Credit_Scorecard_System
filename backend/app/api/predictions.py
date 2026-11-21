@@ -3,7 +3,7 @@ import io
 import logging
 
 import pandas as pd
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import (
@@ -15,10 +15,10 @@ from app.api.dependencies import (
     user_by_email,
 )
 from app.core import audit
-from app.core.exceptions import AppError
+from app.core.exceptions import AppError, InvalidRequest, RequestTooLarge
 from app.db import customer_registry
 from app.db.models import Prediction
-from app.ml.exceptions import ScoringFailed
+from app.ml.exceptions import MissingColumns, ScoringFailed
 from app.ml.feature_engineering import RAW_COLUMNS
 from app.schemas.scoring import (
     BatchRow,
@@ -141,22 +141,17 @@ async def score_csv(file: UploadFile):
     try:
         frame = pd.read_csv(io.BytesIO(raw))
     except Exception as exception:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail=f"Could not read {file.filename} as CSV: {exception}",
-        ) from exception
+        raise InvalidRequest(f"Could not read {file.filename} as CSV: {exception}") from exception
 
     if len(frame) > MAX_BATCH_ROWS:
-        raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=f"{len(frame)} rows exceeds the {MAX_BATCH_ROWS} row limit",
-        )
+        raise RequestTooLarge(f"{len(frame)} rows exceeds the {MAX_BATCH_ROWS} row limit")
 
     missing = [column for column in RAW_COLUMNS if column not in frame.columns]
     if missing:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail=f"Missing required columns: {missing}",
+        raise MissingColumns(
+            f"Missing required columns: {missing}",
+            user_message=f"Missing required columns: {missing}",
+            context={"columns": missing},
         )
 
     scorer = get_scorer()

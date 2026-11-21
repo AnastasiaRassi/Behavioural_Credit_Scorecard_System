@@ -19,6 +19,9 @@ class AppError(Exception):
     code = "APP_ERROR"
     status = 500
     user_message = "Something went wrong on our side."
+    # Set on errors that are the caller's to fix: their message is safe and useful to show.
+    expose_message = False
+    headers: dict[str, str] = {}
 
     def __init__(
         self,
@@ -30,6 +33,8 @@ class AppError(Exception):
         super().__init__(message or self.user_message)
         if user_message is not None:
             self.user_message = user_message
+        elif self.expose_message and message:
+            self.user_message = message
         self.context = context or {}
 
     def log_line(self) -> str:
@@ -67,3 +72,47 @@ class ConflictError(AppError):
     code = "CONFLICT"
     status = 409
     user_message = "That conflicts with what is already stored."
+
+
+class InvalidRequest(AppError):
+    """The request is well-formed HTTP but wrong in substance. The message says how."""
+
+    code = "INVALID_REQUEST"
+    status = 422
+    expose_message = True
+
+
+class Unauthenticated(AuthError):
+    code = "AUTH_REQUIRED"
+    status = 401
+    expose_message = True
+    headers = {"WWW-Authenticate": "Bearer"}
+
+
+class Forbidden(AuthError):
+    code = "FORBIDDEN"
+    status = 403
+    expose_message = True
+
+
+class ResourceNotFound(NotFoundError):
+    """A path id or asserted identity names nothing. The message names the id."""
+
+    code = "RESOURCE_NOT_FOUND"
+    expose_message = True
+
+
+class RequestTooLarge(InvalidRequest):
+    code = "REQUEST_TOO_LARGE"
+    status = 413
+
+
+class EmptyPassword(InvalidRequest, ValueError):
+    code = "EMPTY_PASSWORD"
+
+
+def failure_line(exception: Exception, code: str) -> str:
+    """A log line for any exception: its own code if it is ours, else `code` and its type."""
+    if isinstance(exception, AppError):
+        return exception.log_line()
+    return f"{code}: {type(exception).__name__}: {exception}"

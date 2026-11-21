@@ -12,7 +12,7 @@ and actions, no probability.
 The maths is in `ml/counterfactuals.py` and the wording is in
 `ml/explainability.py`; this module only routes between them (conventions §1).
 """
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import (
@@ -21,6 +21,7 @@ from app.api.dependencies import (
     get_recourse_explainer,
     get_session,
 )
+from app.core.exceptions import ResourceNotFound
 from app.db import statements
 from app.ml.counterfactuals import NEXT_BAND_UP, CounterfactualExplainer, RecourseTarget
 from app.ml.explainability import describe_change
@@ -44,9 +45,7 @@ def read_recourse(
     try:
         record = statements.raw_input_for(session, customer.id)
     except statements.CustomerNotFound as exception:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=str(exception)
-        ) from exception
+        raise ResourceNotFound(str(exception)) from exception
 
     current_band = explainer.scorer.score_one(record).risk_band
     target_band = NEXT_BAND_UP.get(current_band)

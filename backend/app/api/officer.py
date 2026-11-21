@@ -13,6 +13,7 @@ from dataclasses import asdict
 from app.ai import officer_assistant, triage_assistant
 from app.api.cardholders import account_for
 from app.core import audit
+from app.core.exceptions import InvalidRequest
 from app.api.dependencies import (
     get_explainer,
     get_scorer,
@@ -21,6 +22,7 @@ from app.api.dependencies import (
     queued_account,
     user_by_email,
 )
+from app.db.exceptions import CustomerNotIngested
 from app.db import chat_log, customer_registry, queue_predictions, reviews
 from app.db.models import Customer, Decision, User
 from app.ml import artifacts, worklist
@@ -39,7 +41,7 @@ from app.schemas.worklist import (
     TriageReply,
     TriageRequest,
 )
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy import case
 from sqlalchemy.orm import Session
 
@@ -56,12 +58,10 @@ def _with_customer_ids(session: Session, rows: list[dict]) -> list[dict]:
     )
     missing = [row["account_number"] for row in rows if row["account_number"] not in found]
     if missing:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=(
-                f"Queued account {missing[0]} is not in the database. "
-                "Run: python -m app.db.ingest"
-            ),
+        raise CustomerNotIngested(
+            f"Queued account {missing[0]} is not in the database. "
+            "Run: python -m app.db.ingest",
+            context={"account": missing[0]},
         )
     return [
         {
@@ -90,10 +90,7 @@ def read_queue(
     asking twice.
     """
     if band is not None and band not in worklist.BANDS:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail=f"band must be one of {', '.join(worklist.BANDS)}, got {band!r}",
-        )
+        raise InvalidRequest(f"band must be one of {', '.join(worklist.BANDS)}, got {band!r}")
 
     everything = worklist.all_rows()
     selected = worklist.filter_rows(
@@ -342,10 +339,7 @@ def triage(request: TriageRequest, session: Session = Depends(get_session)):
     triage request is about none.
     """
     if request.messages[-1].role != "user":
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="messages must end with the officer's request",
-        )
+        raise InvalidRequest("messages must end with the officer's request")
 
     turn = triage_assistant.interpret([m.model_dump() for m in request.messages])
     audit.event(
@@ -457,10 +451,7 @@ def chat_about_customer(
     which must end with the officer's question.
     """
     if not request.messages or request.messages[-1].role != "user":
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="messages must end with the officer's question",
-        )
+        raise InvalidRequest("messages must end with the officer's question")
 
     row, stored, record = account_for(customer_id, session)
     audit.event("officer_chat", customer=customer_id, turns=len(request.messages))

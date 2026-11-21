@@ -69,3 +69,9 @@ class SourceUnavailable(InfraError, FileNotFoundError):
     """The raw dataset file is missing or malformed, so ingestion cannot run."""
 
     code = "SOURCE_UNAVAILABLE"
+
+
+class NotACardholder(ConflictError, ValueError):
+    """A login was offered to an account that is not a cardholder."""
+
+    code = "NOT_A_CARDHOLDER"

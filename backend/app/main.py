@@ -21,8 +21,9 @@ import uuid
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api import (
     admin,
@@ -94,12 +95,12 @@ async def app_error_handler(request: Request, exception: AppError) -> JSONRespon
     return JSONResponse(
         status_code=exception.status,
         content=_error_body(exception.code, exception.user_message),
-        headers={"X-Request-ID": request_id.get()},
+        headers={**exception.headers, "X-Request-ID": request_id.get()},
     )
 
 
-@app.exception_handler(HTTPException)
-async def http_error_handler(request: Request, exception: HTTPException) -> JSONResponse:
+@app.exception_handler(StarletteHTTPException)
+async def http_error_handler(request: Request, exception: StarletteHTTPException) -> JSONResponse:
     message = exception.detail if isinstance(exception.detail, str) else "Request failed."
     headers = {**(exception.headers or {}), "X-Request-ID": request_id.get()}
     return JSONResponse(

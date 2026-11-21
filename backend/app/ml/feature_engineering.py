@@ -11,6 +11,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from app.ml.exceptions import DatasetUnavailable
+
 TARGET = "default_next_month"
 PROTECTED = ["SEX", "AGE", "EDUCATION", "MARRIAGE"]
 
@@ -60,7 +62,7 @@ def load_taiwan(path: Path | str | None = None) -> pd.DataFrame:
         df = df.drop(columns=["ID"])
         df.to_csv(csv_path, index=False)
     else:
-        raise FileNotFoundError(
+        raise DatasetUnavailable(
             f"Dataset not found at {csv_path} or {xls_path}. "
             "Download from https://archive.ics.uci.edu/dataset/350/"
         )

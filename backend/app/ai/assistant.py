@@ -28,6 +28,8 @@ from dataclasses import asdict, dataclass
 from typing import Callable, Mapping, Sequence
 
 from app.ai import guardrails, llm_client
+from app.ai.exceptions import GuardrailBlocked
+from app.core.exceptions import failure_line
 from app.ai.coaching import (
     DISCLAIMER,
     LOWEST_BAND,
@@ -354,7 +356,10 @@ def _generate(
         )
         if reason is None:
             return _Outcome(ChatReply(call.text, "model", "", DISCLAIMER), call, None, None, guard)
-        logger.warning("assistant: reply failed %s; using template", reason)
+        logger.warning(
+            "assistant: using template: %s",
+            GuardrailBlocked(reason, context={"reason": reason, "stage": "reply"}).log_line(),
+        )
         # Stored redacted: the rejected text may be the very leak.
         return _Outcome(
             ChatReply(fallback(), "template", TEMPLATE_NOTE, DISCLAIMER),
@@ -368,6 +373,10 @@ def _generate(
 
 def _refusal(verdict: guardrails.Verdict) -> _Outcome:
     """A fixed refusal. The model never sees the message, so it cannot be talked round."""
+    reason = guardrails.REFUSAL_REASONS[verdict.intent]
+    logger.info(
+        "assistant: %s", GuardrailBlocked(reason, context={"reason": reason, "stage": "request"}).log_line()
+    )
     reply = ChatReply(guardrails.REFUSALS[verdict.intent], "template", REFUSAL_NOTE, DISCLAIMER)
     return _Outcome(
         reply, verdict.call, guardrails.REFUSAL_REASONS[verdict.intent], None, GuardResult(None, None)
@@ -405,8 +414,12 @@ def _report(
                 claim_passed=outcome.guard.claim_passed,
             )
         )
-    except Exception:
-        logger.exception("assistant: could not record the chat turn")
+    except Exception as exception:
+        logger.error(
+            "assistant: could not record the chat turn: %s",
+            failure_line(exception, "CHAT_TURN_NOT_RECORDED"),
+            exc_info=True,
+        )
 
 
 def fact_sheet(view: dict, history: Sequence[Mapping], payload: CoachingPayload) -> dict:

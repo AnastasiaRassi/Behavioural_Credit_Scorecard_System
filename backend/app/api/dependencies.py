@@ -14,11 +14,12 @@ import uuid
 from functools import lru_cache
 from typing import Iterator
 
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, Header
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.core import audit, sessions
+from app.core.exceptions import Forbidden, InvalidRequest, ResourceNotFound, Unauthenticated
 from app.db.database import _session_factory, translate
 from app.db.exceptions import NoLiveModel
 from app.db.models import Customer, ModelVersion, Prediction, User
@@ -93,17 +94,11 @@ def prediction_or_404(session: Session, prediction_id: str) -> Prediction:
     try:
         parsed = uuid.UUID(prediction_id)
     except (ValueError, AttributeError, TypeError):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail=f"{prediction_id!r} is not a valid prediction id",
-        ) from None
+        raise InvalidRequest(f"{prediction_id!r} is not a valid prediction id") from None
 
     prediction = session.get(Prediction, parsed)
     if prediction is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"No prediction {prediction_id}",
-        )
+        raise ResourceNotFound(f"No prediction {prediction_id}")
     return prediction
 
 
@@ -116,9 +111,7 @@ def user_by_email(
     user = session.query(User).filter_by(email=email).one_or_none()
     if user is None:
         audit.event("actor_rejected", actor=email, level=logging.WARNING, reason="unknown_user")
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=f"Unknown user {email}"
-        )
+        raise ResourceNotFound(f"Unknown user {email}")
     if user.role not in allowed:
         audit.event(
             "actor_rejected",
@@ -128,22 +121,15 @@ def user_by_email(
             role=user.role,
             needed="|".join(allowed),
         )
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"{email} is a {user.role}, not a {' or a '.join(allowed)}",
-        )
+        raise Forbidden(f"{email} is a {user.role}, not a {' or a '.join(allowed)}")
     return user
 
 
-def _unauthenticated(detail: str) -> HTTPException:
+def _unauthenticated(detail: str) -> Unauthenticated:
     # Declared optional above and refused here, rather than required by FastAPI:
     # a missing credential is a 401 with a challenge, not a 422 about a header.
     audit.event("unauthenticated", level=logging.WARNING, reason=detail)
-    return HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail=detail,
-        headers={"WWW-Authenticate": "Bearer"},
-    )
+    return Unauthenticated(detail)
 
 
 def signed_in_user(
@@ -181,10 +167,7 @@ def customer_or_404(session: Session, customer_id: str) -> Customer:
 
     customer = None if parsed is None else session.get(Customer, parsed)
     if customer is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"No customer {customer_id}",
-        )
+        raise ResourceNotFound(f"No customer {customer_id}")
     return customer
 
 
@@ -197,10 +180,7 @@ def queued_account(session: Session, customer_id: str) -> tuple[Customer, dict]:
     customer = customer_or_404(session, customer_id)
     row = worklist.find(customer.account_number)
     if row is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"No queued customer {customer_id}",
-        )
+        raise ResourceNotFound(f"No queued customer {customer_id}")
     return customer, {**row, "customer_id": str(customer.id)}
 
 
@@ -226,10 +206,7 @@ def authorise_account_read(user: User, customer_id: str) -> User:
             role=user.role,
             customer=customer_id,
         )
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"{user.email} may only read their own account",
-        )
+        raise Forbidden(f"{user.email} may only read their own account")
     audit.event("account_access", actor=user.email, role=user.role, customer=customer_id)
     return user
 

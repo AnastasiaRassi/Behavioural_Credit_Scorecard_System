@@ -16,6 +16,7 @@ from dataclasses import asdict, dataclass
 import numpy as np
 import pandas as pd
 
+from app.ml.exceptions import ExplanationFailed
 from app.ml.feature_engineering import describe_pay_status
 
 # Reasons below this absolute log-odds effect are noise next to the top drivers.
@@ -277,7 +278,9 @@ class Explainer:
     def _contributions(self, features: pd.DataFrame) -> tuple[np.ndarray, float]:
         """Mean per-feature log-odds contributions across the seed ensemble."""
         if len(features) != 1:
-            raise ValueError(f"Expected exactly one row, got {len(features)}")
+            raise ExplanationFailed(
+                f"Expected exactly one row, got {len(features)}", context={"rows": len(features)}
+            )
 
         # Shape (1, n_features + 1); the trailing column is the base value.
         stacked = np.mean(

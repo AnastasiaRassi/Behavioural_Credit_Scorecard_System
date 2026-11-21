@@ -18,6 +18,7 @@ import pandas as pd
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session, selectinload
 
+from app.db.exceptions import NotACardholder
 from app.db.models import (
     MONTHS_OBSERVED,
     Customer,
@@ -174,8 +175,9 @@ def give_login(
     """Let this customer sign in. Registration is attaching a login to their user."""
     user = customer.user
     if user.role != "cardholder":
-        raise ValueError(
-            f"{user.display_name} is a {user.role}; only a cardholder is a customer"
+        raise NotACardholder(
+            f"{user.display_name} is a {user.role}; only a cardholder is a customer",
+            context={"role": user.role},
         )
     user.email = email
     user.password_hash = password_hash

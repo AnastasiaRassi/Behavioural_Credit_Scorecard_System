@@ -99,9 +99,43 @@ def test_an_uncaught_error_is_logged_with_its_traceback_and_a_reference(caplog):
     assert record.exc_info and "kaboom" in str(record.exc_info[1])
 
 
-def test_an_http_error_gains_a_code_and_keeps_its_detail():
+def test_a_caller_error_shows_its_message_and_keeps_its_headers():
     response = TestClient(app).get("/session")
     body = response.json()
     assert response.status_code == 401
-    assert body["code"] == "HTTP_401" and body["detail"] == body["message"]
+    assert body["code"] == "AUTH_REQUIRED" and body["detail"] == body["message"]
+    assert "Bearer" in body["message"]
     assert response.headers["WWW-Authenticate"] == "Bearer"
+
+
+def test_a_plain_http_error_still_gains_a_code():
+    response = TestClient(app).get("/no-such-route")
+    assert response.status_code == 404
+    assert response.json()["code"] == "HTTP_404"
+
+
+def test_no_route_raises_a_bare_http_exception():
+    import pathlib
+
+    api = pathlib.Path(__file__).resolve().parents[1] / "app" / "api"
+    offenders = [p.name for p in api.glob("*.py") if "raise HTTPException" in p.read_text(encoding="utf-8")]
+    assert offenders == []
+
+
+def test_remaining_value_errors_are_typed_and_still_value_errors():
+    from app.core.passwords import hash_password
+    from app.ml.exceptions import UnknownBand
+
+    with pytest.raises(ValueError) as raised:
+        hash_password("")
+    assert raised.value.code == "EMPTY_PASSWORD"
+    assert issubclass(UnknownBand, ValueError)
+
+
+def test_a_failed_chat_turn_write_is_logged_with_a_code(caplog):
+    from app.db import chat_log
+
+    with caplog.at_level(logging.ERROR):
+        chat_log.log_failure("chat log:", DataError("INSERT INTO chat_turn (x) VALUES (%(x)s)", {"x": "private"}, Exception("bad json")))
+    line = caplog.records[-1].getMessage()
+    assert "PERSISTENCE_FAILED" in line and "table=chat_turn" in line and "private" not in line

@@ -40,3 +40,22 @@ class ScoringFailed(AppError):
 
     code = "SCORING_FAILED"
     user_message = "We could not score this account."
+
+
+class UnknownBand(AppError, ValueError):
+    code = "UNKNOWN_BAND"
+    status = 422
+    user_message = "That risk band does not exist."
+
+
+class ExplanationFailed(AppError, ValueError):
+    """An explanation was asked of the wrong input shape."""
+
+    code = "EXPLANATION_FAILED"
+    user_message = "We could not explain this score."
+
+
+class DatasetUnavailable(InfraError, FileNotFoundError):
+    """The raw dataset needed to build features is not on disk."""
+
+    code = "DATASET_UNAVAILABLE"

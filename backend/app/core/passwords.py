@@ -18,13 +18,15 @@ DIGEST_BYTES = 32
 # which is what makes a stolen hash expensive to attack in bulk.
 COST = {"n": 2**14, "r": 8, "p": 1}
 
+from app.core.exceptions import EmptyPassword
+
 SCHEME = "scrypt"
 
 
 def hash_password(password: str) -> str:
     """Hash a password into a storable `scheme$salt$digest` string."""
     if not password:
-        raise ValueError("Refusing to hash an empty password")
+        raise EmptyPassword("Refusing to hash an empty password")
     salt = token_bytes(SALT_BYTES)
     return f"{SCHEME}${salt.hex()}${_derive(password, salt).hex()}"
 

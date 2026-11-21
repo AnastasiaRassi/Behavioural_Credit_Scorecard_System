@@ -37,6 +37,7 @@ from typing import Iterable, Mapping, Protocol, Sequence
 import numpy as np
 import pandas as pd
 
+from app.ml.exceptions import MissingColumns, UnknownBand
 from app.ml.feature_engineering import SCORED_COLUMNS
 from app.ml.scorer import CreditScorer
 
@@ -139,7 +140,7 @@ class RecourseTarget:
             return float(scorer.threshold)
         edges = {"Low": scorer.band_edges["low_max"], "Medium": scorer.band_edges["medium_max"]}
         if self.band not in edges:
-            raise ValueError(f"No ceiling for band {self.band!r}; expected one of {sorted(edges)}")
+            raise UnknownBand(f"No ceiling for band {self.band!r}; expected one of {sorted(edges)}")
         # Band membership is strict (`probability < edge`), so step just inside it.
         return float(edges[self.band]) - 1e-4
 
@@ -631,7 +632,9 @@ class CounterfactualExplainer:
     def _validated(self, customer: Mapping[str, float]) -> dict[str, float]:
         missing = [column for column in SCORED_COLUMNS if column not in customer]
         if missing:
-            raise ValueError(f"Missing required columns: {missing}")
+            raise MissingColumns(
+                f"Missing required columns: {missing}", context={"columns": missing}
+            )
         return dict(customer)
 
     def _describe(

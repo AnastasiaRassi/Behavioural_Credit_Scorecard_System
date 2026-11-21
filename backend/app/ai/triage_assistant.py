@@ -15,6 +15,7 @@ from typing import Mapping, Sequence
 from pydantic import ValidationError
 
 from app.ai import llm_client
+from app.ai.exceptions import LlmBadResponse, error_for
 from app.ai.assistant import MAX_HISTORY
 from app.ml import worklist
 from app.schemas.worklist import TriageFilter
@@ -85,7 +86,10 @@ def interpret(messages: Sequence[Mapping[str, str]]) -> TriageTurn:
             criteria = parsed.model_dump()
             return TriageTurn(worklist.describe_cohort(criteria), "model", "", parsed, None)
 
-    logger.warning("triage assistant: no usable filter (%s); using template", failure)
+    error = error_for(failure) if str(failure).startswith("llm_") else LlmBadResponse(
+        str(failure), context={"failure": failure}
+    )
+    logger.warning("triage assistant: no usable filter; using template: %s", error.log_line())
     return TriageTurn(OFF_TOPIC, "template", TEMPLATE_NOTE, None, failure)
 
 

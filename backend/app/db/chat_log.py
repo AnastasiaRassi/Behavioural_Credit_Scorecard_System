@@ -7,6 +7,9 @@ from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.core.exceptions import AppError
+from app.db.database import translate
+from app.db.exceptions import PersistenceFailed
 from app.db.models import ChatTurn
 
 logger = logging.getLogger(__name__)
@@ -33,8 +36,17 @@ def record(session: Session, turn: Mapping) -> None:
             turn.get("prompt_tokens"),
             turn.get("completion_tokens"),
         )
-    except (SQLAlchemyError, ValueError):
-        logger.exception("chat log: could not store the turn; is the chat_turn table created?")
+    except (SQLAlchemyError, ValueError) as exception:
+        log_failure("chat log: could not store the turn; is the chat_turn table created?", exception)
+
+
+def log_failure(what: str, exception: Exception) -> None:
+    """Log a chat-turn write that failed, with a code, and carry on: the reply is already out."""
+    if isinstance(exception, SQLAlchemyError):
+        exception = translate(exception)
+    if not isinstance(exception, AppError):
+        exception = PersistenceFailed(repr(exception), context={"table": "chat_turn"})
+    logger.error("%s %s", what, exception.log_line(), exc_info=True)
 
 
 def summary(session: Session) -> dict:

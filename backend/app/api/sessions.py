@@ -8,11 +8,12 @@ import logging
 from functools import lru_cache
 from secrets import token_urlsafe
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_session, signed_in_user
 from app.core import audit, sessions
+from app.core.exceptions import Unauthenticated
 from app.core.passwords import hash_password, verify_password
 from app.db.models import User
 from app.schemas.sessions import Account, Credentials, SignedIn
@@ -30,14 +31,11 @@ def _client(http: Request) -> str:
     return http.client.host if http.client else "-"
 
 
-def _rejected() -> HTTPException:
+def _rejected() -> Unauthenticated:
     # One message for both an unknown email and a wrong password: a response that
     # distinguished them would turn this endpoint into a way to discover which
     # accounts exist.
-    return HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Email or password is incorrect",
-    )
+    return Unauthenticated("Email or password is incorrect")
 
 
 @router.post("/session", response_model=SignedIn)
