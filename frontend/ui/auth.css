@@ -113,9 +113,12 @@ body:has(.st-key-signin_card) [data-testid="stMainBlockContainer"] {
     border-bottom: 1px solid rgba(255, 255, 255, 0.18);
     border-radius: 14px;
     pointer-events: auto; /* the showcase overlay is pointer-events: none */
-    transition: background-color 0.2s ease, box-shadow 0.2s ease;
+    transition: background-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
 }
 .feature-card:hover {
+    transform: scale(1.03);
+    position: relative; /* paint above neighbours; scale doesn't reflow them */
+    z-index: 1;
     background: rgba(255, 255, 255, 0.09);
     box-shadow: 0 0 22px rgba(110, 240, 184, 0.14);
 }
@@ -123,8 +126,8 @@ body:has(.st-key-signin_card) [data-testid="stMainBlockContainer"] {
     background: rgba(16, 185, 129, 0.3);
     border-color: rgba(52, 211, 153, 0.6);
 }
-.feature-card:first-child { padding-top: 0; }
-.feature-card:last-child { padding-bottom: 0; border-bottom: 0; }
+.feature-card:first-child { margin-top: -22px; }
+.feature-card:last-child { margin-bottom: -22px; border-bottom: 0; }
 .feature-card svg {
     grid-row: 1 / span 2;
     width: 44px;
