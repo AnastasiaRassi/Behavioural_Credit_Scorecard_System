@@ -185,6 +185,11 @@ def resume(token: str) -> dict | None:
     return {**account, "token": token}
 
 
+def edit_profile(token: str, changes: dict) -> dict:
+    """Save the caller's own name and details; returns the refreshed account."""
+    return _request("/session/profile", payload=changes, method="PATCH", token=token)
+
+
 # --- roles ----------------------------------------------------------------
 
 

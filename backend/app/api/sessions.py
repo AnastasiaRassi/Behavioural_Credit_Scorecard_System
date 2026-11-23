@@ -13,10 +13,10 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_session, signed_in_user
 from app.core import audit, sessions
-from app.core.exceptions import Unauthenticated
+from app.core.exceptions import Forbidden, Unauthenticated
 from app.core.passwords import hash_password, verify_password
 from app.db.models import User
-from app.schemas.sessions import Account, Credentials, SignedIn
+from app.schemas.sessions import Account, Credentials, ProfileEdit, SignedIn
 
 router = APIRouter(tags=["session"])
 
@@ -85,6 +85,26 @@ def sign_in(
 @router.get("/session", response_model=Account)
 def read_signed_in_account(account: User = Depends(signed_in_user)):
     """Who the presented token belongs to, for a client checking it is still valid."""
+    return _account(account)
+
+
+@router.patch("/session/profile", response_model=Account)
+def edit_profile(
+    edit: ProfileEdit,
+    account: User = Depends(signed_in_user),
+    session: Session = Depends(get_session),
+):
+    """Update the caller's own name and details. Cardholders only."""
+    if account.details is None:
+        raise Forbidden("Only a cardholder has a profile to edit")
+    name = edit.display_name.strip()
+    if not name:
+        raise Forbidden("Name cannot be blank")
+    account.display_name = name
+    for field in ("age_years", "sex", "education", "marriage"):
+        setattr(account.details, field, getattr(edit, field))
+    session.flush()
+    audit.event("profile_edited", actor=account.email, role=account.role)
     return _account(account)
 
 

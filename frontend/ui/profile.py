@@ -3,6 +3,8 @@ import html
 
 import streamlit as st
 
+import api
+
 PROFILE_OPEN_KEY = "profile_open"
 
 # Hardcoded for the demo UI: one bank and one officer for every cardholder.
@@ -47,6 +49,15 @@ _CSS = f"""
     color: #64748B;
 }}
 .ct-stat-value {{ font-size: 1.05rem; font-weight: 600; color: #0F172A; margin-top: .2rem; overflow-wrap: anywhere; }}
+.st-key-profile_edit button {{
+    background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px;
+    box-shadow: 0 1px 3px rgba(15,23,42,.06); padding: .45rem 1rem;
+}}
+.st-key-profile_edit button p {{ font-size: 13.5px; font-weight: 600; color: #0F172A; }}
+.st-key-profile_edit button:hover, .st-key-profile_edit button:focus-visible {{
+    border-color: #A7F3D0; background: #ECFDF5;
+}}
+.st-key-profile_edit button:hover p {{ color: #047857; }}
 </style>
 """
 
@@ -98,3 +109,40 @@ def render_page(session: dict, role_label: str) -> None:
         f'<div class="ct-grid">{tiles}</div></div>',
         unsafe_allow_html=True,
     )
+    if session.get("account_number"):
+        if st.button("Edit my information", icon=":material/edit:", key="profile_edit"):
+            _edit_dialog(session)
+
+
+def _choice(options: dict, current) -> int:
+    codes = list(options)
+    return codes.index(current) if current in codes else 0
+
+
+@st.dialog("Edit my information")
+def _edit_dialog(session: dict) -> None:
+    name = st.text_input("Name", value=session["display_name"])
+    age = st.number_input("Age", 18, 120, int(session.get("age_years") or 18))
+    sex = st.selectbox("Gender", list(SEX), _choice(SEX, session.get("sex")), format_func=SEX.get)
+    education = st.selectbox(
+        "Education", list(EDUCATION), _choice(EDUCATION, session.get("education")),
+        format_func=EDUCATION.get,
+    )
+    marriage = st.selectbox(
+        "Marital status", list(MARRIAGE), _choice(MARRIAGE, session.get("marriage")),
+        format_func=MARRIAGE.get,
+    )
+    if st.button("Save", type="primary", key="profile_save"):
+        if not name.strip():
+            st.error("Name cannot be blank.")
+            return
+        try:
+            account = api.edit_profile(session["token"], {
+                "display_name": name, "age_years": int(age), "sex": sex,
+                "education": education, "marriage": marriage,
+            })
+        except api.ServiceUnavailable as exception:
+            st.error(str(exception))
+            return
+        session.update(account)
+        st.rerun()

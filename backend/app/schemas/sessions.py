@@ -27,6 +27,16 @@ class Account(BaseModel):
     marriage: int | None = None
 
 
+class ProfileEdit(BaseModel):
+    """What a cardholder may change about themselves. Bounds mirror the DB checks."""
+
+    display_name: str = Field(min_length=1, max_length=120)
+    age_years: int = Field(ge=18, le=120)
+    sex: int = Field(ge=1, le=2)
+    education: int = Field(ge=1, le=4)
+    marriage: int = Field(ge=1, le=3)
+
+
 class SignedIn(Account):
     token: str
     expires_at: int = Field(description="Epoch seconds; the token is rejected after")
