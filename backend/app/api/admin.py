@@ -90,7 +90,7 @@ def explain_without_storing(customer: CustomerInput) -> dict:
     """
     payload = customer.model_dump()
     result = get_scorer().score_one(payload)
-    reasons, base_value = get_explainer().reasons(payload)
+    reasons, base_value = get_explainer().feature_reasons(payload)
 
     return {
         "stored": False,

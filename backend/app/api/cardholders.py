@@ -29,7 +29,7 @@ from app.schemas.worklist import CardholderView, ChatReply, ChatRequest
 
 router = APIRouter(prefix="/cardholders", tags=["cardholder"])
 
-SHOWN_REASONS = 6  # matches the officer's predict
+SHOWN_REASONS = 7  # one per concept; matches the officer's predict
 
 
 @router.get(

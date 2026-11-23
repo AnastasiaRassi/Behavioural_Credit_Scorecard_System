@@ -73,6 +73,9 @@ class ReasonOut(BaseModel):
     effect: float = Field(description="Log-odds; positive raises risk")
     description: str
     raises_risk: bool
+    parts: list[dict] | None = Field(
+        default=None, description="Concept reasons: the features summed into `effect`"
+    )
 
 
 class ScoreResponse(BaseModel):
@@ -84,6 +87,9 @@ class ScoreResponse(BaseModel):
     band_default_rate: float
     model_version: str
     reasons: list[ReasonOut]
+    model_band: str | None = Field(default=None, description="Band before the consistency guard")
+    guard_flags: list[str] = Field(default_factory=list)
+    needs_review: bool = False
 
 
 class BatchRow(BaseModel):
@@ -92,6 +98,9 @@ class BatchRow(BaseModel):
     risk_band: str | None = None
     flagged: bool | None = None
     error: str | None = None
+    model_band: str | None = None
+    guard_flags: list[str] = Field(default_factory=list)
+    needs_review: bool = False
 
 
 class BatchScoreResponse(BaseModel):

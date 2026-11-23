@@ -146,7 +146,8 @@ def test_the_most_recent_month_agrees_with_the_scalars(client, riskiest_customer
     recent = body["history"][0]
 
     assert recent["bill_amount"] == body["current_balance"]
-    assert recent["amount_paid"] == body["last_payment"]
+    paid = [month["amount_paid"] for month in body["history"] if month["amount_paid"] > 0]
+    assert body["last_payment"] == (paid[0] if paid else None)
 
 
 # --- C. derived highlights ----------------------------------------------------

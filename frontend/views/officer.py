@@ -33,12 +33,12 @@ import streamlit as st
 import api
 import review
 from components import BAND_ICONS
-from money import markdown_safe, money
-from ui import customer_mode, loana, nav, thread
+from money import markdown_safe, money, money_or_none
+from ui import customer_mode, insights, loana, nav, thread
 from ui.profile import initials
 from ui.components import card_head, quote, show, stylesheet
 from views import prediction
-from views.cardholder import ACTIONABLE, history_card
+from views.cardholder import ACTIONABLE
 
 ACTIONS = review.ACTIONS
 # Badges past these read as "99+" / "9+", so a backlog cannot break the layout.
@@ -681,7 +681,7 @@ def _figures(detail: dict) -> None:
         [
             ("Credit limit", money(detail['credit_limit']), "The agreed limit."),
             ("Balance", money(detail['current_balance']), "Owed this month."),
-            ("Last payment", money(detail['last_payment']), "Most recent payment."),
+            ("Last payment", money_or_none(detail['last_payment']), "Most recent payment."),
             (
                 "Utilisation",
                 f"{utilisation:.0%}" if utilisation is not None else "-",
@@ -720,7 +720,7 @@ def _notes(highlights: dict) -> list[str]:
 
 
 def _history(detail: dict) -> None:
-    history_card(detail["history"], "Last six months")
+    insights.render(detail["history"], detail["credit_limit"], "Account health")
 
     st.dataframe(
         pd.DataFrame(

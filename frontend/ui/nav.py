@@ -19,6 +19,7 @@ REPORT = "report"
 CUSTOMER = "customer"
 CONVERSATION = "conversation"
 PREDICTION = "prediction"
+TRANSACTIONS = "transactions"
 
 
 @dataclass(frozen=True)
@@ -31,7 +32,8 @@ class Item:
 # Account views belong to a cardholder with a scored account.
 ACCOUNT_ITEMS = (
     Item(DASHBOARD, "Account Overview", ":material/dashboard:"),
-    Item(PREDICTION, "Risk Prediction", ":material/query_stats:"),
+    Item(TRANSACTIONS, "My Transactions", ":material/receipt_long:"),
+    Item(PREDICTION, "Missed payment risk", ":material/query_stats:"),
     Item(CHAT, "Officer reviews", ":material/rate_review:"),
 )
 # Officers: the dashboard is the user filter. A chosen customer gets its own entry
@@ -43,7 +45,7 @@ OFFICER_ITEMS = (
 )
 TITLES = {
     DASHBOARD: "Account Overview", PREDICTION: "Risk Prediction", CHAT: "Officer reviews",
-    PROFILE: "Profile", REPORT: "Report an Issue",
+    TRANSACTIONS: "My Transactions", PROFILE: "Profile", REPORT: "Report an Issue",
 }
 OFFICER_TITLES = {
     DASHBOARD: "Filter Users", CHAT: "Officer reviews", PROFILE: "Profile", REPORT: "Report an Issue", CUSTOMER: "Customer account",

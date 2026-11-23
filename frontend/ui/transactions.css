@@ -1,0 +1,25 @@
+/* My Transactions: the card face, then the statement table under it. */
+.tx-card-face {
+    max-width: 460px; padding: 1.3rem 1.5rem; margin-bottom: 1.25rem; border-radius: 20px; color: #FFFFFF;
+    background: linear-gradient(135deg, #0F172A, #1E293B 55%, #047857);
+    box-shadow: 0 12px 30px rgba(15, 23, 42, .25);
+}
+.tx-card-bank { font-size: 1.05rem; font-weight: 700; letter-spacing: .04em; }
+.tx-card-number { font-size: 1.45rem; font-weight: 600; letter-spacing: .12em; margin: 1.6rem 0 1.1rem; }
+.tx-card-foot { display: flex; justify-content: space-between; gap: 1rem; font-size: .8rem; letter-spacing: .08em; opacity: .85; }
+
+.tx-table {
+    width: 100%; border-collapse: separate; border-spacing: 0; overflow: hidden;
+    background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 14px;
+    box-shadow: 0 4px 16px rgba(15, 23, 42, .06);
+}
+.tx-table th {
+    padding: .7rem 1rem; text-align: left; color: #475569; background: #F8FAFC;
+    font-size: .78rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+}
+.tx-table td { padding: .8rem 1rem; color: #0F172A; border-top: 1px solid #E2E8F0; }
+.tx-table tbody tr { transition: background .2s ease; }
+.tx-table tbody tr:hover { background: rgba(16, 185, 129, .08); }
+.tx-table td:nth-child(5) { font-weight: 700; font-variant-numeric: tabular-nums; }
+.tx-table td:nth-child(6) { color: #047857; font-weight: 600; }
+.tx-table td:nth-child(2) { color: #64748B; font-variant-numeric: tabular-nums; }

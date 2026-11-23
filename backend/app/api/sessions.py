@@ -94,15 +94,11 @@ def edit_profile(
     account: User = Depends(signed_in_user),
     session: Session = Depends(get_session),
 ):
-    """Update the caller's own name and details. Cardholders only."""
+    """Update the caller's education and marital status. Cardholders only."""
     if account.details is None:
         raise Forbidden("Only a cardholder has a profile to edit")
-    name = edit.display_name.strip()
-    if not name:
-        raise Forbidden("Name cannot be blank")
-    account.display_name = name
-    for field in ("age_years", "sex", "education", "marriage"):
-        setattr(account.details, field, getattr(edit, field))
+    account.details.education = edit.education
+    account.details.marriage = edit.marriage
     session.flush()
     audit.event("profile_edited", actor=account.email, role=account.role)
     return _account(account)

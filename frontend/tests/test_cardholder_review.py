@@ -162,7 +162,7 @@ def test_an_unscored_cardholder_is_told_so_rather_than_shown_an_outage(faked_api
     assert not app.error
 
 
-def test_the_overview_links_to_a_prediction_page_that_never_shows_the_probability(
+def test_the_prediction_page_never_shows_the_probability(
     faked_api, monkeypatch
 ):
     reasons = [{"feature": "PAY_1", "description": "Last month was late", "raises_risk": True}]
@@ -170,10 +170,11 @@ def test_the_overview_links_to_a_prediction_page_that_never_shows_the_probabilit
         api, "cardholder", lambda customer_id, token: {**_account(), "reasons": reasons}
     )
     app = AppTest.from_function(_dashboard_app, default_timeout=TIMEOUT).run()
-    assert "Low risk. See what is driving it." in _markdown(app)
+    assert "See what is driving it" not in _markdown(app)
+    assert "open_prediction" not in [b.key for b in app.button]
 
-    app.button(key="open_prediction").click().run()
-    assert app.session_state["active_view"] == "prediction"
+    app.session_state["active_view"] = "prediction"
+    app.run()
     # Stylesheets are markdown too, and their `100%` widths are not a probability.
     text = " ".join(m.value for m in app.markdown if not m.value.startswith("<style>"))
     assert "Why this score" in text and "Last month was late" in text
@@ -188,25 +189,12 @@ def test_the_overview_links_to_a_prediction_page_that_never_shows_the_probabilit
     assert app.session_state["active_view"] == "chat"
 
 
-def test_an_unpredicted_account_shows_the_button_and_no_band(faked_api, monkeypatch):
-    asked = []
-    state = {"predicted": False}
-
-    def view(customer_id, token):
-        return {**_account(), "predicted": state["predicted"],
-                "risk_band": "Low" if state["predicted"] else None}
-
-    def request_prediction(customer_id, token):
-        asked.append(customer_id)
-        state["predicted"] = True
-
-    monkeypatch.setattr(api, "cardholder", view)
-    monkeypatch.setattr(api, "request_prediction", request_prediction)
+def test_an_unpredicted_account_shows_no_notice_and_no_button(faked_api, monkeypatch):
+    monkeypatch.setattr(
+        api, "cardholder",
+        lambda customer_id, token: {**_account(), "predicted": False, "risk_band": None},
+    )
     app = AppTest.from_function(_dashboard_app, default_timeout=TIMEOUT).run()
 
-    assert "No prediction yet" in " ".join(m.value for m in app.markdown)
-    app.button(key="get_prediction").click().run()
-
-    assert asked == ["id-1"]
+    assert "No prediction yet" not in " ".join(m.value for m in app.markdown)
     assert not [b for b in app.button if b.key == "get_prediction"]
-    assert "Your account looks on track" in " ".join(m.value for m in app.markdown)

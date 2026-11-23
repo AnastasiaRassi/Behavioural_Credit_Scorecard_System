@@ -83,10 +83,13 @@ def render_page(session: dict, role_label: str) -> None:
     st.markdown(_CSS, unsafe_allow_html=True)
     st.markdown('<div class="page-title">Your profile</div>', unsafe_allow_html=True)
 
+    first, _, last = session["display_name"].strip().partition(" ")
     fields = [("Email", session["email"])]
     if session.get("account_number"):
         fields = [
             ("Customer ID", session["account_number"]),
+            ("First name", first),
+            ("Last name", last or None),
             *fields,
             ("Age", session.get("age_years")),
             ("Gender", SEX.get(session.get("sex"))),
@@ -121,9 +124,7 @@ def _choice(options: dict, current) -> int:
 
 @st.dialog("Edit my information")
 def _edit_dialog(session: dict) -> None:
-    name = st.text_input("Name", value=session["display_name"])
-    age = st.number_input("Age", 18, 120, int(session.get("age_years") or 18))
-    sex = st.selectbox("Gender", list(SEX), _choice(SEX, session.get("sex")), format_func=SEX.get)
+    st.caption("Name, age and gender are legal details and can't be changed here.")
     education = st.selectbox(
         "Education", list(EDUCATION), _choice(EDUCATION, session.get("education")),
         format_func=EDUCATION.get,
@@ -133,14 +134,10 @@ def _edit_dialog(session: dict) -> None:
         format_func=MARRIAGE.get,
     )
     if st.button("Save", type="primary", key="profile_save"):
-        if not name.strip():
-            st.error("Name cannot be blank.")
-            return
         try:
-            account = api.edit_profile(session["token"], {
-                "display_name": name, "age_years": int(age), "sex": sex,
-                "education": education, "marriage": marriage,
-            })
+            account = api.edit_profile(
+                session["token"], {"education": education, "marriage": marriage}
+            )
         except api.ServiceUnavailable as exception:
             st.error(str(exception))
             return

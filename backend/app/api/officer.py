@@ -51,7 +51,7 @@ from sqlalchemy.orm import Session
 router = APIRouter(prefix="/officer", tags=["officer"])
 
 # Reasons an officer screen shows. The engineer's /explain returns every one.
-SHOWN_REASONS = 6
+SHOWN_REASONS = 7  # one per concept
 
 
 def _with_customer_ids(session: Session, rows: list[dict]) -> list[dict]:
@@ -289,6 +289,8 @@ def _predict(
         account=row["account_number"],
         prediction=prediction.id,
         band=result.risk_band,
+        model_band=result.model_band,
+        guard=list(result.guard_flags),
         flagged=result.flagged,
         model=version.version,
     )
@@ -301,6 +303,9 @@ def _predict(
         band_default_rate=result.band_default_rate,
         model_version=version.version,
         reasons=reason_dicts,
+        model_band=result.model_band,
+        guard_flags=list(result.guard_flags),
+        needs_review=result.needs_review,
     )
 
 

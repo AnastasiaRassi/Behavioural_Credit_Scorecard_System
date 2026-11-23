@@ -1,0 +1,10 @@
+{
+  "source": "held-out test split (seed 42); account_number = test row position + 1",
+  "cases": [
+    {"pattern": "confident_miss", "note": "clean history, defaulted; the guard cannot catch these", "accounts": [2501, 983, 7017], "band": "Low", "review": false},
+    {"pattern": "delay_on_record_low", "note": "one delay on record, Low, defaulted", "accounts": [1703, 7375, 12504], "band": "Low", "review": false},
+    {"pattern": "four_late_months_medium", "note": "4+ late months, now Medium; routed to an officer", "accounts": [2657, 24891, 23932, 6026], "band": "Medium", "review": true},
+    {"pattern": "confident_false_alarm", "note": "every month 2 behind, High, did not default", "accounts": [22567, 26713, 10143], "band": "High", "review": false},
+    {"pattern": "clean_but_high", "note": "no late months, High from tiny bills and payments", "accounts": [5646, 4030, 18296], "band": "High", "review": false}
+  ]
+}

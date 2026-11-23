@@ -59,8 +59,10 @@
 /* Items: glossy glass pills, icon and label at the left edge. */
 .st-key-nav_panel button {
     justify-content: flex-start; gap: .6rem; border-radius: 14px; padding: .6rem .9rem;
-    transition: background .18s, box-shadow .18s, border-color .18s, transform .1s;
+    transition: background .2s ease, box-shadow .2s ease, border-color .2s ease, transform .2s ease;
 }
+/* Hover lifts and expands the pill, like the sign-in feature cards. */
+.st-key-nav_panel button:hover { transform: scale(1.03); position: relative; z-index: 1; }
 .st-key-nav_panel button:active { transform: scale(.985); }
 .st-key-nav_panel button p { font-size: 0.95rem; font-weight: 500; }
 .st-key-nav_panel button[data-testid="stBaseButton-primary"] p { font-weight: 600; }
@@ -75,12 +77,14 @@
     color: var(--ink-soft);
 }
 .st-key-nav_panel button[data-testid="stBaseButton-secondary"]:hover {
-    background: var(--pill-bg-hover);
-    box-shadow: var(--pill-shine), 0 4px 14px rgba(15, 23, 42, .1);
+    background: var(--pill-bg-hover); border-color: rgba(0, 166, 105, .45);
+    box-shadow: var(--pill-shine), 0 4px 14px rgba(15, 23, 42, .1), 0 0 18px rgba(0, 166, 105, .22);
 }
-.st-key-nav_panel button[data-testid="stBaseButton-secondary"]:hover p,
-.st-key-nav_panel button[data-testid="stBaseButton-secondary"]:hover [data-testid="stIconMaterial"] {
+.st-key-nav_panel button[data-testid="stBaseButton-secondary"]:hover p {
     color: var(--ink);
+}
+.st-key-nav_panel button[data-testid="stBaseButton-secondary"]:hover [data-testid="stIconMaterial"] {
+    color: var(--accent);
 }
 
 /* Active route: dark glossy sheen with an emerald edge and a soft glow. */

@@ -21,7 +21,7 @@ class QueueRow(BaseModel):
     flagged: bool
     credit_limit: float
     current_balance: float
-    last_payment: float
+    last_payment: float | None
     months_in_arrears: int
     reasons: list[QueueReason]
 
@@ -80,7 +80,7 @@ class CustomerDetail(BaseModel):
     flagged: bool
     credit_limit: float
     current_balance: float
-    last_payment: float
+    last_payment: float | None
     months_in_arrears: int
     segment: Segment | None = Field(
         default=None, description="None when segmentation has not been run"
@@ -153,7 +153,7 @@ class CohortRow(BaseModel):
     full_name: str | None = None
     credit_limit: float
     current_balance: float
-    last_payment: float
+    last_payment: float | None
     months_in_arrears: int
     utilisation_now: float | None = None
     trajectory: str | None = None
@@ -259,7 +259,7 @@ class CardholderView(BaseModel):
     needs_attention: bool
     credit_limit: float
     current_balance: float
-    last_payment: float
+    last_payment: float | None
     months_in_arrears: int
     reasons: list[CardholderReason]
     coaching: CardholderCoaching | None

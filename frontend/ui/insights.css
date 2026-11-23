@@ -1,0 +1,34 @@
+/* Account health panels (ui/insights.py). */
+.insights-head { margin: 0.2rem 0 0.8rem; }
+.insights-title { font-size: 1.45rem; font-weight: 700; letter-spacing: -0.02em; color: #0F172A; }
+.insights-hint { font-size: 1rem; color: #475569; font-weight: 500; }
+.insight-tile {
+    background: #FFFFFF; border-radius: 14px; border-top: 4px solid #00A669;
+    padding: 0.8rem 1rem; box-shadow: 0 4px 16px rgba(28, 25, 23, 0.06); margin-bottom: 0.9rem;
+}
+.insight-tile-label { font-size: 0.9rem; font-weight: 700; color: #475569; }
+.insight-tile-value { font-size: 1.6rem; font-weight: 750; color: #0F172A; }
+.st-key-insight_status, .st-key-insight_use, .st-key-insight_repaid, .st-key-insight_amounts {
+    background: #FFFFFF; border-radius: 18px; box-shadow: 0 6px 24px rgba(28, 25, 23, 0.06);
+    padding: 0.5rem 0.8rem; border: none;
+}
+.insight-title { font-size: 1.1rem; font-weight: 700; color: #0F172A; }
+.insight-hint { font-size: 0.9rem; color: #475569; margin-bottom: 0.3rem; }
+
+/* Cards light up under the pointer. */
+.st-key-insight_status, .st-key-insight_use, .st-key-insight_repaid, .st-key-insight_amounts {
+    transition: box-shadow 0.2s, transform 0.2s;
+}
+.st-key-insight_status:hover, .st-key-insight_use:hover,
+.st-key-insight_repaid:hover, .st-key-insight_amounts:hover {
+    box-shadow: 0 0 0 2px #00C588, 0 8px 32px rgba(0, 197, 136, 0.35);
+    transform: translateY(-2px);
+}
+
+/* The AI hint: a small star and text, quiet until the card is hovered. */
+[class*="st-key-insight_ask_"] button {
+    min-height: 0; padding: 0.1rem 0.2rem; color: #00754F; opacity: 0.75; transition: opacity 0.2s;
+}
+[class*="st-key-insight_ask_"] button p { font-size: 0.82rem; font-weight: 600; }
+[class*="st-key-insight_ask_"] button:hover { background: transparent; opacity: 1; }
+[class*="st-key-insight_"]:hover [class*="st-key-insight_ask_"] button { opacity: 1; }

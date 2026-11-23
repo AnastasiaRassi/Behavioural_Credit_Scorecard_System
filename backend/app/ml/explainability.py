@@ -47,12 +47,14 @@ FEATURE_MEANINGS = {
 
 @dataclass
 class Reason:
-    """One driver of a single customer's score."""
+    """One driver of a single customer's score: a feature, or a concept grouping several."""
 
     feature: str
-    value: float
+    value: float | None
     effect: float  # log-odds, positive pushes risk up
     description: str
+    # Concept reasons only: the features summed into `effect`, strongest first.
+    parts: list[dict] | None = None
 
     @property
     def raises_risk(self) -> bool:
@@ -62,8 +64,10 @@ class Reason:
         data = asdict(self)
         # NaN (a feature with nothing to compute from) is not valid JSON: Postgres
         # rejects it and it breaks the response. The description already says so.
-        if pd.isna(data["value"]):
+        if data["value"] is not None and pd.isna(data["value"]):
             data["value"] = None
+        if data["parts"] is None:
+            del data["parts"]
         return data
 
 
@@ -240,6 +244,224 @@ def describe(feature: str, value: float) -> str:
     return f"{feature_meaning(feature).capitalize()}: {value:,.2f}"
 
 
+# ---- concepts --------------------------------------------------------------
+#
+# Many served features measure the same thing (BILL_AMT1, util_1, remaining_credit),
+# so per-feature SHAP splits credit between them arbitrarily and signs flip: a 3%
+# repayment can show as lowering risk because a correlated feature absorbed the
+# rest. SHAP is additive, so summing within a concept is exact, and the sentence is
+# written from the customer's own figures rather than stitched from feature labels.
+
+CONCEPTS = {
+    "repayment_status": "Repayment status",
+    "share_paid": "Share of the bill paid",
+    "carrying_balance": "Carrying a balance",
+    "credit_in_use": "Credit in use",
+    "account_size": "Account size and activity",
+    "recent_direction": "Recent direction",
+    "credit_limit": "Credit limit",
+}
+
+_CONCEPT_OF = {
+    **{f"PAY_{i}": "repayment_status" for i in range(1, 7)},
+    "pay_max": "repayment_status",
+    "pay_mean": "repayment_status",
+    "pay_months_late": "repayment_status",
+    **{f"repay_ratio_{i}": "share_paid" for i in range(1, 6)},
+    "repay_ratio_mean": "share_paid",
+    "repay_ratio_min": "share_paid",
+    "months_zero_payment": "share_paid",
+    "pay_months_revolving": "carrying_balance",
+    "pay_to_bill_gap": "carrying_balance",
+    **{f"util_{i}": "credit_in_use" for i in range(1, 7)},
+    "util_mean": "credit_in_use",
+    "util_max": "credit_in_use",
+    "remaining_credit": "credit_in_use",
+    # Absolute amounts measure scale; how much of the bill is paid lives in the ratios.
+    **{f"BILL_AMT{i}": "account_size" for i in range(1, 7)},
+    **{f"PAY_AMT{i}": "account_size" for i in range(1, 7)},
+    "bill_mean": "account_size",
+    "pay_amt_mean": "account_size",
+    "pay_trend": "recent_direction",
+    "pay_worsening": "recent_direction",
+    "util_trend": "recent_direction",
+    "LIMIT_BAL": "credit_limit",
+}
+
+# Higher than NEGLIGIBLE_EFFECT: a concept this weak is not worth a line on screen.
+NEGLIGIBLE_CONCEPT = 0.02
+CLEARED_SHARE = 0.99  # a payment within 1% of the bill counts as clearing it
+AT_LIMIT_SHARE = 0.95
+INACTIVE_MONTHS = 2  # a balance in this many of six months or fewer reads as inactive
+
+
+def concept_of(feature: str) -> str:
+    try:
+        return _CONCEPT_OF[feature]
+    except KeyError:
+        raise ExplanationFailed(
+            f"Feature {feature!r} has no concept; add it to _CONCEPT_OF",
+            context={"feature": feature},
+        ) from None
+
+
+def _count(n: int, noun: str) -> str:
+    return f"{n} {noun}" if n == 1 else f"{n} {noun}s"
+
+
+def _join(parts: list[str]) -> str:
+    return ", ".join(parts[:-1]) + " and " + parts[-1] if len(parts) > 1 else parts[0]
+
+
+def _repayment_status(row: pd.Series, raises: bool) -> str:
+    status = [int(row[f"PAY_{i}"]) for i in range(1, 7)]
+    behind = sum(s > 0 for s in status)
+    if behind:
+        worst = max(status)
+        now = ("including last month" if status[0] > 0
+               else "but up to date last month")
+        return (f"behind in {behind} of the last 6 months, at worst "
+                f"{_count(worst, 'month')} late, {now}")
+    # Not behind: the codes still separate paid in full, carried over and no balance.
+    mix = [(sum(s == -1 for s in status), "paid in full"),
+           (sum(s == 0 for s in status), "carried part of the bill over"),
+           (sum(s == -2 for s in status), "had nothing to pay")]
+    detail = _join([f"{text} in {_count(n, 'month')}" for n, text in mix if n])
+    return f"never behind in the last 6 months; {detail}"
+
+
+def _share_paid(row: pd.Series, raises: bool) -> str:
+    ratios = [row[f"repay_ratio_{i}"] for i in range(1, 6)]
+    owed = [r for r in ratios if pd.notna(r)]
+    if not owed:
+        return "no bills to pay in the last 5 months"
+    cleared = sum(r >= CLEARED_SHARE for r in owed)
+    unpaid = sum(r == 0 for r in owed)
+    if len(owed) == 1:
+        text = "cleared the one bill due" if cleared else "did not clear the one bill due"
+    else:
+        text = f"cleared the bill in full in {cleared} of the {len(owed)} months a bill was due"
+    if pd.notna(ratios[0]):
+        latest = "all" if ratios[0] >= CLEARED_SHARE else f"{ratios[0]:.0%}"
+        text += f"; the latest payment covered {latest} of the bill it was for"
+    if unpaid:
+        text += f"; nothing was paid on {_count(unpaid, 'bill')}"
+    return text
+
+
+def _carrying_balance(row: pd.Series, raises: bool) -> str:
+    months = int(row["pay_months_revolving"])
+    text = ("never carried part of a bill over" if months == 0
+            else f"carried part of the bill over in {months} of the last 6 months")
+    gap = row["pay_to_bill_gap"]
+    if gap > 0:
+        text += f"; payments averaged {money(gap)} a month less than the bills"
+    return text
+
+
+def _credit_in_use(row: pd.Series, raises: bool) -> str:
+    used, remaining, peak = row["util_1"], row["remaining_credit"], row["util_max"]
+    if pd.isna(used):
+        return "share of the limit in use is not available"
+    if remaining < 0:
+        return f"over the limit by {money(-remaining)}, using {used:.0%} of it"
+    if used >= AT_LIMIT_SHARE:
+        return f"at the limit, using {used:.0%} of it"
+    text = f"using {used:.0%} of the limit, with {money(remaining)} still free"
+    if pd.notna(peak) and peak - used >= 0.10:
+        text += f"; it peaked at {peak:.0%} in the last 6 months"
+    return text
+
+
+def _account_size(row: pd.Series, raises: bool) -> str:
+    # Payment amounts are left out on purpose: next to the bill they read as
+    # "you paid too little", which is the share-paid concept, not this one.
+    active = sum(row[f"BILL_AMT{i}"] > 0 for i in range(1, 7))
+    if active == 0:
+        return "no balance on the card in the last 6 months"
+    text = (f"bills averaged {money(row['bill_mean'])} a month, "
+            f"with a balance in {active} of the last 6 months")
+    if active <= INACTIVE_MONTHS:
+        text = f"a small, mostly inactive account: {text}"
+    why = ("smaller, less active accounts miss payments more often" if raises
+           else "larger, active accounts miss payments less often")
+    return f"{text} ({why})"
+
+
+def _recent_direction(row: pd.Series, raises: bool) -> str:
+    # Compared on months behind, not raw codes: a code moving -2 to 0 is a new
+    # balance, not a worse repayment.
+    now, then = max(int(row["PAY_1"]), 0), max(int(row["PAY_6"]), 0)
+    if now > then:
+        status = "further behind than 6 months ago"
+    elif now < then:
+        status = "less behind than 6 months ago"
+    elif now == 0:
+        status = "not behind now or 6 months ago"
+    else:
+        status = "as far behind as 6 months ago"
+    trend = row["util_trend"]
+    if pd.isna(trend) or round(abs(trend) * 100) == 0:
+        return f"{status}; share of the limit in use unchanged"
+    direction = "up" if trend > 0 else "down"
+    return f"{status}; share of the limit in use {direction} {round(abs(trend) * 100)} points"
+
+
+def _credit_limit(row: pd.Series, raises: bool) -> str:
+    why = ("lower limits go with more missed payments" if raises
+           else "higher limits go with fewer missed payments")
+    return f"a limit of {money(row['LIMIT_BAL'])} ({why})"
+
+
+_SENTENCES = {
+    "repayment_status": _repayment_status,
+    "share_paid": _share_paid,
+    "carrying_balance": _carrying_balance,
+    "credit_in_use": _credit_in_use,
+    "account_size": _account_size,
+    "recent_direction": _recent_direction,
+    "credit_limit": _credit_limit,
+}
+
+
+def describe_concept(concept: str, row: pd.Series, effect: float) -> str:
+    """One sentence for a concept, from the customer's own figures."""
+    return f"{CONCEPTS[concept]}: {_SENTENCES[concept](row, effect > 0)}"
+
+
+def concept_reasons(row: pd.Series, effects, columns, limit: int | None = None) -> list[Reason]:
+    """Group one customer's per-feature contributions into concept reasons, strongest first."""
+    totals: dict[str, float] = {key: 0.0 for key in CONCEPTS}
+    parts: dict[str, list[dict]] = {key: [] for key in CONCEPTS}
+    for name, effect in zip(columns, effects):
+        concept = concept_of(name)
+        totals[concept] += float(effect)
+        value = float(row[name])
+        parts[concept].append({
+            "feature": name,
+            "value": None if pd.isna(value) else value,
+            "effect": float(effect),
+            "description": describe(name, value),
+        })
+
+    ranked = sorted(
+        (
+            Reason(
+                feature=key,
+                value=None,
+                effect=total,
+                description=describe_concept(key, row, total),
+                parts=sorted(parts[key], key=lambda p: abs(p["effect"]), reverse=True),
+            )
+            for key, total in totals.items()
+            if abs(total) >= NEGLIGIBLE_CONCEPT
+        ),
+        key=lambda reason: abs(reason.effect),
+        reverse=True,
+    )
+    return ranked[:limit] if limit else ranked
+
+
 class Explainer:
     """Per-customer reasons for a score.
 
@@ -252,11 +474,18 @@ class Explainer:
         self.models = scorer.models
 
     def reasons(self, customer: dict, limit: int | None = None) -> tuple[list[Reason], float]:
-        """Reasons for one customer, strongest first, with the base log-odds.
+        """Concept reasons for one customer, strongest first, with the base log-odds.
 
         The base value is the average customer's log-odds; the effects add to it to
         give this customer's raw score, so the explanation is complete.
         """
+        features = self.scorer.prepare(pd.DataFrame([customer]))
+        effects, base = self._contributions(features)
+        return concept_reasons(features.iloc[0], effects, features.columns, limit), base
+
+    def feature_reasons(self, customer: dict, limit: int | None = None) -> tuple[list[Reason], float]:
+        """Per-feature reasons, for the ML engineer's view. Signs between correlated
+        features are not meaningful on their own; customers see `reasons()`."""
         features = self.scorer.prepare(pd.DataFrame([customer]))
         effects, base = self._contributions(features)
 

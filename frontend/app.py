@@ -29,7 +29,7 @@ if str(HERE) not in sys.path:
 import api  # noqa: E402
 import theme  # noqa: E402
 from tabs import drift, explain, fairness, performance, registry, segmentation, threshold  # noqa: E402
-from ui import customer_mode, drawer, nav, profile, report  # noqa: E402
+from ui import customer_mode, drawer, nav, profile, report, transactions  # noqa: E402
 from ui.components import stylesheet  # noqa: E402
 from views import cardholder, officer, sign_in  # noqa: E402
 
@@ -109,8 +109,8 @@ def _seed_location(session: dict) -> None:
         st.session_state[customer_mode.MODE_KEY] = mode or customer_mode.DEFAULT
     elif params.get("view") == nav.CHAT:
         st.session_state[nav.VIEW_KEY] = nav.CHAT
-    elif session["role"] == "cardholder" and params.get("view") == nav.PREDICTION:
-        st.session_state[nav.VIEW_KEY] = nav.PREDICTION
+    elif session["role"] == "cardholder" and params.get("view") in (nav.PREDICTION, nav.TRANSACTIONS):
+        st.session_state[nav.VIEW_KEY] = params["view"]
 
 
 def _sync_location(session: dict) -> None:
@@ -125,6 +125,8 @@ def _sync_location(session: dict) -> None:
         wanted.update(customer=str(officer_customer), mode=customer_mode.current())
     elif nav.current() == nav.PREDICTION and session["role"] == "cardholder":
         wanted["view"] = nav.PREDICTION
+    elif nav.current() == nav.TRANSACTIONS and session["role"] == "cardholder":
+        wanted["view"] = nav.TRANSACTIONS
     elif nav.current() == nav.CHAT:
         wanted["view"] = nav.CHAT
     if dict(st.query_params) != wanted:
@@ -342,6 +344,10 @@ def _cardholder(session: dict, header: Callable[[], None]) -> None:
             "no scored account to show. Link it with: "
             "`cd backend && python -m app.db.seed`"
         )
+        return
+    if nav.current() == nav.TRANSACTIONS:
+        header()
+        transactions.render_page(session, session["customer_id"])
         return
     cardholder.render(session["token"], session["customer_id"], header)
 

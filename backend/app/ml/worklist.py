@@ -13,11 +13,23 @@ from functools import lru_cache
 
 from app.ai.coaching import coach
 from app.core.money import money
-from app.ml import artifacts
+from app.ml import artifacts, consistency_guard
 from app.ml.exceptions import ArtifactsMissing
 from app.ml.explainability import describe
 
 BANDS = ("Low", "Medium", "High")
+
+
+def _last_payment(row) -> float | None:
+    """The latest payment actually made in the observed months, not necessarily last month's.
+
+    A zero is a month with no payment, so it is skipped; None if none was made at all.
+    """
+    for entry in row.get("history") or []:
+        if entry["amount_paid"] > 0:
+            return entry["amount_paid"]
+    return None
+
 
 # train.py labels queue rows `C-<row position>`, because the frame it builds them
 # from is positionally indexed: feature_engineering drops the dataset's own ID
@@ -60,10 +72,12 @@ def all_rows() -> list[dict]:
     rows = []
     for row in artifacts.officer_queue():
         rows.append(
-            {
-                **{key: value for key, value in row.items() if key != "customer_id"},
-                "account_number": account_number_for(row["customer_id"]),
-            }
+            consistency_guard.apply_to_row(
+                {
+                    **{key: value for key, value in row.items() if key != "customer_id"},
+                    "account_number": account_number_for(row["customer_id"]),
+                }
+            )
         )
     return sorted(rows, key=lambda row: row["probability"], reverse=True)
 
@@ -135,7 +149,7 @@ def cohort_row(row: dict) -> dict:
         "account_number": row["account_number"],
         "credit_limit": row["credit_limit"],
         "current_balance": row["current_balance"],
-        "last_payment": row["last_payment"],
+        "last_payment": _last_payment(row),
         "months_in_arrears": row["months_in_arrears"],
         "utilisation_now": derived["utilisation_now"],
         "trajectory": derived["trajectory"],
@@ -309,7 +323,7 @@ def _live_row(account_number: str, record: tuple) -> dict:
         scorer.band, segments=segments,
     )[0]
     row.pop("customer_id")
-    return {**row, "account_number": account_number}
+    return consistency_guard.apply_to_row({**row, "account_number": account_number})
 
 
 def highlights(row: dict) -> dict:
@@ -391,7 +405,7 @@ def customer_detail(row: dict) -> dict:
         "flagged": row["flagged"],
         "credit_limit": row["credit_limit"],
         "current_balance": row["current_balance"],
-        "last_payment": row["last_payment"],
+        "last_payment": _last_payment(row),
         "months_in_arrears": row["months_in_arrears"],
         "segment": row.get("segment"),
         "history": row.get("history") or [],
@@ -414,7 +428,7 @@ def unpredicted_view(row: dict) -> dict:
         "needs_attention": False,
         "credit_limit": row["credit_limit"],
         "current_balance": row["current_balance"],
-        "last_payment": row["last_payment"],
+        "last_payment": _last_payment(row),
         "months_in_arrears": row["months_in_arrears"],
         "reasons": [],
         "coaching": None,
@@ -465,7 +479,7 @@ def cardholder_view(row: dict, stored_prediction=None, record=None) -> dict:
         "needs_attention": needs_attention,
         "credit_limit": row["credit_limit"],
         "current_balance": row["current_balance"],
-        "last_payment": row["last_payment"],
+        "last_payment": _last_payment(row),
         "months_in_arrears": row["months_in_arrears"],
         "reasons": [
             {

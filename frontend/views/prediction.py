@@ -22,7 +22,6 @@ from ui.components import flatten, reason_line, show, stylesheet
 CERTAINTY_CAP = 0.99
 
 PROBLEM_KEY = "prediction_problem"
-NOT_RUN_SUMMARY = "Not run yet. Run the model to see the risk and the reasons."
 
 CARDHOLDER_QUESTION = "How can I improve my risk of missing the next payment?"
 OFFICER_QUESTION = "What would most lower this customer's risk of missing the next payment?"
@@ -50,33 +49,6 @@ def as_risk(probability: float) -> str:
 
 def _raises(reason: dict) -> bool:
     return reason.get("raises_risk", reason.get("effect", 0) > 0)
-
-
-# --- the entry card on the overview -----------------------------------------
-
-
-def entry_card(summary: str) -> None:
-    """A compact link from the overview to the full analysis."""
-    stylesheet("prediction.css")
-    with st.container(key="prediction_entry"):
-        text, action = st.columns([4, 1], vertical_alignment="center")
-        text.markdown(
-            flatten(f"""
-<div class="prediction-entry-text"><b>Risk prediction</b>
-<span>{escape(summary)}</span></div>
-"""),
-            unsafe_allow_html=True,
-        )
-        action.button(
-            "View analysis :material/arrow_forward:", key="open_prediction",
-            on_click=nav.go, args=(nav.PREDICTION,), width="stretch",
-        )
-
-
-def cardholder_summary(account: dict) -> str:
-    if not account.get("predicted", True):
-        return NOT_RUN_SUMMARY
-    return f"{account['risk_band']} risk. See what is driving it."
 
 
 # --- the page ---------------------------------------------------------------

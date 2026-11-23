@@ -33,7 +33,7 @@ router = APIRouter(prefix="/predictions", tags=["predictions"])
 
 # How many reasons a screen shows. The full set is every feature with a non
 # negligible effect, which is more than anyone reads.
-SHOWN_REASONS = 6
+SHOWN_REASONS = 7  # one per concept
 
 # A batch larger than this is a job, not a request.
 MAX_BATCH_ROWS = 5000
@@ -95,6 +95,8 @@ def score_customer(
         account=request.cardholder_reference,
         prediction=prediction.id,
         band=result.risk_band,
+        model_band=result.model_band,
+        guard=list(result.guard_flags),
         flagged=result.flagged,
         model=version.version,
     )
@@ -110,6 +112,9 @@ def score_customer(
             {**reason.to_dict(), "raises_risk": reason.raises_risk}
             for reason in reasons
         ],
+        model_band=result.model_band,
+        guard_flags=list(result.guard_flags),
+        needs_review=result.needs_review,
     )
 
 
@@ -175,6 +180,9 @@ async def score_csv(file: UploadFile):
                 probability=result.probability,
                 risk_band=result.risk_band,
                 flagged=result.flagged,
+                model_band=result.model_band,
+                guard_flags=list(result.guard_flags),
+                needs_review=result.needs_review,
             )
         )
 

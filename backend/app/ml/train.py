@@ -101,9 +101,8 @@ COST_RATIOS = range(1, 11)
 
 DECILES = 10
 
-# Reasons stored per queued customer. Five fills the detail panel without
-# inflating the artifact across thousands of rows.
-QUEUE_REASONS = 5
+# Concept reasons stored per queued customer: all seven, without per-feature parts.
+QUEUE_REASONS = 7
 CALIBRATION_BINS = 10
 
 
@@ -332,8 +331,7 @@ def officer_queue(models, features: pd.DataFrame, probabilities, threshold: floa
     The realised outcome is deliberately excluded. The officer is deciding, and
     showing next month's truth would make the queue a reveal rather than a task.
     """
-    from app.ml.explainability import describe
-
+    from app.ml.explainability import concept_reasons
 
     # One pass over the ensemble; per-row calls would be thousands of predicts.
     contributions = np.mean(
@@ -341,7 +339,6 @@ def officer_queue(models, features: pd.DataFrame, probabilities, threshold: floa
     )
     effects = np.asarray(contributions)[:, :-1]
     columns = list(features.columns)
-    strongest = np.argsort(-np.abs(effects), axis=1)[:, :reasons_shown]
 
     def segment_of(index) -> dict | None:
         """The customer's behavioural segment, when segmentation has been run.
@@ -373,13 +370,11 @@ def officer_queue(models, features: pd.DataFrame, probabilities, threshold: floa
                 "months_in_arrears": int(row["pay_months_late"]),
                 "segment": segment_of(index),
                 "history": month_history(row),
+                # Parts are left out: thousands of rows times 46 features would bloat
+                # the file, and an officer can rescore live for the breakdown.
                 "reasons": [
-                    {
-                        "feature": columns[column],
-                        "effect": float(effects[position, column]),
-                        "description": describe(columns[column], float(row[columns[column]])),
-                    }
-                    for column in strongest[position]
+                    {"feature": r.feature, "effect": r.effect, "description": r.description}
+                    for r in concept_reasons(row, effects[position], columns, reasons_shown)
                 ],
             }
         )

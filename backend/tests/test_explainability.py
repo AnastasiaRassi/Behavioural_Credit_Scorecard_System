@@ -40,8 +40,8 @@ def test_util_trend_says_which_way_it_moved_instead_of_a_bare_share():
 
 
 def test_pay_to_bill_gap_keeps_its_sign_in_words():
-    assert describe("pay_to_bill_gap", 1500) == "Payments fall short of the average bill by NT$1,500 a month"
-    assert describe("pay_to_bill_gap", -200) == "Payments exceed the average bill by NT$200 a month"
+    assert describe("pay_to_bill_gap", 1500) == "Payments fall short of the average bill by US$47 a month"
+    assert describe("pay_to_bill_gap", -200) == "Payments exceed the average bill by US$6 a month"
     assert describe("pay_to_bill_gap", 0) == "Payments match the average bill"
 
 

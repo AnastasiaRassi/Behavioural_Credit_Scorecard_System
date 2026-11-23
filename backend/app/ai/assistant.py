@@ -425,15 +425,18 @@ def _report(
 
 def fact_sheet(view: dict, history: Sequence[Mapping], payload: CoachingPayload) -> dict:
     """Everything the model may say, with amounts pre-formatted so it can quote them exactly."""
+    account = {
+        "credit_limit": money(view['credit_limit']),
+        "current_balance": money(view['current_balance']),
+        "months_in_arrears_out_of_last_six": view["months_in_arrears"],
+    }
+    # No payment means no figure, so the model has nothing to misquote.
+    if view["last_payment"] is not None:
+        account["last_payment"] = money(view["last_payment"])
     return {
         "risk_band_for_next_month": view["risk_band"],
         "flagged_for_attention": view["needs_attention"],
-        "account": {
-            "credit_limit": money(view['credit_limit']),
-            "current_balance": money(view['current_balance']),
-            "last_payment": money(view['last_payment']),
-            "months_in_arrears_out_of_last_six": view["months_in_arrears"],
-        },
+        "account": account,
         # The model may say "6 months" because the sheet does; no digit is allowed
         # globally, so the grounding check stays strict.
         "billing_window_months": MONTHS_OBSERVED,
@@ -619,10 +622,15 @@ def template_reply(
         return " ".join(sentences)
 
     if intent == guardrails.ACCOUNT:
+        paid = (
+            f" Your last payment was {money(view['last_payment'])}, and the"
+            if view["last_payment"] is not None
+            else " The"
+        )
         return (
             f"Your credit limit is {money(view['credit_limit'])} and your current balance is "
-            f"{money(view['current_balance'])}. Your last payment was {money(view['last_payment'])}, "
-            f"and the account was in arrears in {view['months_in_arrears']} of the last six months."
+            f"{money(view['current_balance'])}.{paid} "
+            f"account was in arrears in {view['months_in_arrears']} of the last six months."
         )
 
     if intent == guardrails.ACTION:

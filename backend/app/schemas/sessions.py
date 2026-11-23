@@ -1,4 +1,6 @@
 """Shapes for signing in."""
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -30,11 +32,10 @@ class Account(BaseModel):
 class ProfileEdit(BaseModel):
     """What a cardholder may change about themselves. Bounds mirror the DB checks."""
 
-    display_name: str = Field(min_length=1, max_length=120)
-    age_years: int = Field(ge=18, le=120)
-    sex: int = Field(ge=1, le=2)
-    education: int = Field(ge=1, le=4)
-    marriage: int = Field(ge=1, le=3)
+    # Name, age and sex are legal identity data and deliberately not editable.
+    # Codes are the codebook's; anything else is rejected, not coerced.
+    education: Literal[1, 2, 3, 4]
+    marriage: Literal[1, 2, 3]
 
 
 class SignedIn(Account):

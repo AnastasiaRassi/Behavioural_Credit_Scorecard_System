@@ -19,14 +19,13 @@ Loana's wording and the repayment history it draws on come from the API.
 from collections.abc import Callable
 from html import escape
 
-import plotly.graph_objects as go
 import streamlit as st
 
 import api
 import review
 import theme
-from money import CURRENCY, markdown_safe, money
-from ui import loana, nav, thread
+from money import CURRENCY, markdown_safe, money, money_or_none, to_usd
+from ui import insights, loana, nav, thread
 from ui.components import show, stylesheet
 from views import prediction
 
@@ -47,10 +46,14 @@ ACTIONABLE = {
     "repay_ratio_1": "Paying a larger share of the statement each month helps.",
     "repay_ratio_min": "Avoid months where only a small part of the bill is paid.",
     "pay_to_bill_gap": "Closing the gap between what you spend and what you repay helps.",
+    # Concept reasons. Account size, recent direction and the limit are not on the list.
+    "repayment_status": "Bring the account up to date before the next statement.",
+    "share_paid": "Paying a larger share of each bill helps most.",
+    "carrying_balance": "Clearing the bill in full, rather than carrying part over, helps.",
+    "credit_in_use": "Keeping the balance well below the limit gives you room to absorb a bill.",
 }
 
 REVIEW_COMMENT_MAX = 2000
-TICK = "#475569"  # slate, matching the sidebar's text
 
 # Starters for an empty conversation; clicking one fills the box, it never sends.
 QUICK_PROMPTS = (
@@ -126,34 +129,19 @@ def _dashboard(account: dict) -> None:
     needs_attention = account["needs_attention"]
     _officer_decision(account.get("officer_decision"))
     _banner(account)
-    prediction.entry_card(prediction.cardholder_summary(account))
 
     _account(account)
-    history_card(account["history"])
+    insights.render(account["history"], account["credit_limit"])
     _ask_loana(needs_attention)
     _consent()
 
 
 def _unpredicted_dashboard(token: str, customer_id: str, account: dict) -> None:
-    """Figures and history, and a button that runs the model. No band until it is pressed."""
+    """Figures and history only; no band until a prediction is run."""
     stylesheet("dashboard.css")
     _officer_decision(account.get("officer_decision"))
-    st.markdown(
-        '<div class="account-alert account-alert--neutral">'
-        '<div class="account-alert-title">No prediction yet</div>'
-        "<p>Run the model on your last six months to see how your next payment looks, "
-        "what is driving it, and what would help.</p></div>",
-        unsafe_allow_html=True,
-    )
-    st.button(
-        "Get a prediction", key="get_prediction", type="primary",
-        on_click=_predict, args=(token, customer_id),
-    )
-    problem = st.session_state.pop(PREDICT_PROBLEM_KEY, None)
-    if problem:
-        st.error(problem)
     _account(account)
-    history_card(account["history"])
+    insights.render(account["history"], account["credit_limit"])
 
 
 def _prediction_view(token: str, customer_id: str, account: dict) -> None:
@@ -356,87 +344,11 @@ def _account(account: dict) -> None:
         [
             ("Credit limit", money(account['credit_limit'])),
             ("Latest statement balance", money(account['current_balance'])),
-            ("Last payment", money(account['last_payment'])),
+            ("Last payment", money_or_none(account['last_payment'])),
             ("Months behind", f"{account['months_in_arrears']} of 6"),
         ],
     ):
         column.metric(label, value)
-
-
-def history_card(history: list[dict], title: str = "Your last six months") -> None:
-    """Billed against paid per month as two smooth lines; shared with the officer screen."""
-    if not history:
-        return
-
-    # The API sends most recent first; the timeline reads oldest to newest.
-    months = sorted(history, key=lambda month: month["month"], reverse=True)
-    labels = [month["label"] for month in months]
-    top = max([m["bill_amount"] for m in months] + [m["amount_paid"] for m in months] + [1])
-
-    with st.container(border=True, key="history_card"):
-        st.markdown(
-            '<div class="history-head">'
-            '<span class="history-icon" aria-hidden="true">i</span>'
-            f'<div><div class="history-title">{title}</div>'
-            '<div class="history-hint">💡 Hover over points on the timeline to inspect '
-            "your monthly billing vs. payment history.</div></div></div>",
-            unsafe_allow_html=True,
-        )
-        figure = go.Figure(
-            [
-                *_series(labels, [m["bill_amount"] for m in months], "Billed", theme.BILLED),
-                *_series(labels, [m["amount_paid"] for m in months], "Paid", theme.PAID),
-            ]
-        )
-        figure.update_layout(
-            height=290,
-            margin=dict(l=56, r=40, t=8, b=44),
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(0,0,0,0)",
-            font=dict(family=theme.FONT, color=theme.TEXT, size=15),
-            hovermode="x unified",
-            hoverlabel=dict(bgcolor="#FFFFFF", bordercolor=theme.GRID, font_size=13),
-            legend=dict(orientation="h", x=0, y=1.1, bgcolor="rgba(0,0,0,0)", font=dict(size=15)),
-            dragmode=False,  # no box-zoom or pan; hover still works
-            xaxis=dict(
-                showgrid=False, showline=False, tickfont=dict(color=TICK, size=14),
-                fixedrange=True,
-            ),
-            yaxis=dict(
-                fixedrange=True, range=[0, top * 1.1],  # a bill is never negative
-                gridcolor=theme.GRID, zeroline=False, tickprefix=CURRENCY, tickformat="~s",
-                tickfont=dict(color=TICK, size=14),
-            ),
-        )
-        st.plotly_chart(
-            figure, width="stretch", theme=None, config={"displayModeBar": False, "scrollZoom": False, "doubleClick": False},
-            key="history_chart",
-        )
-
-
-def _series(labels: list[str], amounts: list[float], name: str, colour: str) -> list:
-    """A soft glow under a crisp spline, with a gradient fading to the axis."""
-    shape = dict(shape="spline", smoothing=0.8)
-    glow = go.Scatter(
-        x=labels, y=amounts, mode="lines", hoverinfo="skip", showlegend=False,
-        line=dict(color=_rgba(colour, 0.25), width=10, **shape),
-    )
-    line = go.Scatter(
-        x=labels, y=amounts, name=name, mode="lines+markers",
-        line=dict(color=colour, width=3, **shape),
-        marker=dict(size=9, color="#FFFFFF", line=dict(color=colour, width=2.5)),
-        fill="tozeroy",
-        fillgradient=dict(
-            type="vertical", colorscale=[[0, _rgba(colour, 0)], [1, _rgba(colour, 0.28)]]
-        ),
-        hovertemplate=f"{name}: {CURRENCY}%{{y:,.0f}}<extra></extra>",
-    )
-    return [glow, line]
-
-
-def _rgba(colour: str, alpha: float) -> str:
-    red, green, blue = (int(colour[i : i + 2], 16) for i in (1, 3, 5))
-    return f"rgba({red},{green},{blue},{alpha})"
 
 
 def _ask_loana(needs_attention: bool) -> None:

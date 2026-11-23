@@ -14,6 +14,7 @@ import numpy as np
 import pandas as pd
 
 from app.ml.calibration import calibrate
+from app.ml.consistency_guard import check_record
 from app.ml.exceptions import (
     ArtifactCorrupt,
     ArtifactsMissing,
@@ -38,6 +39,10 @@ class ScoreResult:
     threshold: float
     flagged: bool
     band_default_rate: float
+    # The guard may raise `risk_band`; the model's own band and the reasons are kept.
+    model_band: str = ""
+    guard_flags: tuple[str, ...] = ()
+    needs_review: bool = False
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -130,22 +135,35 @@ class CreditScorer:
     def score_one(self, customer: dict) -> ScoreResult:
         frame = pd.DataFrame([customer])
         probability = float(self.probabilities(frame)[0])
-        band = self.band(probability)
+        model_band = self.band(probability)
+        verdict = check_record(model_band, customer)
         return ScoreResult(
             probability=round(probability, 4),
-            risk_band=band,
+            risk_band=verdict.band,
             threshold=round(self.threshold, 4),
             flagged=probability >= self.threshold,
-            band_default_rate=self.band_report.get(band, {}).get("actual_default_rate", float("nan")),
+            # The rate belongs to the model's band, which is what the probability calibrates to.
+            band_default_rate=self.band_report.get(model_band, {}).get("actual_default_rate", float("nan")),
+            model_band=model_band,
+            guard_flags=verdict.flags,
+            needs_review=verdict.needs_review,
         )
 
     def score_batch(self, frame: pd.DataFrame) -> pd.DataFrame:
         probabilities = self.probabilities(frame)
+        model_bands = [self.band(p) for p in probabilities]
+        verdicts = [
+            check_record(band, record)
+            for band, record in zip(model_bands, frame.to_dict("records"))
+        ]
         return pd.DataFrame(
             {
                 "probability": probabilities.round(4),
-                "risk_band": [self.band(p) for p in probabilities],
+                "risk_band": [v.band for v in verdicts],
+                "model_band": model_bands,
                 "flagged": probabilities >= self.threshold,
+                "needs_review": [v.needs_review for v in verdicts],
+                "guard_flags": [",".join(v.flags) for v in verdicts],
             },
             index=frame.index,
         )
